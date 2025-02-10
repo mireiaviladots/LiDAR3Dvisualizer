@@ -114,7 +114,7 @@ class PointCloudApp(CTk):
         self.btn_visualize.pack(pady=10)
 
     def load_point_cloud(self):
-        filepath = filedialog.askopenfilename(filetypes=[("LAS Files", "*.las")])
+        filepath = filedialog.askopenfilename(filetypes=[("PCD Files", "*.pcd")])
         if filepath:
             self.pc_filepath = filepath
             print("Point Cloud Selected:", self.pc_filepath)
@@ -192,23 +192,35 @@ class PointCloudApp(CTk):
 
     def process(self):
         try:
+            # Cargar la nube de puntos PCD
+            pcd = o3d.io.read_point_cloud(self.pc_filepath)
+
+            # Obtener coordenadas XYZ
+            nube_puntos = np.asarray(pcd.points)
+
+            # Obtener colores si existen, de lo contrario, usar blanco
+            if pcd.has_colors():
+                rgb = np.asarray(pcd.colors)
+            else:
+                rgb = np.ones_like(nube_puntos)
+
             # Cargar el archivo LAS seleccionado
-            las = laspy.read(self.pc_filepath)
+            # las = laspy.read(self.pc_filepath)
 
             # Extraer las coordenadas x, y, y z
-            x = las.x
-            y = las.y
-            z = las.z
+            # x = las.x
+            # y = las.y
+            # z = las.z
 
             # Matriz de tamaño (N,3), cada fila representa x,y,z
-            nube_puntos = np.vstack((x, y, z)).T
+            # nube_puntos = np.vstack((x, y, z)).T
 
             # Extraer colores si existen
-            if hasattr(las, 'red') and hasattr(las, 'green') and hasattr(las, 'blue'):
-                rgb = np.vstack((las.red, las.green, las.blue)).T
-                rgb = rgb / 65535.0  # Normalizar a rango [0,1] (los valores están en 16 bits)
-            else:
-                rgb = np.ones_like(nube_puntos)  # Si no hay color, usa blanco
+            # if hasattr(las, 'red') and hasattr(las, 'green') and hasattr(las, 'blue'):
+                # rgb = np.vstack((las.red, las.green, las.blue)).T
+                # rgb = rgb / 65535.0  # Normalizar a rango [0,1] (los valores están en 16 bits)
+            # else:
+                # rgb = np.ones_like(nube_puntos)  # Si no hay color, usa blanco
 
             utm_coords = self.convert_to_utm(self.csv_filepath)
             utm_points = utm_coords[:, :2]  # Sólo coordenadas [easting, northing]
@@ -270,7 +282,6 @@ class PointCloudApp(CTk):
             # las_filtrada.write(output_file)
 
             # Crear nube de puntos Open3D
-            pcd = o3d.geometry.PointCloud()
             pcd.points = o3d.utility.Vector3dVector(nube_puntos)
             pcd.colors = o3d.utility.Vector3dVector(rgb)  # Asignar colores
 
@@ -295,11 +306,14 @@ class PointCloudApp(CTk):
             messagebox.showerror("Error", f"An error occurred: {e}")
 
     def voxelizer(self):
-        point_cloud = laspy.read(self.pc_filepath)
-        xyz = np.vstack((point_cloud.x, point_cloud.y, point_cloud.z)).transpose()
-        rgb = np.vstack((point_cloud.red, point_cloud.green, point_cloud.blue)).transpose()/65535
+        pcd = o3d.io.read_point_cloud(self.pc_filepath)
+        xyz = np.asarray(pcd.points)
+        # Obtener colores si existen, de lo contrario usar blanco
+        if pcd.has_colors():
+            rgb = np.asarray(pcd.colors)
+        else:
+            rgb = np.ones_like(xyz)  # Blanco por defecto
 
-        pcd = o3d.geometry.PointCloud()
         pcd.points = o3d.utility.Vector3dVector(xyz)
         pcd.colors = o3d.utility.Vector3dVector(rgb)
 
