@@ -1,5 +1,5 @@
-import laspy
 import numpy as np
+import threading
 import open3d as o3d
 import csv
 from pyproj import Proj
@@ -17,7 +17,6 @@ class WelcomeScreen(CTk):
         self.geometry("900x600")
 
         bg_image = Image.open("welcome.png")
-        #bg_image = bg_image.resize((900, 600))  # Redimensionar para ajustarse a la ventana
         self.bg_photo = CTkImage(light_image=bg_image, dark_image=bg_image, size=(900, 600))
 
         # Crear un Label para mostrar la imagen de fondo
@@ -204,24 +203,6 @@ class PointCloudApp(CTk):
             else:
                 rgb = np.ones_like(nube_puntos)
 
-            # Cargar el archivo LAS seleccionado
-            # las = laspy.read(self.pc_filepath)
-
-            # Extraer las coordenadas x, y, y z
-            # x = las.x
-            # y = las.y
-            # z = las.z
-
-            # Matriz de tamaño (N,3), cada fila representa x,y,z
-            # nube_puntos = np.vstack((x, y, z)).T
-
-            # Extraer colores si existen
-            # if hasattr(las, 'red') and hasattr(las, 'green') and hasattr(las, 'blue'):
-                # rgb = np.vstack((las.red, las.green, las.blue)).T
-                # rgb = rgb / 65535.0  # Normalizar a rango [0,1] (los valores están en 16 bits)
-            # else:
-                # rgb = np.ones_like(nube_puntos)  # Si no hay color, usa blanco
-
             utm_coords = self.convert_to_utm(self.csv_filepath)
             utm_points = utm_coords[:, :2]  # Sólo coordenadas [easting, northing]
             dosis = utm_coords[:, 2]  # Dosis correspondiente
@@ -262,25 +243,6 @@ class PointCloudApp(CTk):
             puntos_dosis_elevados = np.copy(nube_puntos_filtrada)
             puntos_dosis_elevados[:, 2] += altura_extra  # Aumentar Z
 
-
-            # Crear un nuevo archivo LAS con la nube de puntos filtrada
-            # las_filtrada = laspy.create()
-
-            # las_filtrada.header.scale = las.header.scale
-            # las_filtrada.header.offset = las.header.offset
-
-            # las_filtrada.x = nube_puntos_filtrada[:, 0]
-            # las_filtrada.y = nube_puntos_filtrada[:, 1]
-            # las_filtrada.z = nube_puntos_filtrada[:, 2]
-
-            # if "Dosis" not in las_filtrada.point_format.extra_dimension_names:
-                # las_filtrada.add_extra_dim(laspy.ExtraBytesParams(name="Dosis", type=np.float32))
-
-            # las_filtrada["Dosis"] = dosis_filtrada  # Asigna los valores
-
-            # output_file = Path("cloud1retorno_con_dosis.las")
-            # las_filtrada.write(output_file)
-
             # Crear nube de puntos Open3D
             pcd.points = o3d.utility.Vector3dVector(nube_puntos)
             pcd.colors = o3d.utility.Vector3dVector(rgb)  # Asignar colores
@@ -299,8 +261,7 @@ class PointCloudApp(CTk):
             render_option = self.vis.get_render_option()
             render_option.point_size = 2
 
-            self.vis.poll_events()
-            self.vis.update_renderer()
+            self.vis.run()
 
         except Exception as e:
             messagebox.showerror("Error", f"An error occurred: {e}")
@@ -308,6 +269,7 @@ class PointCloudApp(CTk):
     def voxelizer(self):
         pcd = o3d.io.read_point_cloud(self.pc_filepath)
         xyz = np.asarray(pcd.points)
+
         # Obtener colores si existen, de lo contrario usar blanco
         if pcd.has_colors():
             rgb = np.asarray(pcd.colors)
@@ -433,9 +395,7 @@ class PointCloudApp(CTk):
         self.vis.add_geometry(vox_mesh)
         self.vis.add_geometry(vox_mesh_dosis)
 
-        self.vis.poll_events()
-        self.vis.update_renderer()
-
+        self.vis.run()
 
 if __name__ == "__main__":
     welcome_screen = WelcomeScreen()
