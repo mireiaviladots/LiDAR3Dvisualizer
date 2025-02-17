@@ -1,5 +1,4 @@
 import numpy as np
-import threading
 import open3d as o3d
 import csv
 from pyproj import Proj
@@ -8,6 +7,7 @@ from pathlib import Path
 from customtkinter import *
 from PIL import Image # (imagenes en los botones)
 from tkinter import filedialog, messagebox
+import multiprocessing
 
 class WelcomeScreen(CTk):
     def __init__(self):
@@ -125,24 +125,18 @@ class PointCloudApp(CTk):
             print("CSV Selected:", self.csv_filepath)
 
     def visualize(self):
-        """Valida los archivos y procede con la visualización."""
+        """Ejecuta Open3D en un proceso separado sin bloquear la GUI."""
         if not self.pc_filepath:
             messagebox.showwarning("Warning", "Please select a Point Cloud file.")
             return
 
-        if not self.csv_filepath:
-            messagebox.showwarning("Warning", "Please select a CSV file.")
-            return
+        # Obtener el estado del checkbox (1 si está marcado, 0 si no)
+        use_voxelization = self.voxelizer_checkbox.get() == 1
 
-        if self.vis is None:
-            self.vis = o3d.visualization.Visualizer()
-            self.vis.create_window()
-
-        # Verifica el estado del checkbox y ejecuta la función correspondiente.
-        if self.voxelizer_checkbox.get():  # Si el checkbox está marcado
-            self.voxelizer()
-        else:
-            self.process()
+        # Crear un proceso separado para la visualización
+        process = multiprocessing.Process(target=run_visualizer,
+                                          args=(self.pc_filepath, use_voxelization))
+        process.start()
 
     def convert_to_utm(self, csv_filepath):
         # Convierte coordenadas lat/lon en el CSV a UTM y devuelve una matriz con easting, northing y dosis.
@@ -396,6 +390,28 @@ class PointCloudApp(CTk):
         self.vis.add_geometry(vox_mesh_dosis)
 
         self.vis.run()
+
+def run_visualizer(pc_filepath, use_voxelization):
+    """Ejecuta Open3D Visualizer en un proceso separado con la opción de voxelizar o no."""
+    vis = o3d.visualization.Visualizer()
+    vis.create_window()
+
+    # Cargar la nube de puntos
+    pcd = o3d.io.read_point_cloud(pc_filepath)
+
+    # Aplicar voxelización si el checkbox está activado
+    if use_voxelization:
+        print(f"Voxelization applied with size")
+    else:
+        print("No voxelization applied")
+
+    # Agregar la nube de puntos actualizada
+    vis.add_geometry(pcd)
+
+    # Bucle de renderizado de Open3D
+    while True:
+        vis.poll_events()
+        vis.update_renderer()
 
 if __name__ == "__main__":
     welcome_screen = WelcomeScreen()
