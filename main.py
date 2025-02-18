@@ -44,12 +44,15 @@ class PointCloudApp(CTk):
 
         self.pc_filepath = None
         self.csv_filepath = None
+
         self.vis = None
 
         frame = CTkFrame(self, fg_color="#2E2E2E", corner_radius=15)
         frame.pack(pady=20, padx=20, fill="both", expand=True)
 
         # Botones de carga
+
+
         button_frame = CTkFrame(frame, fg_color="transparent")
         button_frame.pack(pady=10, padx=10, fill="x")
 
@@ -122,12 +125,13 @@ class PointCloudApp(CTk):
         filepath = filedialog.askopenfilename(filetypes=[("CSV Files", "*.csv")])
         if filepath:
             self.csv_filepath = filepath
-            print("CSV Selected:", self.csv_filepath)
+        else:
+            print("No file selected")
 
     def visualize(self):
         """Ejecuta Open3D en un proceso separado sin bloquear la GUI."""
-        if not self.pc_filepath:
-            messagebox.showwarning("Warning", "Please select a Point Cloud file.")
+        if not self.pc_filepath or not self.csv_filepath:
+            messagebox.showwarning("Warning", "Please select a Point Cloud and a CSV file.")
             return
 
         # Obtener el estado del checkbox (1 si está marcado, 0 si no)
@@ -135,7 +139,7 @@ class PointCloudApp(CTk):
 
         # Crear un proceso separado para la visualización
         process = multiprocessing.Process(target=run_visualizer,
-                                          args=(self.pc_filepath, use_voxelization))
+                                          args=(self.pc_filepath, self.csv_filepath, use_voxelization))
         process.start()
 
     def convert_to_utm(self, csv_filepath):
@@ -246,8 +250,11 @@ class PointCloudApp(CTk):
             pcd_dosis.points = o3d.utility.Vector3dVector(puntos_dosis_elevados)
             pcd_dosis.colors = o3d.utility.Vector3dVector(colores_dosis)  # Asignar colores según dosis
 
-            # Limpiar y Agregar las nubes de puntos a la visualización
-            self.vis.clear_geometries()
+            if self.vis is None:
+                self.vis = o3d.visualization.Visualizer()
+                self.vis.create_window()
+
+            self.vis.clear_geometries()  # Ahora estamos seguros de que self.vis no es None
             self.vis.add_geometry(pcd)
             self.vis.add_geometry(pcd_dosis)
 
@@ -385,33 +392,28 @@ class PointCloudApp(CTk):
         output_file = Path("voxelize_dosis.ply")  # Puntos --> .las / Malla --> .obj, .ply
         o3d.io.write_triangle_mesh(str(output_file), vox_mesh_dosis)
 
+        if self.vis is None:
+            self.vis = o3d.visualization.Visualizer()
+            self.vis.create_window()
+
         self.vis.clear_geometries()
         self.vis.add_geometry(vox_mesh)
         self.vis.add_geometry(vox_mesh_dosis)
 
         self.vis.run()
 
-def run_visualizer(pc_filepath, use_voxelization):
+def run_visualizer(pc_filepath, csv_filepath, use_voxelization):
     """Ejecuta Open3D Visualizer en un proceso separado con la opción de voxelizar o no."""
-    vis = o3d.visualization.Visualizer()
-    vis.create_window()
+    app = PointCloudApp()  # Instanciar la clase principal para acceder a sus métodos
+    app.pc_filepath = pc_filepath  # Asignar el archivo de la nube de puntos
+    app.csv_filepath = csv_filepath
 
-    # Cargar la nube de puntos
-    pcd = o3d.io.read_point_cloud(pc_filepath)
-
-    # Aplicar voxelización si el checkbox está activado
     if use_voxelization:
-        print(f"Voxelization applied with size")
+        print("Voxelization applied")
+        app.voxelizer()
     else:
         print("No voxelization applied")
-
-    # Agregar la nube de puntos actualizada
-    vis.add_geometry(pcd)
-
-    # Bucle de renderizado de Open3D
-    while True:
-        vis.poll_events()
-        vis.update_renderer()
+        app.process()
 
 if __name__ == "__main__":
     welcome_screen = WelcomeScreen()
