@@ -44,6 +44,8 @@ class PointCloudApp(CTk):
 
         self.pc_filepath = None
         self.csv_filepath = None
+        self.point_size = None
+        self.vox_size = None
 
         self.vis = None
 
@@ -84,9 +86,16 @@ class PointCloudApp(CTk):
         self.dosis_slider = CTkSlider(master=param_grid, from_=0, to=100, fg_color="#FFCC70")
         self.dosis_slider.grid(row=1, column=1, pady=5, padx=5)
 
-        self.voxelizer_checkbox = CTkCheckBox(master=parameters_frame, text="Voxelizer", text_color="white",
+        voxelizer_frame = CTkFrame(master=parameters_frame, fg_color="transparent")
+        voxelizer_frame.pack(pady=5)
+
+        self.voxelizer_checkbox = CTkCheckBox(master=voxelizer_frame, text="Voxelizer", text_color="white",
                                               fg_color="#FFCC70")
-        self.voxelizer_checkbox.pack(pady=5)
+        self.voxelizer_checkbox.grid(row=0, column=0, padx=5)
+
+        CTkLabel(master=voxelizer_frame, text="Vox Size:", text_color="white").grid(row=0, column=1, padx=5)
+        self.vox_size_entry = CTkEntry(voxelizer_frame, width=50)
+        self.vox_size_entry.grid(row=0, column=2, padx=5)
 
         # Leyenda de dosis
         legend_frame = CTkFrame(master=frame, fg_color="#383838", corner_radius=10)
@@ -137,9 +146,27 @@ class PointCloudApp(CTk):
         # Obtener el estado del checkbox (1 si está marcado, 0 si no)
         use_voxelization = self.voxelizer_checkbox.get() == 1
 
+        point_size_str = self.point_size_entry.get().strip()
+        vox_size_str = self.vox_size_entry.get().strip()
+
+        # Verificar si está vacío y usar el valor predeterminado
+        if point_size_str == "":
+            self.point_size = 2  # Valor predeterminado
+        else:
+            self.point_size = float(point_size_str)
+            if self.point_size <= 0:
+                raise ValueError("Point size must be positive.")
+
+        if vox_size_str == "":
+            self.vox_size = 2  # Valor predeterminado para el tamaño de voxel
+        else:
+            self.vox_size = float(vox_size_str)
+            if self.vox_size <= 0:
+                raise ValueError("Voxel size must be positive.")
+
         # Crear un proceso separado para la visualización
         process = multiprocessing.Process(target=run_visualizer,
-                                          args=(self.pc_filepath, self.csv_filepath, use_voxelization))
+                                          args=(self.pc_filepath, self.csv_filepath, use_voxelization, self.point_size, self.vox_size))
         process.start()
 
     def convert_to_utm(self, csv_filepath):
@@ -260,7 +287,7 @@ class PointCloudApp(CTk):
 
             # Cambiar el tamaño de los puntos (ajustar para evitar cuadrados)
             render_option = self.vis.get_render_option()
-            render_option.point_size = 2
+            render_option.point_size = self.point_size
 
             self.vis.run()
 
@@ -281,8 +308,7 @@ class PointCloudApp(CTk):
         pcd.colors = o3d.utility.Vector3dVector(rgb)
 
         # Defining the voxel size
-        vsize = max(pcd.get_max_bound()-pcd.get_min_bound())*0.005
-        vsize = round(vsize,4)
+        vsize = self.vox_size
 
         # Creating the voxel grid
         voxel_grid = o3d.geometry.VoxelGrid.create_from_point_cloud(pcd, voxel_size=vsize)
@@ -402,11 +428,13 @@ class PointCloudApp(CTk):
 
         self.vis.run()
 
-def run_visualizer(pc_filepath, csv_filepath, use_voxelization):
+def run_visualizer(pc_filepath, csv_filepath, use_voxelization, point_size, vox_size):
     """Ejecuta Open3D Visualizer en un proceso separado con la opción de voxelizar o no."""
     app = PointCloudApp()  # Instanciar la clase principal para acceder a sus métodos
     app.pc_filepath = pc_filepath  # Asignar el archivo de la nube de puntos
     app.csv_filepath = csv_filepath
+    app.point_size = point_size
+    app.vox_size = vox_size
 
     if use_voxelization:
         print("Voxelization applied")
