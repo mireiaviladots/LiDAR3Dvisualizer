@@ -8,6 +8,7 @@ from customtkinter import *
 from PIL import Image # (imagenes en los botones)
 from tkinter import filedialog, messagebox
 import multiprocessing
+import xml.etree.ElementTree as ET
 
 class WelcomeScreen(CTk):
     def __init__(self):
@@ -44,6 +45,7 @@ class PointCloudApp(CTk):
 
         self.pc_filepath = None
         self.csv_filepath = None
+        self.xml_filepath = None
         self.point_size = None
         self.vox_size = None
 
@@ -67,6 +69,11 @@ class PointCloudApp(CTk):
                                       hover_color="#C850C0", border_color="#FFCC70", border_width=2,
                                       font=("Arial", 14, "bold"), command=self.load_csv_dosis)
         self.btn_open_csv.pack(side="left", padx=10, pady=5)
+
+        self.btn_open_xml = CTkButton(master=button_frame, text="📜 Open XML", corner_radius=32, fg_color="#3A7EBF",
+                                      hover_color="#C850C0", border_color="#FFCC70", border_width=2,
+                                      font=("Arial", 14, "bold"), command=self.load_xml_metadata)
+        self.btn_open_xml.pack(side="left", padx=10, pady=5)
 
         # Parámetros
         parameters_frame = CTkFrame(master=frame, fg_color="#383838", corner_radius=10)
@@ -134,13 +141,18 @@ class PointCloudApp(CTk):
         filepath = filedialog.askopenfilename(filetypes=[("CSV Files", "*.csv")])
         if filepath:
             self.csv_filepath = filepath
-        else:
-            print("No file selected")
+            print("CSV Selected:", self.csv_filepath)
+
+    def load_xml_metadata(self):
+        filepath = filedialog.askopenfilename(filetypes=[("XML Files", "*.xml")])
+        if filepath:
+            self.xml_filepath = filepath
+            print("XML Selected:", self.xml_filepath)
 
     def visualize(self):
         """Ejecuta Open3D en un proceso separado sin bloquear la GUI."""
-        if not self.pc_filepath or not self.csv_filepath:
-            messagebox.showwarning("Warning", "Please select a Point Cloud and a CSV file.")
+        if not self.pc_filepath or not self.csv_filepath or not self.xml_filepath:
+            messagebox.showwarning("Warning", "Please select a Point Cloud a CSV file and a XML file.")
             return
 
         # Obtener el estado del checkbox (1 si está marcado, 0 si no)
@@ -166,7 +178,7 @@ class PointCloudApp(CTk):
 
         # Crear un proceso separado para la visualización
         process = multiprocessing.Process(target=run_visualizer,
-                                          args=(self.pc_filepath, self.csv_filepath, use_voxelization, self.point_size, self.vox_size))
+                                          args=(self.pc_filepath, self.csv_filepath, self.xml_filepath, use_voxelization, self.point_size, self.vox_size))
         process.start()
 
     def convert_to_utm(self, csv_filepath):
@@ -214,6 +226,22 @@ class PointCloudApp(CTk):
 
         return colores_dosis
 
+    def get_origin_from_xml(self, xml_filepath):
+        """Extrae el origen georeferenciado del archivo metadatos.xml."""
+        try:
+            tree = ET.parse(xml_filepath)
+            root = tree.getroot()
+            srs_origin = root.find("SRSOrigin")
+
+            if srs_origin is None or not srs_origin.text:
+                print("Error: No se encontró la etiqueta <SRSOrigin> en el XML.")
+                return None
+
+            return np.array([float(coord) for coord in srs_origin.text.split(",")])
+        except Exception as e:
+            print(f"Error leyendo el archivo XML: {e}")
+            return None  # Devolver None si hay un problema
+
     def process(self):
         try:
             # Cargar la nube de puntos PCD
@@ -222,11 +250,16 @@ class PointCloudApp(CTk):
             # Obtener coordenadas XYZ
             nube_puntos = np.asarray(pcd.points)
 
+            origin = self.get_origin_from_xml(self.xml_filepath)
+
+            # Sumar el origen a las coordenadas locales
+            geo_points = nube_puntos + origin
+
             # Obtener colores si existen, de lo contrario, usar blanco
             if pcd.has_colors():
                 rgb = np.asarray(pcd.colors)
             else:
-                rgb = np.ones_like(nube_puntos)
+                rgb = np.ones_like(geo_points)
 
             utm_coords = self.convert_to_utm(self.csv_filepath)
             utm_points = utm_coords[:, :2]  # Sólo coordenadas [easting, northing]
@@ -241,12 +274,12 @@ class PointCloudApp(CTk):
 
             # Filtrar puntos de la nube dentro del área de dosis
             dentro_area = (
-                    (nube_puntos[:, 0] >= x_min) & (nube_puntos[:, 0] <= x_max) &
-                    (nube_puntos[:, 1] >= y_min) & (nube_puntos[:, 1] <= y_max)
+                    (geo_points[:, 0] >= x_min) & (geo_points[:, 0] <= x_max) &
+                    (geo_points[:, 1] >= y_min) & (geo_points[:, 1] <= y_max)
             )
 
             # Solo los puntos dentro del área
-            puntos_dentro = nube_puntos[dentro_area]
+            puntos_dentro = geo_points[dentro_area]
 
             # Crea vector de dosis como NaN
             dosis_nube = np.full(len(puntos_dentro), np.nan)
@@ -269,7 +302,7 @@ class PointCloudApp(CTk):
             puntos_dosis_elevados[:, 2] += altura_extra  # Aumentar Z
 
             # Crear nube de puntos Open3D
-            pcd.points = o3d.utility.Vector3dVector(nube_puntos)
+            pcd.points = o3d.utility.Vector3dVector(geo_points)
             pcd.colors = o3d.utility.Vector3dVector(rgb)  # Asignar colores
 
             # Crear la nueva nube de puntos de dosis elevada
@@ -298,13 +331,18 @@ class PointCloudApp(CTk):
         pcd = o3d.io.read_point_cloud(self.pc_filepath)
         xyz = np.asarray(pcd.points)
 
+        # Obtener el origen georeferenciado desde el archivo XML
+        origin = self.get_origin_from_xml(self.xml_filepath)
+
+        geo_points = xyz + origin
+
         # Obtener colores si existen, de lo contrario usar blanco
         if pcd.has_colors():
             rgb = np.asarray(pcd.colors)
         else:
-            rgb = np.ones_like(xyz)  # Blanco por defecto
+            rgb = np.ones_like(geo_points)  # Blanco por defecto
 
-        pcd.points = o3d.utility.Vector3dVector(xyz)
+        pcd.points = o3d.utility.Vector3dVector(geo_points)
         pcd.colors = o3d.utility.Vector3dVector(rgb)
 
         # Defining the voxel size
@@ -360,12 +398,12 @@ class PointCloudApp(CTk):
 
         # Filtrar puntos de la nube dentro del área de dosis
         dentro_area = (
-                (xyz[:, 0] >= x_min) & (xyz[:, 0] <= x_max) &
-                (xyz[:, 1] >= y_min) & (xyz[:, 1] <= y_max)
+                (geo_points[:, 0] >= x_min) & (geo_points[:, 0] <= x_max) &
+                (geo_points[:, 1] >= y_min) & (geo_points[:, 1] <= y_max)
         )
 
         # Solo los puntos dentro del área
-        puntos_dentro = xyz[dentro_area]
+        puntos_dentro = geo_points[dentro_area]
 
         # Crea vector de dosis como NaN
         dosis_nube = np.full(len(puntos_dentro), np.nan)
@@ -428,11 +466,12 @@ class PointCloudApp(CTk):
 
         self.vis.run()
 
-def run_visualizer(pc_filepath, csv_filepath, use_voxelization, point_size, vox_size):
+def run_visualizer(pc_filepath, csv_filepath, xml_filepath, use_voxelization, point_size, vox_size):
     """Ejecuta Open3D Visualizer en un proceso separado con la opción de voxelizar o no."""
     app = PointCloudApp()  # Instanciar la clase principal para acceder a sus métodos
     app.pc_filepath = pc_filepath  # Asignar el archivo de la nube de puntos
     app.csv_filepath = csv_filepath
+    app.xml_filepath = xml_filepath
     app.point_size = point_size
     app.vox_size = vox_size
 
