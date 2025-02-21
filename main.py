@@ -9,6 +9,7 @@ from PIL import Image # (imagenes en los botones)
 from tkinter import filedialog, messagebox
 import multiprocessing
 import xml.etree.ElementTree as ET
+import matplotlib.colors as mcolors
 
 class WelcomeScreen(CTk):
     def __init__(self):
@@ -60,12 +61,14 @@ class PointCloudApp(CTk):
         button_frame = CTkFrame(frame, fg_color="transparent")
         button_frame.pack(pady=10, padx=10, fill="x")
 
-        self.btn_open_pc = CTkButton(master=button_frame, text="📂 Open Point Cloud", corner_radius=32, fg_color="#3A7EBF",
+        self.btn_open_pc = CTkButton(master=button_frame, text="📂 Open Point Cloud", corner_radius=32,
+                                     fg_color="#3A7EBF",
                                      hover_color="#C850C0", border_color="#FFCC70", border_width=2,
                                      font=("Arial", 14, "bold"), command=self.load_point_cloud)
         self.btn_open_pc.pack(side="left", padx=10, pady=5)
 
-        self.btn_open_csv = CTkButton(master=button_frame, text="📊 Open CSV Dosis", corner_radius=32, fg_color="#3A7EBF",
+        self.btn_open_csv = CTkButton(master=button_frame, text="📊 Open CSV Dosis", corner_radius=32,
+                                      fg_color="#3A7EBF",
                                       hover_color="#C850C0", border_color="#FFCC70", border_width=2,
                                       font=("Arial", 14, "bold"), command=self.load_csv_dosis)
         self.btn_open_csv.pack(side="left", padx=10, pady=5)
@@ -79,18 +82,21 @@ class PointCloudApp(CTk):
         parameters_frame = CTkFrame(master=frame, fg_color="#383838", corner_radius=10)
         parameters_frame.pack(pady=10, padx=10, fill="x")
 
-        CTkLabel(master=parameters_frame, text="🔧 Parameters", font=("Arial", 16, "bold"), text_color="white").pack(pady=5)
+        CTkLabel(master=parameters_frame, text="🔧 Parameters", font=("Arial", 16, "bold"),
+                 text_color="white").pack(pady=5)
 
         param_grid = CTkFrame(master=parameters_frame, fg_color="transparent")
         param_grid.pack(pady=5, padx=10)
 
-        CTkLabel(master=param_grid, text="Point Size:", text_color="white").grid(row=0, column=0, pady=5, padx=5, sticky="w")
+        CTkLabel(master=param_grid, text="Point Size:", text_color="white").grid(row=0, column=0, pady=5, padx=5,
+                                                                                 sticky="w")
         self.point_size_entry = CTkEntry(param_grid, width=50)
         self.point_size_entry.grid(row=0, column=1, pady=5, padx=5)
 
-        CTkLabel(master=param_grid, text="Dosis Elevation:", text_color="white").grid(row=1, column=0, pady=5, padx=5,
-                                                                               sticky="w")
-        self.dosis_slider = CTkSlider(master=param_grid, from_=-100, to=100, fg_color="#FFCC70")
+        CTkLabel(master=param_grid, text="Dosis Elevation:", text_color="white").grid(row=1, column=0, pady=5,
+                                                                                      padx=5,
+                                                                                      sticky="w")
+        self.dosis_slider = CTkSlider(master=param_grid, from_=-100, to=110, fg_color="#FFCC70")
         self.dosis_slider.grid(row=1, column=1, pady=5, padx=5)
 
         voxelizer_frame = CTkFrame(master=parameters_frame, fg_color="transparent")
@@ -108,22 +114,31 @@ class PointCloudApp(CTk):
         legend_frame = CTkFrame(master=frame, fg_color="#383838", corner_radius=10)
         legend_frame.pack(pady=10, padx=10, fill="x")
 
-        CTkLabel(master=legend_frame, text="🎨 Dose Legend", font=("Arial", 16, "bold"), text_color="white").pack(pady=5)
+        CTkLabel(master=legend_frame, text="🎨 Dose Legend", font=("Arial", 16, "bold"), text_color="white").pack(
+            pady=5)
 
         dose_colors = CTkFrame(master=legend_frame, fg_color="transparent")
         dose_colors.pack(pady=5, padx=10)
 
-        self.high_dose = CTkLabel(master=dose_colors, text="🔴 High", text_color="red", font=("Arial", 12))
-        self.high_dose.grid(row=0, column=0, pady=2, padx=5)
+        self.color_options = ["red", "yellow", "green", "blue", "purple", "orange", "pink", "white", "cyan"]
 
-        self.medium_dose = CTkLabel(master=dose_colors, text="🟡 Medium", text_color="yellow", font=("Arial", 12))
-        self.medium_dose.grid(row=1, column=0, pady=2, padx=5)
+        CTkLabel(master=dose_colors, text="High Dose:", text_color="white").grid(row=0, column=0, padx=5)
+        self.high_dose_cb = CTkComboBox(master=dose_colors, values=self.color_options)
+        self.high_dose_cb.grid(row=0, column=1, padx=5)
+        self.high_dose_cb.set("red")  # Color por defecto
+        self.high_dose_rgb = np.array(mcolors.to_rgb("red"))
 
-        self.low_dose = CTkLabel(master=dose_colors, text="🟢 Low", text_color="green", font=("Arial", 12))
-        self.low_dose.grid(row=2, column=0, pady=2, padx=5)
+        CTkLabel(master=dose_colors, text="Medium Dose:", text_color="white").grid(row=1, column=0, padx=5)
+        self.medium_dose_cb = CTkComboBox(master=dose_colors, values=self.color_options)
+        self.medium_dose_cb.grid(row=1, column=1, padx=5)
+        self.medium_dose_cb.set("yellow")  # Color por defecto
+        self.medium_dose_rgb = np.array(mcolors.to_rgb("yellow"))
 
-        self.change_btn = CTkButton(master=legend_frame, text="Change", width=80, fg_color="#C850C0")
-        self.change_btn.pack(pady=5)
+        CTkLabel(master=dose_colors, text="Low Dose:", text_color="white").grid(row=2, column=0, padx=5)
+        self.low_dose_cb = CTkComboBox(master=dose_colors, values=self.color_options)
+        self.low_dose_cb.grid(row=2, column=1, padx=5)
+        self.low_dose_cb.set("green")  # Color por defecto
+        self.low_dose_rgb = np.array(mcolors.to_rgb("green"))
 
         # Botón de visualización
         self.btn_visualize = CTkButton(master=frame, text="👁️ Visualize", corner_radius=32, fg_color="#4258D0",
@@ -177,9 +192,21 @@ class PointCloudApp(CTk):
             if self.vox_size <= 0:
                 raise ValueError("Voxel size must be positive.")
 
+        # Obtener los colores de las dosis seleccionadas
+        high_dose_color = self.high_dose_cb.get()  # El color seleccionado para dosis alta
+        medium_dose_color = self.medium_dose_cb.get()  # El color seleccionado para dosis media
+        low_dose_color = self.low_dose_cb.get()  # El color seleccionado para dosis baja
+
+        self.high_dose_rgb = np.array(mcolors.to_rgb(high_dose_color))
+        self.medium_dose_rgb = np.array(mcolors.to_rgb(medium_dose_color))
+        self.low_dose_rgb = np.array(mcolors.to_rgb(low_dose_color))
+
         # Crear un proceso separado para la visualización
         process = multiprocessing.Process(target=run_visualizer,
-                                          args=(self.pc_filepath, self.csv_filepath, self.xml_filepath, use_voxelization, self.point_size, self.vox_size, self.altura_extra))
+                                          args=(
+                                          self.pc_filepath, self.csv_filepath, self.xml_filepath, use_voxelization,
+                                          self.point_size, self.vox_size, self.altura_extra
+                                          , self.high_dose_rgb, self.medium_dose_rgb, self.low_dose_rgb))
         process.start()
 
     def convert_to_utm(self, csv_filepath):
@@ -212,18 +239,13 @@ class PointCloudApp(CTk):
 
         return utm_coords
 
-    def get_dose_color(self, dosis_nube):
-        # Colorear nube de puntos según dosis
-        colores_dosis = np.zeros((len(dosis_nube), 3))  # RGB por defecto negro
+    def get_dose_color(self, dosis_nube, high_dose_rgb, medium_dose_rgb, low_dose_rgb):
+        """ Asigna colores a los puntos según la dosis usando los valores actualizados. """
 
-        # Verde (0-100)
-        colores_dosis[(dosis_nube >= 0) & (dosis_nube < 100)] = [0, 1, 0]
-
-        # Amarillo (100-200)
-        colores_dosis[(dosis_nube >= 100) & (dosis_nube < 200)] = [1, 1, 0]
-
-        # Rojo (200+)
-        colores_dosis[dosis_nube >= 200] = [1, 0, 0]
+        colores_dosis = np.zeros((len(dosis_nube), 3))
+        colores_dosis[(dosis_nube >= 0) & (dosis_nube < 100)] = low_dose_rgb
+        colores_dosis[(dosis_nube >= 100) & (dosis_nube < 200)] = medium_dose_rgb
+        colores_dosis[dosis_nube >= 200] = high_dose_rgb
 
         return colores_dosis
 
@@ -292,7 +314,8 @@ class PointCloudApp(CTk):
             # Asignar dosis correspondiente a los puntos dentro del área
             dosis_nube[:] = dosis[indices_mas_cercanos]  # Dosis para cada punto en la nube
 
-            colores_dosis = self.get_dose_color(dosis_nube)
+            colores_dosis = self.get_dose_color(dosis_nube, self.high_dose_rgb, self.medium_dose_rgb,
+                                                self.low_dose_rgb)
 
             # Filtra las coordenadas y dosis de los puntos dentro del área
             nube_puntos_filtrada = puntos_dentro
@@ -415,10 +438,8 @@ class PointCloudApp(CTk):
         # Asignar dosis correspondiente a los puntos dentro del área
         dosis_nube[:] = dosis[indices_mas_cercanos]  # Dosis para cada punto en la nube
 
-        colores_dosis = self.get_dose_color(dosis_nube)
-
-        # Rojo (200+)
-        colores_dosis[dosis_nube >= 200] = [1, 0, 0]
+        colores_dosis = self.get_dose_color(dosis_nube, self.high_dose_rgb, self.medium_dose_rgb,
+                                                self.low_dose_rgb)
 
         # Filtra las coordenadas y dosis de los puntos dentro del área
         nube_puntos_filtrada = puntos_dentro
@@ -465,7 +486,7 @@ class PointCloudApp(CTk):
 
         self.vis.run()
 
-def run_visualizer(pc_filepath, csv_filepath, xml_filepath, use_voxelization, point_size, vox_size, altura_extra):
+def run_visualizer(pc_filepath, csv_filepath, xml_filepath, use_voxelization, point_size, vox_size, altura_extra, high_dose_rgb, medium_dose_rgb, low_dose_rgb):
     """Ejecuta Open3D Visualizer en un proceso separado con la opción de voxelizar o no."""
     app = PointCloudApp()  # Instanciar la clase principal para acceder a sus métodos
     app.pc_filepath = pc_filepath  # Asignar el archivo de la nube de puntos
@@ -474,6 +495,9 @@ def run_visualizer(pc_filepath, csv_filepath, xml_filepath, use_voxelization, po
     app.point_size = point_size
     app.vox_size = vox_size
     app.altura_extra = altura_extra
+    app.high_dose_rgb = high_dose_rgb
+    app.medium_dose_rgb = medium_dose_rgb
+    app.low_dose_rgb = low_dose_rgb
 
     if use_voxelization:
         print("Voxelization applied")
