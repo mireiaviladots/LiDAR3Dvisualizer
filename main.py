@@ -48,6 +48,7 @@ class PointCloudApp(CTk):
         self.xml_filepath = None
         self.point_size = None
         self.vox_size = None
+        self.altura_extra = None
 
         self.vis = None
 
@@ -55,7 +56,6 @@ class PointCloudApp(CTk):
         frame.pack(pady=20, padx=20, fill="both", expand=True)
 
         # Botones de carga
-
 
         button_frame = CTkFrame(frame, fg_color="transparent")
         button_frame.pack(pady=10, padx=10, fill="x")
@@ -90,7 +90,7 @@ class PointCloudApp(CTk):
 
         CTkLabel(master=param_grid, text="Dosis Elevation:", text_color="white").grid(row=1, column=0, pady=5, padx=5,
                                                                                sticky="w")
-        self.dosis_slider = CTkSlider(master=param_grid, from_=0, to=100, fg_color="#FFCC70")
+        self.dosis_slider = CTkSlider(master=param_grid, from_=-100, to=100, fg_color="#FFCC70")
         self.dosis_slider.grid(row=1, column=1, pady=5, padx=5)
 
         voxelizer_frame = CTkFrame(master=parameters_frame, fg_color="transparent")
@@ -160,6 +160,7 @@ class PointCloudApp(CTk):
 
         point_size_str = self.point_size_entry.get().strip()
         vox_size_str = self.vox_size_entry.get().strip()
+        self.altura_extra = self.dosis_slider.get()
 
         # Verificar si está vacío y usar el valor predeterminado
         if point_size_str == "":
@@ -178,7 +179,7 @@ class PointCloudApp(CTk):
 
         # Crear un proceso separado para la visualización
         process = multiprocessing.Process(target=run_visualizer,
-                                          args=(self.pc_filepath, self.csv_filepath, self.xml_filepath, use_voxelization, self.point_size, self.vox_size))
+                                          args=(self.pc_filepath, self.csv_filepath, self.xml_filepath, use_voxelization, self.point_size, self.vox_size, self.altura_extra))
         process.start()
 
     def convert_to_utm(self, csv_filepath):
@@ -297,9 +298,8 @@ class PointCloudApp(CTk):
             nube_puntos_filtrada = puntos_dentro
             dosis_filtrada = dosis_nube
 
-            altura_extra = 5  # Ajusta este valor según lo necesario
             puntos_dosis_elevados = np.copy(nube_puntos_filtrada)
-            puntos_dosis_elevados[:, 2] += altura_extra  # Aumentar Z
+            puntos_dosis_elevados[:, 2] += self.altura_extra  # Aumentar Z
 
             # Crear nube de puntos Open3D
             pcd.points = o3d.utility.Vector3dVector(geo_points)
@@ -424,9 +424,8 @@ class PointCloudApp(CTk):
         nube_puntos_filtrada = puntos_dentro
         dosis_filtrada = dosis_nube
 
-        altura_extra = 5  # Ajusta este valor según lo necesario
         puntos_dosis_elevados = np.copy(nube_puntos_filtrada)
-        puntos_dosis_elevados[:, 2] += altura_extra  # Aumentar Z
+        puntos_dosis_elevados[:, 2] += self.altura_extra  # Aumentar Z
 
         pcd_dosis = o3d.geometry.PointCloud()
         pcd_dosis.points = o3d.utility.Vector3dVector(puntos_dosis_elevados)
@@ -466,7 +465,7 @@ class PointCloudApp(CTk):
 
         self.vis.run()
 
-def run_visualizer(pc_filepath, csv_filepath, xml_filepath, use_voxelization, point_size, vox_size):
+def run_visualizer(pc_filepath, csv_filepath, xml_filepath, use_voxelization, point_size, vox_size, altura_extra):
     """Ejecuta Open3D Visualizer en un proceso separado con la opción de voxelizar o no."""
     app = PointCloudApp()  # Instanciar la clase principal para acceder a sus métodos
     app.pc_filepath = pc_filepath  # Asignar el archivo de la nube de puntos
@@ -474,6 +473,7 @@ def run_visualizer(pc_filepath, csv_filepath, xml_filepath, use_voxelization, po
     app.xml_filepath = xml_filepath
     app.point_size = point_size
     app.vox_size = vox_size
+    app.altura_extra = altura_extra
 
     if use_voxelization:
         print("Voxelization applied")
