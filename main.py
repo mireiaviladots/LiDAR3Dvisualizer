@@ -50,6 +50,15 @@ class PointCloudApp(CTk):
         self.point_size = None
         self.vox_size = None
         self.altura_extra = None
+        self.dose_min = None
+        self.dose_max = None
+        self.low_max = None
+        self.medium_min = None
+        self.medium_max = None
+        self.high_min = None
+
+        self.previous_point_value = ""
+        self.previous_voxel_value = ""
 
         self.vis = None
 
@@ -90,7 +99,7 @@ class PointCloudApp(CTk):
 
         CTkLabel(master=param_grid, text="Point Size:", text_color="white").grid(row=0, column=0, pady=5, padx=5,
                                                                                  sticky="w")
-        self.point_size_entry = CTkEntry(param_grid, width=50)
+        self.point_size_entry = CTkEntry(param_grid, width=50, state="disabled")
         self.point_size_entry.grid(row=0, column=1, pady=5, padx=5)
 
         CTkLabel(master=param_grid, text="Dosis Elevation:", text_color="white").grid(row=1, column=0, pady=5,
@@ -102,12 +111,14 @@ class PointCloudApp(CTk):
         voxelizer_frame = CTkFrame(master=parameters_frame, fg_color="transparent")
         voxelizer_frame.pack(pady=5)
 
+        self.voxelizer_var = BooleanVar()
         self.voxelizer_checkbox = CTkCheckBox(master=voxelizer_frame, text="Voxelizer", text_color="white",
-                                              fg_color="#FFCC70")
+                                              fg_color="#FFCC70", variable=self.voxelizer_var,
+                                             command=self.toggle_voxel_size, state="disabled")
         self.voxelizer_checkbox.grid(row=0, column=0, padx=5)
 
         CTkLabel(master=voxelizer_frame, text="Vox Size:", text_color="white").grid(row=0, column=1, padx=5)
-        self.vox_size_entry = CTkEntry(voxelizer_frame, width=50)
+        self.vox_size_entry = CTkEntry(voxelizer_frame, width=50, state="disabled")
         self.vox_size_entry.grid(row=0, column=2, padx=5)
 
         # Leyenda de dosis
@@ -127,18 +138,37 @@ class PointCloudApp(CTk):
         self.high_dose_cb.grid(row=0, column=1, padx=5)
         self.high_dose_cb.set("red")  # Color por defecto
         self.high_dose_rgb = np.array(mcolors.to_rgb("red"))
+        CTkLabel(master=dose_colors, text="Min:", text_color="white").grid(row=0, column=2, padx=5)
+        self.high_dose_min = CTkEntry(dose_colors, width=70, state="disabled")
+        self.high_dose_min.grid(row=0, column=3, padx=5)
+        CTkLabel(master=dose_colors, text="Max:", text_color="white").grid(row=0, column=4, padx=5)
+        self.high_dose_max = CTkEntry(dose_colors, width=70, state="disabled")
+        self.high_dose_max.grid(row=0, column=5, padx=5)
 
         CTkLabel(master=dose_colors, text="Medium Dose:", text_color="white").grid(row=1, column=0, padx=5)
         self.medium_dose_cb = CTkComboBox(master=dose_colors, values=self.color_options)
         self.medium_dose_cb.grid(row=1, column=1, padx=5)
         self.medium_dose_cb.set("yellow")  # Color por defecto
         self.medium_dose_rgb = np.array(mcolors.to_rgb("yellow"))
+        CTkLabel(master=dose_colors, text="Min:", text_color="white").grid(row=1, column=2, padx=5)
+        self.medium_dose_min = CTkEntry(dose_colors, width=70, state="disabled")
+        self.medium_dose_min.grid(row=1, column=3, padx=5)
+        CTkLabel(master=dose_colors, text="Max:", text_color="white").grid(row=1, column=4, padx=5)
+        self.medium_dose_max = CTkEntry(dose_colors, width=70, state="disabled")
+        self.medium_dose_max.grid(row=1, column=5, padx=5)
+
 
         CTkLabel(master=dose_colors, text="Low Dose:", text_color="white").grid(row=2, column=0, padx=5)
         self.low_dose_cb = CTkComboBox(master=dose_colors, values=self.color_options)
         self.low_dose_cb.grid(row=2, column=1, padx=5)
         self.low_dose_cb.set("green")  # Color por defecto
         self.low_dose_rgb = np.array(mcolors.to_rgb("green"))
+        CTkLabel(master=dose_colors, text="Min:", text_color="white").grid(row=2, column=2, padx=5)
+        self.low_dose_min = CTkEntry(dose_colors, width=70, state="disabled")
+        self.low_dose_min.grid(row=2, column=3, padx=5)
+        CTkLabel(master=dose_colors, text="Max:", text_color="white").grid(row=2, column=4, padx=5)
+        self.low_dose_max = CTkEntry(dose_colors, width=70, state="disabled")
+        self.low_dose_max.grid(row=2, column=5, padx=5)
 
         # Botón de visualización
         self.btn_visualize = CTkButton(master=frame, text="👁️ Visualize", corner_radius=32, fg_color="#4258D0",
@@ -146,17 +176,61 @@ class PointCloudApp(CTk):
                                        font=("Arial", 14, "bold"), command=self.visualize)
         self.btn_visualize.pack(pady=10)
 
+    def toggle_voxel_size(self):
+        if self.voxelizer_var.get():
+            self.previous_point_value = self.point_size_entry.get()
+            self.vox_size_entry.delete(0, "end")
+            self.point_size_entry.delete(0, "end")
+            self.point_size_entry.configure(state="disabled")
+            self.vox_size_entry.configure(state="normal")
+            if self.previous_voxel_value == "":
+                self.vox_size_entry.insert(0, 2)
+            else:
+                self.vox_size_entry.insert(0, self.previous_voxel_value)
+        else:
+            self.previous_voxel_value = self.vox_size_entry.get()
+            self.vox_size_entry.delete(0, "end")
+            self.point_size_entry.delete(0, "end")
+            self.vox_size_entry.configure(state="disabled")
+            self.point_size_entry.configure(state="normal")
+            if self.previous_point_value == "":
+                self.point_size_entry.insert(0, 2)
+            else:
+                self.point_size_entry.insert(0, self.previous_point_value)
+
     def load_point_cloud(self):
         filepath = filedialog.askopenfilename(filetypes=[("PCD Files", "*.pcd")])
         if filepath:
             self.pc_filepath = filepath
             print("Point Cloud Selected:", self.pc_filepath)
+            self.point_size_entry.configure(state="normal")
+            self.point_size_entry.insert(0,2)
+            self.voxelizer_checkbox.configure(state="normal")
 
     def load_csv_dosis(self):
         filepath = filedialog.askopenfilename(filetypes=[("CSV Files", "*.csv")])
         if filepath:
             self.csv_filepath = filepath
             print("CSV Selected:", self.csv_filepath)
+            dosis_values = np.genfromtxt(filepath, delimiter=',', skip_header=1)[:, 2]
+            self.dose_min_csv, self.dose_max_csv = np.min(dosis_values), np.max(dosis_values)
+            print(f"Dosis Range: Min={self.dose_min_csv}, Max={self.dose_max_csv}")
+
+            # Asignar valores a los campos de Min y Max y deshabilitarlos
+            self.low_dose_min.configure(state="normal")
+            self.low_dose_min.delete(0, "end")
+            self.low_dose_min.insert(0, str(self.dose_min_csv))
+            self.low_dose_min.configure(state="disabled")
+
+            self.high_dose_max.configure(state="normal")
+            self.high_dose_max.delete(0, "end")
+            self.high_dose_max.insert(0, str(self.dose_max_csv))
+            self.high_dose_max.configure(state="disabled")
+
+            self.low_dose_max.configure(state="normal")
+            self.medium_dose_min.configure(state="normal")
+            self.medium_dose_max.configure(state="normal")
+            self.high_dose_min.configure(state="normal")
 
     def load_xml_metadata(self):
         filepath = filedialog.askopenfilename(filetypes=[("XML Files", "*.xml")])
@@ -173,9 +247,18 @@ class PointCloudApp(CTk):
         # Obtener el estado del checkbox (1 si está marcado, 0 si no)
         use_voxelization = self.voxelizer_checkbox.get() == 1
 
+
         point_size_str = self.point_size_entry.get().strip()
         vox_size_str = self.vox_size_entry.get().strip()
         self.altura_extra = self.dosis_slider.get()
+
+        if use_voxelization:
+            if vox_size_str == "":
+                self.vox_size_entry.insert(0,2)
+        else:
+            if point_size_str == "":
+                self.point_size_entry.insert(0, 2)
+
 
         # Verificar si está vacío y usar el valor predeterminado
         if point_size_str == "":
