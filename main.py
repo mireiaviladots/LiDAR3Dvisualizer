@@ -199,6 +199,7 @@ class PointCloudApp(CTk):
                 self.point_size_entry.insert(0, self.previous_point_value)
 
     def load_point_cloud(self):
+        self.point_size_entry.delete(0, "end")
         filepath = filedialog.askopenfilename(filetypes=[("PCD Files", "*.pcd")])
         if filepath:
             self.pc_filepath = filepath
@@ -241,7 +242,7 @@ class PointCloudApp(CTk):
     def visualize(self):
         """Ejecuta Open3D en un proceso separado sin bloquear la GUI."""
         if not self.pc_filepath or not self.csv_filepath or not self.xml_filepath:
-            messagebox.showwarning("Warning", "Please select a Point Cloud a CSV file and a XML file.")
+            messagebox.showwarning("Warning", "Please select a Point Cloud, a CSV file and a XML file.")
             return
 
         # Obtener el estado del checkbox (1 si está marcado, 0 si no)
@@ -359,7 +360,7 @@ class PointCloudApp(CTk):
             origin = self.get_origin_from_xml(self.xml_filepath)
 
             # Sumar el origen a las coordenadas locales
-            geo_points = nube_puntos + origin
+            geo_points = nube_puntos + origin # a utm
 
             # Obtener colores si existen, de lo contrario, usar blanco
             if pcd.has_colors():
