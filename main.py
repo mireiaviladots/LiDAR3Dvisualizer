@@ -50,13 +50,13 @@ class PointCloudApp(CTk):
         self.point_size = None
         self.vox_size = None
         self.altura_extra = None
-        self.dose_min = None
-        self.dose_max = None
+        self.dose_min_csv = None
+        self.dose_max_csv = None
         self.low_max = None
         self.medium_min = None
         self.medium_max = None
         self.high_min = None
-
+        self.high_max = None
         self.previous_point_value = ""
         self.previous_voxel_value = ""
 
@@ -133,13 +133,16 @@ class PointCloudApp(CTk):
 
         self.color_options = ["red", "yellow", "green", "blue", "purple", "orange", "pink", "white", "cyan"]
 
+        self.high_min_medium_max = StringVar()
+        self.medium_min_low_max = StringVar()
+
         CTkLabel(master=dose_colors, text="High Dose:", text_color="white").grid(row=0, column=0, padx=5)
         self.high_dose_cb = CTkComboBox(master=dose_colors, values=self.color_options)
         self.high_dose_cb.grid(row=0, column=1, padx=5)
         self.high_dose_cb.set("red")  # Color por defecto
         self.high_dose_rgb = np.array(mcolors.to_rgb("red"))
         CTkLabel(master=dose_colors, text="Min:", text_color="white").grid(row=0, column=2, padx=5)
-        self.high_dose_min = CTkEntry(dose_colors, width=70, state="disabled")
+        self.high_dose_min = CTkEntry(dose_colors, textvariable=self.high_min_medium_max, width=70, state="disabled")
         self.high_dose_min.grid(row=0, column=3, padx=5)
         CTkLabel(master=dose_colors, text="Max:", text_color="white").grid(row=0, column=4, padx=5)
         self.high_dose_max = CTkEntry(dose_colors, width=70, state="disabled")
@@ -151,12 +154,11 @@ class PointCloudApp(CTk):
         self.medium_dose_cb.set("yellow")  # Color por defecto
         self.medium_dose_rgb = np.array(mcolors.to_rgb("yellow"))
         CTkLabel(master=dose_colors, text="Min:", text_color="white").grid(row=1, column=2, padx=5)
-        self.medium_dose_min = CTkEntry(dose_colors, width=70, state="disabled")
+        self.medium_dose_min = CTkEntry(dose_colors, textvariable=self.medium_min_low_max, width=70, state="disabled")
         self.medium_dose_min.grid(row=1, column=3, padx=5)
         CTkLabel(master=dose_colors, text="Max:", text_color="white").grid(row=1, column=4, padx=5)
-        self.medium_dose_max = CTkEntry(dose_colors, width=70, state="disabled")
+        self.medium_dose_max = CTkEntry(dose_colors, textvariable=self.high_min_medium_max, width=70, state="disabled")
         self.medium_dose_max.grid(row=1, column=5, padx=5)
-
 
         CTkLabel(master=dose_colors, text="Low Dose:", text_color="white").grid(row=2, column=0, padx=5)
         self.low_dose_cb = CTkComboBox(master=dose_colors, values=self.color_options)
@@ -167,7 +169,7 @@ class PointCloudApp(CTk):
         self.low_dose_min = CTkEntry(dose_colors, width=70, state="disabled")
         self.low_dose_min.grid(row=2, column=3, padx=5)
         CTkLabel(master=dose_colors, text="Max:", text_color="white").grid(row=2, column=4, padx=5)
-        self.low_dose_max = CTkEntry(dose_colors, width=70, state="disabled")
+        self.low_dose_max = CTkEntry(dose_colors, textvariable=self.medium_min_low_max, width=70, state="disabled")
         self.low_dose_max.grid(row=2, column=5, padx=5)
 
         # Botón de visualización
@@ -245,9 +247,10 @@ class PointCloudApp(CTk):
             messagebox.showwarning("Warning", "Please select a Point Cloud, a CSV file and a XML file.")
             return
 
+        self.validate_dose_ranges()
+
         # Obtener el estado del checkbox (1 si está marcado, 0 si no)
         use_voxelization = self.voxelizer_checkbox.get() == 1
-
 
         point_size_str = self.point_size_entry.get().strip()
         vox_size_str = self.vox_size_entry.get().strip()
@@ -259,7 +262,6 @@ class PointCloudApp(CTk):
         else:
             if point_size_str == "":
                 self.point_size_entry.insert(0, 2)
-
 
         # Verificar si está vacío y usar el valor predeterminado
         if point_size_str == "":
@@ -289,9 +291,27 @@ class PointCloudApp(CTk):
         process = multiprocessing.Process(target=run_visualizer,
                                           args=(
                                           self.pc_filepath, self.csv_filepath, self.xml_filepath, use_voxelization,
-                                          self.point_size, self.vox_size, self.altura_extra
-                                          , self.high_dose_rgb, self.medium_dose_rgb, self.low_dose_rgb))
+                                          self.point_size, self.vox_size, self.altura_extra,
+                                          self.high_dose_rgb, self.medium_dose_rgb, self.low_dose_rgb,
+                                          self.dose_min_csv, self.low_max, self.medium_min, self.medium_max, self.high_min, self.high_max))
         process.start()
+
+    def validate_dose_ranges(self):
+        """
+        Validates that the dose ranges have logical values.
+        """
+        try:
+            self.low_max = float(self.low_dose_max.get())
+            self.medium_min = float(self.medium_dose_min.get())
+            self.medium_max = float(self.medium_dose_max.get())
+            self.high_min = float(self.high_dose_min.get())
+        except ValueError:
+            raise ValueError("Dose range values must be numeric.")
+
+        if not (
+                self.dose_min_csv <= self.low_max <= self.medium_min <= self.medium_max <= self.high_min <= self.dose_max_csv):
+            raise ValueError(
+                "Dose ranges are not logical. Ensure: min < low_max < medium_min < medium_max < high_min < max.")
 
     def convert_to_utm(self, csv_filepath):
         # Convierte coordenadas lat/lon en el CSV a UTM y devuelve una matriz con easting, northing y dosis.
@@ -323,13 +343,13 @@ class PointCloudApp(CTk):
 
         return utm_coords
 
-    def get_dose_color(self, dosis_nube, high_dose_rgb, medium_dose_rgb, low_dose_rgb):
+    def get_dose_color(self, dosis_nube, high_dose_rgb, medium_dose_rgb, low_dose_rgb, dose_min_csv, low_max, medium_min, medium_max, high_min):
         """ Asigna colores a los puntos según la dosis usando los valores actualizados. """
 
         colores_dosis = np.zeros((len(dosis_nube), 3))
-        colores_dosis[(dosis_nube >= 0) & (dosis_nube < 100)] = low_dose_rgb
-        colores_dosis[(dosis_nube >= 100) & (dosis_nube < 200)] = medium_dose_rgb
-        colores_dosis[dosis_nube >= 200] = high_dose_rgb
+        colores_dosis[(dosis_nube >= dose_min_csv) & (dosis_nube < low_max)] = low_dose_rgb
+        colores_dosis[(dosis_nube >= medium_min) & (dosis_nube < medium_max)] = medium_dose_rgb
+        colores_dosis[dosis_nube >= high_min] = high_dose_rgb
 
         return colores_dosis
 
@@ -399,7 +419,8 @@ class PointCloudApp(CTk):
             dosis_nube[:] = dosis[indices_mas_cercanos]  # Dosis para cada punto en la nube
 
             colores_dosis = self.get_dose_color(dosis_nube, self.high_dose_rgb, self.medium_dose_rgb,
-                                                self.low_dose_rgb)
+                                                self.low_dose_rgb, self.dose_min_csv, self.low_max,
+                                                self.medium_min, self.medium_max, self.high_min)
 
             # Filtra las coordenadas y dosis de los puntos dentro del área
             nube_puntos_filtrada = puntos_dentro
@@ -523,7 +544,8 @@ class PointCloudApp(CTk):
         dosis_nube[:] = dosis[indices_mas_cercanos]  # Dosis para cada punto en la nube
 
         colores_dosis = self.get_dose_color(dosis_nube, self.high_dose_rgb, self.medium_dose_rgb,
-                                                self.low_dose_rgb)
+                                            self.low_dose_rgb, self.dose_min_csv, self.low_max,
+                                            self.medium_min, self.medium_max, self.high_min)
 
         # Filtra las coordenadas y dosis de los puntos dentro del área
         nube_puntos_filtrada = puntos_dentro
@@ -570,7 +592,7 @@ class PointCloudApp(CTk):
 
         self.vis.run()
 
-def run_visualizer(pc_filepath, csv_filepath, xml_filepath, use_voxelization, point_size, vox_size, altura_extra, high_dose_rgb, medium_dose_rgb, low_dose_rgb):
+def run_visualizer(pc_filepath, csv_filepath, xml_filepath, use_voxelization, point_size, vox_size, altura_extra, high_dose_rgb, medium_dose_rgb, low_dose_rgb, dose_min_csv, low_max, medium_min, medium_max, high_min, high_max):
     """Ejecuta Open3D Visualizer en un proceso separado con la opción de voxelizar o no."""
     app = PointCloudApp()  # Instanciar la clase principal para acceder a sus métodos
     app.pc_filepath = pc_filepath  # Asignar el archivo de la nube de puntos
@@ -582,6 +604,12 @@ def run_visualizer(pc_filepath, csv_filepath, xml_filepath, use_voxelization, po
     app.high_dose_rgb = high_dose_rgb
     app.medium_dose_rgb = medium_dose_rgb
     app.low_dose_rgb = low_dose_rgb
+    app.dose_min_csv = dose_min_csv
+    app.low_max = low_max
+    app.medium_min = medium_min
+    app.medium_max = medium_max
+    app.high_min = high_min
+    app.high_max = high_max
 
     if use_voxelization:
         print("Voxelization applied")
