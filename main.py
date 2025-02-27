@@ -59,6 +59,7 @@ class PointCloudApp(CTk):
         self.high_max = None
         self.previous_point_value = ""
         self.previous_voxel_value = ""
+        self.show_dose_layer = False
 
         self.vis = None
 
@@ -125,8 +126,19 @@ class PointCloudApp(CTk):
         legend_frame = CTkFrame(master=frame, fg_color="#383838", corner_radius=10)
         legend_frame.pack(pady=10, padx=10, fill="x")
 
-        CTkLabel(master=legend_frame, text="🎨 Dose Legend", font=("Arial", 16, "bold"), text_color="white").pack(
-            pady=5)
+        # Frame for label and checkbox
+        legend_label_frame = CTkFrame(master=legend_frame, fg_color="transparent")
+        legend_label_frame.pack(pady=5, padx=10, fill="x")
+
+        # Centrar el label y el checkbox
+        legend_label_frame.grid_columnconfigure(0, weight=1)
+        legend_label_frame.grid_columnconfigure(1, weight=1)
+
+        CTkLabel(master=legend_label_frame, text="🎨 Dose Legend", font=("Arial", 16, "bold"), text_color="white").grid(
+            row=0, column=0, pady=5, sticky="e")
+        self.dose_legend_checkbox = CTkCheckBox(master=legend_label_frame, text="", text_color="white",
+                                                fg_color="#FFCC70", command=self.toggle_dose_layer)
+        self.dose_legend_checkbox.grid(row=0, column=1, padx=5, sticky="w")
 
         dose_colors = CTkFrame(master=legend_frame, fg_color="transparent")
         dose_colors.pack(pady=5, padx=10)
@@ -177,6 +189,12 @@ class PointCloudApp(CTk):
                                        hover_color="#C850C0", border_color="#FFCC70", border_width=2,
                                        font=("Arial", 14, "bold"), command=self.visualize)
         self.btn_visualize.pack(pady=10)
+
+    def toggle_dose_layer(self):
+        if self.dose_legend_checkbox.get() == 1:
+            self.show_dose_layer = True
+        else:
+            self.show_dose_layer = False
 
     def toggle_voxel_size(self):
         if self.voxelizer_var.get():
@@ -293,7 +311,8 @@ class PointCloudApp(CTk):
                                           self.pc_filepath, self.csv_filepath, self.xml_filepath, use_voxelization,
                                           self.point_size, self.vox_size, self.altura_extra,
                                           self.high_dose_rgb, self.medium_dose_rgb, self.low_dose_rgb,
-                                          self.dose_min_csv, self.low_max, self.medium_min, self.medium_max, self.high_min, self.high_max))
+                                          self.dose_min_csv, self.low_max, self.medium_min, self.medium_max, self.high_min, self.high_max,
+                                          self.show_dose_layer))
         process.start()
 
     def validate_dose_ranges(self):
@@ -371,6 +390,7 @@ class PointCloudApp(CTk):
 
     def process(self):
         try:
+            print(f"Show Dose Layer: {self.show_dose_layer}")
             # Cargar la nube de puntos PCD
             pcd = o3d.io.read_point_cloud(self.pc_filepath)
 
@@ -388,55 +408,56 @@ class PointCloudApp(CTk):
             else:
                 rgb = np.ones_like(geo_points)
 
-            utm_coords = self.convert_to_utm(self.csv_filepath)
-            utm_points = utm_coords[:, :2]  # Sólo coordenadas [easting, northing]
-            dosis = utm_coords[:, 2]  # Dosis correspondiente
+            if self.show_dose_layer:
+                utm_coords = self.convert_to_utm(self.csv_filepath)
+                utm_points = utm_coords[:, :2]  # Sólo coordenadas [easting, northing]
+                dosis = utm_coords[:, 2]  # Dosis correspondiente
 
-            # Construir el KD-Tree para los puntos UTM del CSV (BUSQUEDA EFICIENTE)
-            tree = cKDTree(utm_points)
+                # Construir el KD-Tree para los puntos UTM del CSV (BUSQUEDA EFICIENTE)
+                tree = cKDTree(utm_points)
 
-            # Determinar los límites del área del CSV con dosis
-            x_min, y_min = np.min(utm_points, axis=0)  # Mínimo de cada columna (lat, long)
-            x_max, y_max = np.max(utm_points, axis=0)  # Máximo de cada columna (lat, long)
+                # Determinar los límites del área del CSV con dosis
+                x_min, y_min = np.min(utm_points, axis=0)  # Mínimo de cada columna (lat, long)
+                x_max, y_max = np.max(utm_points, axis=0)  # Máximo de cada columna (lat, long)
 
-            # Filtrar puntos de la nube dentro del área de dosis
-            dentro_area = (
-                    (geo_points[:, 0] >= x_min) & (geo_points[:, 0] <= x_max) &
-                    (geo_points[:, 1] >= y_min) & (geo_points[:, 1] <= y_max)
-            )
+                # Filtrar puntos de la nube dentro del área de dosis
+                dentro_area = (
+                        (geo_points[:, 0] >= x_min) & (geo_points[:, 0] <= x_max) &
+                        (geo_points[:, 1] >= y_min) & (geo_points[:, 1] <= y_max)
+                )
 
-            # Solo los puntos dentro del área
-            puntos_dentro = geo_points[dentro_area]
+                # Solo los puntos dentro del área
+                puntos_dentro = geo_points[dentro_area]
 
-            # Crea vector de dosis como NaN
-            dosis_nube = np.full(len(puntos_dentro), np.nan)
+                # Crea vector de dosis como NaN
+                dosis_nube = np.full(len(puntos_dentro), np.nan)
 
-            # Encontrar el punto más cercano en el CSV para cada punto de la nube LAS (que está dentro)
-            distancias, indices_mas_cercanos = tree.query(puntos_dentro[:,
-                                                          :2])  # Devuelve distancia entre punto CSV y punto cloud; para cada nube_puntos[i] índice del punto del csv mas cercano
+                # Encontrar el punto más cercano en el CSV para cada punto de la nube LAS (que está dentro)
+                distancias, indices_mas_cercanos = tree.query(puntos_dentro[:,
+                                                              :2])  # Devuelve distancia entre punto CSV y punto cloud; para cada nube_puntos[i] índice del punto del csv mas cercano
 
-            # Asignar dosis correspondiente a los puntos dentro del área
-            dosis_nube[:] = dosis[indices_mas_cercanos]  # Dosis para cada punto en la nube
+                # Asignar dosis correspondiente a los puntos dentro del área
+                dosis_nube[:] = dosis[indices_mas_cercanos]  # Dosis para cada punto en la nube
 
-            colores_dosis = self.get_dose_color(dosis_nube, self.high_dose_rgb, self.medium_dose_rgb,
-                                                self.low_dose_rgb, self.dose_min_csv, self.low_max,
-                                                self.medium_min, self.medium_max, self.high_min)
+                colores_dosis = self.get_dose_color(dosis_nube, self.high_dose_rgb, self.medium_dose_rgb,
+                                                    self.low_dose_rgb, self.dose_min_csv, self.low_max,
+                                                    self.medium_min, self.medium_max, self.high_min)
 
-            # Filtra las coordenadas y dosis de los puntos dentro del área
-            nube_puntos_filtrada = puntos_dentro
-            dosis_filtrada = dosis_nube
+                # Filtra las coordenadas y dosis de los puntos dentro del área
+                nube_puntos_filtrada = puntos_dentro
+                dosis_filtrada = dosis_nube
 
-            puntos_dosis_elevados = np.copy(nube_puntos_filtrada)
-            puntos_dosis_elevados[:, 2] += self.altura_extra  # Aumentar Z
+                puntos_dosis_elevados = np.copy(nube_puntos_filtrada)
+                puntos_dosis_elevados[:, 2] += self.altura_extra  # Aumentar Z
 
-            # Crear nube de puntos Open3D
-            pcd.points = o3d.utility.Vector3dVector(geo_points)
-            pcd.colors = o3d.utility.Vector3dVector(rgb)  # Asignar colores
+                # Crear nube de puntos Open3D
+                pcd.points = o3d.utility.Vector3dVector(geo_points)
+                pcd.colors = o3d.utility.Vector3dVector(rgb)  # Asignar colores
 
-            # Crear la nueva nube de puntos de dosis elevada
-            pcd_dosis = o3d.geometry.PointCloud()
-            pcd_dosis.points = o3d.utility.Vector3dVector(puntos_dosis_elevados)
-            pcd_dosis.colors = o3d.utility.Vector3dVector(colores_dosis)  # Asignar colores según dosis
+                # Crear la nueva nube de puntos de dosis elevada
+                pcd_dosis = o3d.geometry.PointCloud()
+                pcd_dosis.points = o3d.utility.Vector3dVector(puntos_dosis_elevados)
+                pcd_dosis.colors = o3d.utility.Vector3dVector(colores_dosis)  # Asignar colores según dosis
 
             if self.vis is None:
                 self.vis = o3d.visualization.Visualizer()
@@ -444,7 +465,8 @@ class PointCloudApp(CTk):
 
             self.vis.clear_geometries()  # Ahora estamos seguros de que self.vis no es None
             self.vis.add_geometry(pcd)
-            self.vis.add_geometry(pcd_dosis)
+            if self.show_dose_layer:
+                self.vis.add_geometry(pcd_dosis)
 
             # Cambiar el tamaño de los puntos (ajustar para evitar cuadrados)
             render_option = self.vis.get_render_option()
@@ -456,6 +478,7 @@ class PointCloudApp(CTk):
             messagebox.showerror("Error", f"An error occurred: {e}")
 
     def voxelizer(self):
+        print(f"Show Dose Layer: {self.show_dose_layer}")
         pcd = o3d.io.read_point_cloud(self.pc_filepath)
         xyz = np.asarray(pcd.points)
 
@@ -512,75 +535,75 @@ class PointCloudApp(CTk):
         output_file = Path("voxelize.ply")  # Puntos --> .las / Malla --> .obj, .ply
         o3d.io.write_triangle_mesh(str(output_file), vox_mesh)
 
-        # DOSIS
-        utm_coords = self.convert_to_utm(self.csv_filepath)
-        utm_points = utm_coords[:, :2]  # Sólo coordenadas [easting, northing]
-        dosis = utm_coords[:, 2]  # Dosis correspondiente
+        if self.show_dose_layer:
+            utm_coords = self.convert_to_utm(self.csv_filepath)
+            utm_points = utm_coords[:, :2]  # Sólo coordenadas [easting, northing]
+            dosis = utm_coords[:, 2]  # Dosis correspondiente
 
-        # Construir el KD-Tree para los puntos UTM del CSV (BUSQUEDA EFICIENTE)
-        tree = cKDTree(utm_points)
+            # Construir el KD-Tree para los puntos UTM del CSV (BUSQUEDA EFICIENTE)
+            tree = cKDTree(utm_points)
 
-        # Determinar los límites del área del CSV con dosis
-        x_min, y_min = np.min(utm_points, axis=0)  # Mínimo de cada columna (lat, long)
-        x_max, y_max = np.max(utm_points, axis=0)  # Máximo de cada columna (lat, long)
+            # Determinar los límites del área del CSV con dosis
+            x_min, y_min = np.min(utm_points, axis=0)  # Mínimo de cada columna (lat, long)
+            x_max, y_max = np.max(utm_points, axis=0)  # Máximo de cada columna (lat, long)
 
-        # Filtrar puntos de la nube dentro del área de dosis
-        dentro_area = (
-                (geo_points[:, 0] >= x_min) & (geo_points[:, 0] <= x_max) &
-                (geo_points[:, 1] >= y_min) & (geo_points[:, 1] <= y_max)
-        )
+            # Filtrar puntos de la nube dentro del área de dosis
+            dentro_area = (
+                    (geo_points[:, 0] >= x_min) & (geo_points[:, 0] <= x_max) &
+                    (geo_points[:, 1] >= y_min) & (geo_points[:, 1] <= y_max)
+            )
 
-        # Solo los puntos dentro del área
-        puntos_dentro = geo_points[dentro_area]
+            # Solo los puntos dentro del área
+            puntos_dentro = geo_points[dentro_area]
 
-        # Crea vector de dosis como NaN
-        dosis_nube = np.full(len(puntos_dentro), np.nan)
+            # Crea vector de dosis como NaN
+            dosis_nube = np.full(len(puntos_dentro), np.nan)
 
-        # Encontrar el punto más cercano en el CSV para cada punto de la nube LAS (que está dentro)
-        distancias, indices_mas_cercanos = tree.query(puntos_dentro[:,
-                                                      :2])  # Devuelve distancia entre punto CSV y punto cloud; para cada nube_puntos[i] índice del punto del csv mas cercano
+            # Encontrar el punto más cercano en el CSV para cada punto de la nube LAS (que está dentro)
+            distancias, indices_mas_cercanos = tree.query(puntos_dentro[:,
+                                                          :2])  # Devuelve distancia entre punto CSV y punto cloud; para cada nube_puntos[i] índice del punto del csv mas cercano
 
-        # Asignar dosis correspondiente a los puntos dentro del área
-        dosis_nube[:] = dosis[indices_mas_cercanos]  # Dosis para cada punto en la nube
+            # Asignar dosis correspondiente a los puntos dentro del área
+            dosis_nube[:] = dosis[indices_mas_cercanos]  # Dosis para cada punto en la nube
 
-        colores_dosis = self.get_dose_color(dosis_nube, self.high_dose_rgb, self.medium_dose_rgb,
-                                            self.low_dose_rgb, self.dose_min_csv, self.low_max,
-                                            self.medium_min, self.medium_max, self.high_min)
+            colores_dosis = self.get_dose_color(dosis_nube, self.high_dose_rgb, self.medium_dose_rgb,
+                                                self.low_dose_rgb, self.dose_min_csv, self.low_max,
+                                                self.medium_min, self.medium_max, self.high_min)
 
-        # Filtra las coordenadas y dosis de los puntos dentro del área
-        nube_puntos_filtrada = puntos_dentro
-        dosis_filtrada = dosis_nube
+            # Filtra las coordenadas y dosis de los puntos dentro del área
+            nube_puntos_filtrada = puntos_dentro
+            dosis_filtrada = dosis_nube
 
-        puntos_dosis_elevados = np.copy(nube_puntos_filtrada)
-        puntos_dosis_elevados[:, 2] += self.altura_extra  # Aumentar Z
+            puntos_dosis_elevados = np.copy(nube_puntos_filtrada)
+            puntos_dosis_elevados[:, 2] += self.altura_extra  # Aumentar Z
 
-        pcd_dosis = o3d.geometry.PointCloud()
-        pcd_dosis.points = o3d.utility.Vector3dVector(puntos_dosis_elevados)
-        pcd_dosis.colors = o3d.utility.Vector3dVector(colores_dosis)
+            pcd_dosis = o3d.geometry.PointCloud()
+            pcd_dosis.points = o3d.utility.Vector3dVector(puntos_dosis_elevados)
+            pcd_dosis.colors = o3d.utility.Vector3dVector(colores_dosis)
 
-        voxel_grid_dosis = o3d.geometry.VoxelGrid.create_from_point_cloud(pcd_dosis, voxel_size=vsize)
+            voxel_grid_dosis = o3d.geometry.VoxelGrid.create_from_point_cloud(pcd_dosis, voxel_size=vsize)
 
-        voxels_dosis = voxel_grid_dosis.get_voxels()
-        vox_mesh_dosis = o3d.geometry.TriangleMesh()
+            voxels_dosis = voxel_grid_dosis.get_voxels()
+            vox_mesh_dosis = o3d.geometry.TriangleMesh()
 
-        cube = o3d.geometry.TriangleMesh.create_box(width=1, height=1, depth=1)
-        cube.paint_uniform_color([1, 0, 0])  # Red
-        cube.compute_vertex_normals()
-
-        for v in voxels_dosis:
             cube = o3d.geometry.TriangleMesh.create_box(width=1, height=1, depth=1)
-            cube.paint_uniform_color(v.color)
-            cube.translate(v.grid_index, relative=False)
-            vox_mesh_dosis += cube
+            cube.paint_uniform_color([1, 0, 0])  # Red
+            cube.compute_vertex_normals()
 
-        vox_mesh_dosis.translate([0.5, 0.5, 0.5], relative=True)
+            for v in voxels_dosis:
+                cube = o3d.geometry.TriangleMesh.create_box(width=1, height=1, depth=1)
+                cube.paint_uniform_color(v.color)
+                cube.translate(v.grid_index, relative=False)
+                vox_mesh_dosis += cube
 
-        vox_mesh_dosis.scale(vsize, [0, 0, 0])
+            vox_mesh_dosis.translate([0.5, 0.5, 0.5], relative=True)
 
-        vox_mesh_dosis.translate(voxel_grid_dosis.origin, relative=True)
+            vox_mesh_dosis.scale(vsize, [0, 0, 0])
 
-        output_file = Path("voxelize_dosis.ply")  # Puntos --> .las / Malla --> .obj, .ply
-        o3d.io.write_triangle_mesh(str(output_file), vox_mesh_dosis)
+            vox_mesh_dosis.translate(voxel_grid_dosis.origin, relative=True)
+
+            output_file = Path("voxelize_dosis.ply")  # Puntos --> .las / Malla --> .obj, .ply
+            o3d.io.write_triangle_mesh(str(output_file), vox_mesh_dosis)
 
         if self.vis is None:
             self.vis = o3d.visualization.Visualizer()
@@ -588,11 +611,12 @@ class PointCloudApp(CTk):
 
         self.vis.clear_geometries()
         self.vis.add_geometry(vox_mesh)
-        self.vis.add_geometry(vox_mesh_dosis)
+        if self.show_dose_layer:
+            self.vis.add_geometry(vox_mesh_dosis)
 
         self.vis.run()
 
-def run_visualizer(pc_filepath, csv_filepath, xml_filepath, use_voxelization, point_size, vox_size, altura_extra, high_dose_rgb, medium_dose_rgb, low_dose_rgb, dose_min_csv, low_max, medium_min, medium_max, high_min, high_max):
+def run_visualizer(pc_filepath, csv_filepath, xml_filepath, use_voxelization, point_size, vox_size, altura_extra, high_dose_rgb, medium_dose_rgb, low_dose_rgb, dose_min_csv, low_max, medium_min, medium_max, high_min, high_max, show_dose_layer):
     """Ejecuta Open3D Visualizer en un proceso separado con la opción de voxelizar o no."""
     app = PointCloudApp()  # Instanciar la clase principal para acceder a sus métodos
     app.pc_filepath = pc_filepath  # Asignar el archivo de la nube de puntos
@@ -610,6 +634,7 @@ def run_visualizer(pc_filepath, csv_filepath, xml_filepath, use_voxelization, po
     app.medium_max = medium_max
     app.high_min = high_min
     app.high_max = high_max
+    app.show_dose_layer = show_dose_layer
 
     if use_voxelization:
         print("Voxelization applied")
