@@ -60,6 +60,7 @@ class PointCloudApp(CTk):
         self.previous_point_value = ""
         self.previous_voxel_value = ""
         self.show_dose_layer = False
+        self.downsample = None
 
         self.vis = None
 
@@ -87,6 +88,11 @@ class PointCloudApp(CTk):
                                       hover_color="#C850C0", border_color="#FFCC70", border_width=2,
                                       font=("Arial", 14, "bold"), command=self.load_xml_metadata)
         self.btn_open_xml.pack(side="left", padx=10, pady=5)
+
+        CTkLabel(master=button_frame, text="Downsamplear:", text_color="white").pack(side="left", padx=10, pady=5)
+        self.downsample_entry = CTkEntry(button_frame, width=50)
+        self.downsample_entry.pack(side="left", padx=5, pady=5)
+        CTkLabel(master=button_frame, text="%", text_color="white").pack(side="left", padx=5, pady=5)
 
         # Parámetros
         parameters_frame = CTkFrame(master=frame, fg_color="#383838", corner_radius=10)
@@ -267,6 +273,12 @@ class PointCloudApp(CTk):
 
         self.validate_dose_ranges()
 
+        downsample_value = self.downsample_entry.get()
+        if downsample_value:
+            self.downsample = float(downsample_value)
+        else:
+            self.downsample = None
+
         # Obtener el estado del checkbox (1 si está marcado, 0 si no)
         use_voxelization = self.voxelizer_checkbox.get() == 1
 
@@ -312,7 +324,7 @@ class PointCloudApp(CTk):
                                           self.point_size, self.vox_size, self.altura_extra,
                                           self.high_dose_rgb, self.medium_dose_rgb, self.low_dose_rgb,
                                           self.dose_min_csv, self.low_max, self.medium_min, self.medium_max, self.high_min, self.high_max,
-                                          self.show_dose_layer))
+                                          self.show_dose_layer, self.downsample))
         process.start()
 
     def validate_dose_ranges(self):
@@ -393,6 +405,19 @@ class PointCloudApp(CTk):
             print(f"Show Dose Layer: {self.show_dose_layer}")
             # Cargar la nube de puntos PCD
             pcd = o3d.io.read_point_cloud(self.pc_filepath)
+
+            # Downsamplear la nube de puntos si se ha especificado un porcentaje
+            if self.downsample is not None:
+                if not (1 <= self.downsample <= 100):
+                    messagebox.showerror("Error", "El valor de downsample debe estar entre 1 y 100.")
+                    return
+                self.downsample = float(self.downsample) / 100.0
+                if 0 < self.downsample <= 1:
+                    if self.downsample == 1:
+                        self.downsample = 0.99  # Evitar downsamplear a 0
+                    voxel_size = 1 * self.downsample
+                    downsampled_pcd = pcd.voxel_down_sample(voxel_size=voxel_size)
+                    pcd = downsampled_pcd
 
             # Obtener coordenadas XYZ
             nube_puntos = np.asarray(pcd.points)
@@ -616,7 +641,7 @@ class PointCloudApp(CTk):
 
         self.vis.run()
 
-def run_visualizer(pc_filepath, csv_filepath, xml_filepath, use_voxelization, point_size, vox_size, altura_extra, high_dose_rgb, medium_dose_rgb, low_dose_rgb, dose_min_csv, low_max, medium_min, medium_max, high_min, high_max, show_dose_layer):
+def run_visualizer(pc_filepath, csv_filepath, xml_filepath, use_voxelization, point_size, vox_size, altura_extra, high_dose_rgb, medium_dose_rgb, low_dose_rgb, dose_min_csv, low_max, medium_min, medium_max, high_min, high_max, show_dose_layer, downsample):
     """Ejecuta Open3D Visualizer en un proceso separado con la opción de voxelizar o no."""
     app = PointCloudApp()  # Instanciar la clase principal para acceder a sus métodos
     app.pc_filepath = pc_filepath  # Asignar el archivo de la nube de puntos
@@ -635,6 +660,7 @@ def run_visualizer(pc_filepath, csv_filepath, xml_filepath, use_voxelization, po
     app.high_min = high_min
     app.high_max = high_max
     app.show_dose_layer = show_dose_layer
+    app.downsample = downsample
 
     if use_voxelization:
         print("Voxelization applied")
