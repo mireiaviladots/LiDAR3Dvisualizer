@@ -241,30 +241,30 @@ class PointCloudApp(CTk):
             self.point_size_entry.insert(0,2)
             self.voxelizer_checkbox.configure(state="normal")
 
-    def load_csv_dosis(self):
-        filepath = filedialog.askopenfilename(filetypes=[("CSV Files", "*.csv")])
-        if filepath:
-            self.csv_filepath = filepath
-            print("CSV Selected:", self.csv_filepath)
-            dosis_values = np.genfromtxt(filepath, delimiter=',', skip_header=1)[:, 2]
-            self.dose_min_csv, self.dose_max_csv = np.min(dosis_values), np.max(dosis_values)
-            print(f"Dosis Range: Min={self.dose_min_csv}, Max={self.dose_max_csv}")
+    #def load_csv_dosis(self):
+        #filepath = filedialog.askopenfilename(filetypes=[("CSV Files", "*.csv")])
+        #if filepath:
+            #self.csv_filepath = filepath
+            #print("CSV Selected:", self.csv_filepath)
+            #dosis_values = np.genfromtxt(filepath, delimiter=',', skip_header=1)[:, 2]
+            #self.dose_min_csv, self.dose_max_csv = np.min(dosis_values), np.max(dosis_values)
+            #print(f"Dosis Range: Min={self.dose_min_csv}, Max={self.dose_max_csv}")
 
             # Asignar valores a los campos de Min y Max y deshabilitarlos
-            self.low_dose_min.configure(state="normal")
-            self.low_dose_min.delete(0, "end")
-            self.low_dose_min.insert(0, str(self.dose_min_csv))
-            self.low_dose_min.configure(state="disabled")
+            #self.low_dose_min.configure(state="normal")
+            #self.low_dose_min.delete(0, "end")
+            #self.low_dose_min.insert(0, str(self.dose_min_csv))
+            #self.low_dose_min.configure(state="disabled")
 
-            self.high_dose_max.configure(state="normal")
-            self.high_dose_max.delete(0, "end")
-            self.high_dose_max.insert(0, str(self.dose_max_csv))
-            self.high_dose_max.configure(state="disabled")
+            #self.high_dose_max.configure(state="normal")
+            #self.high_dose_max.delete(0, "end")
+            #self.high_dose_max.insert(0, str(self.dose_max_csv))
+            #self.high_dose_max.configure(state="disabled")
 
-            self.low_dose_max.configure(state="normal")
-            self.medium_dose_min.configure(state="normal")
-            self.medium_dose_max.configure(state="normal")
-            self.high_dose_min.configure(state="normal")
+            #self.low_dose_max.configure(state="normal")
+            #self.medium_dose_min.configure(state="normal")
+            #self.medium_dose_max.configure(state="normal")
+            #self.high_dose_min.configure(state="normal")
 
     def load_xml_metadata(self):
         filepath = filedialog.askopenfilename(filetypes=[("XML Files", "*.xml")])
@@ -576,22 +576,6 @@ class PointCloudApp(CTk):
         xgrid = np.linspace(lonmin, lonmax, Resolution)
         xmesh, ymesh = np.meshgrid(xgrid, ygrid)
 
-        # Dibujar líneas de la cuadrícula
-        plt.figure(figsize=(8, 6))
-
-        # Dibujar líneas horizontales (constantes en ymesh)
-        for i in range(xmesh.shape[0]):
-            plt.plot(xmesh[i, :], ymesh[i, :], color='gray', linewidth=0.5)
-
-        # Dibujar líneas verticales (constantes en xmesh)
-        for j in range(xmesh.shape[1]):
-            plt.plot(xmesh[:, j], ymesh[:, j], color='gray', linewidth=0.5)
-
-        plt.title("Cuadrícula generada (líneas)")
-        plt.xlabel("Latitud")
-        plt.ylabel("Longitud")
-        plt.show()
-
         # Inicializar el mapa con valores muy bajos
         heatmap = np.full(xmesh.shape, -np.inf)
 
@@ -606,33 +590,6 @@ class PointCloudApp(CTk):
 
         # Configurar los valores mínimos para que sean visibles (si es necesario)
         heatmap[heatmap == -np.inf] = np.nan
-
-        # Visualizar el mapa de calor
-        plt.imshow(
-            heatmap,
-            extent=(lonmin, lonmax, latmin, latmax),
-            origin='lower',
-            cmap='viridis',
-            alpha=0.8
-        )
-        plt.colorbar(label='H*(10) rate nSv/h')
-        plt.title('Mapa de Calor  H*(10) rate')
-        plt.xlabel('LONGITUDE')
-        plt.ylabel('LATITUDE')
-
-        # Añadir los puntos coloreados
-        plt.scatter(
-            xcenter, ycenter,
-            c=Hcenter, cmap='viridis',
-            edgecolor='black', s=50, label='Medida'
-        )
-
-        # Añadir la cuadrícula
-        plt.grid(visible=True, color='black', linestyle='--', linewidth=0.5)
-
-        plt.legend()
-
-        plt.show()
 
         # Write to CSV
         output_filename = "dose_data_pla_20m_2ms.csv"
@@ -660,40 +617,31 @@ class PointCloudApp(CTk):
         cmap = ListedColormap(colors)
         norm = BoundaryNorm(bounds, cmap.N)
 
-        # Visualizar el mapa de calor
-        plt.imshow(
-            heatmap,
-            extent=(lonmin, lonmax, latmin, latmax),
-            origin='lower',
-            cmap=cmap,
-            norm=norm,
-            alpha=0.8
-        )
-        plt.colorbar(
-            label='H*(10) rate (nSv/h)',
-            boundaries=bounds,
-            ticks=[R0, R0 + (R1 - R0) / 2, R1, R1 + (R2 - R1) / 2, R2, R2 + (R3 - R2) / 2, R3]
-            # Valores intermedios  para la leyenda
-        )
-        plt.title('Mapa de Calor con Rango de Tres Colores')
-        plt.xlabel('LONGITUDE')
-        plt.ylabel('LATITUDE')
-
-        # Añadir los puntos coloreados
-        plt.scatter(
-            xcenter, ycenter,
-            c=Hcenter, cmap=cmap, norm=norm,
-            edgecolor='black', s=50, label='Medida drone'
-        )
-
-        # Añadir la cuadrícula
-        plt.grid(visible=True, color='black', linestyle='--', linewidth=0.5)
-
-        plt.legend()
-        plt.show()
-
         print('------------------------------------', '\n')
         print('Total number of analysed spectra : ', cont, '\n')
+
+        # Procesar el CSV existente
+        dosis_values = np.genfromtxt(self.csv_filepath, delimiter=',', skip_header=1, usecols=2)
+        dosis_values = dosis_values[~np.isnan(dosis_values)]  # Eliminar NaN
+        self.dose_min_csv, self.dose_max_csv = np.min(dosis_values), np.max(dosis_values)
+        print(f"Dosis Range: Min={self.dose_min_csv}, Max={self.dose_max_csv}")
+
+        # Asignar valores a los campos de Min y Max y deshabilitarlos
+        self.low_dose_min.configure(state="normal")
+        self.low_dose_min.delete(0, "end")
+        self.low_dose_min.insert(0, str(self.dose_min_csv))
+        self.low_dose_min.configure(state="disabled")
+
+        self.high_dose_max.configure(state="normal")
+        self.high_dose_max.delete(0, "end")
+        self.high_dose_max.insert(0, str(self.dose_max_csv))
+        self.high_dose_max.configure(state="disabled")
+
+        self.low_dose_max.configure(state="normal")
+        self.medium_dose_min.configure(state="normal")
+        self.medium_dose_max.configure(state="normal")
+        self.high_dose_min.configure(state="normal")
+
         print('****END PROGRAM *****')
 
     def visualize(self):
@@ -865,7 +813,9 @@ class PointCloudApp(CTk):
                 rgb = np.ones_like(geo_points)
 
             if self.show_dose_layer:
-                utm_coords = self.convert_to_utm(self.csv_filepath)
+                utm_coords = np.genfromtxt(self.csv_filepath, delimiter=',', skip_header=1)
+                # Filtrar las filas donde la dosis no sea NaN
+                utm_coords = utm_coords[~np.isnan(utm_coords[:, 2])]
                 utm_points = utm_coords[:, :2]  # Sólo coordenadas [easting, northing]
                 dosis = utm_coords[:, 2]  # Dosis correspondiente
 
@@ -889,11 +839,11 @@ class PointCloudApp(CTk):
                 dosis_nube = np.full(len(puntos_dentro), np.nan)
 
                 # Encontrar el punto más cercano en el CSV para cada punto de la nube LAS (que está dentro)
-                distancias, indices_mas_cercanos = tree.query(puntos_dentro[:,
-                                                              :2])  # Devuelve distancia entre punto CSV y punto cloud; para cada nube_puntos[i] índice del punto del csv mas cercano
+                distancias, indices_mas_cercanos = tree.query(puntos_dentro[:, :2])  # Devuelve distancia entre punto CSV y punto cloud; para cada nube_puntos[i] índice del punto del csv mas cercano
 
                 # Asignar dosis correspondiente a los puntos dentro del área
                 dosis_nube[:] = dosis[indices_mas_cercanos]  # Dosis para cada punto en la nube
+
 
                 colores_dosis = self.get_dose_color(dosis_nube, self.high_dose_rgb, self.medium_dose_rgb,
                                                     self.low_dose_rgb, self.dose_min_csv, self.low_max,
