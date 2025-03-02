@@ -814,8 +814,8 @@ class PointCloudApp(CTk):
 
             if self.show_dose_layer:
                 utm_coords = np.genfromtxt(self.csv_filepath, delimiter=',', skip_header=1)
-                # Filtrar las filas donde la dosis no sea NaN
-                utm_coords = utm_coords[~np.isnan(utm_coords[:, 2])]
+                if utm_coords.shape[1] < 3:
+                    raise ValueError("CSV file must have at least three columns: easting, northing, and dose.")
                 utm_points = utm_coords[:, :2]  # Sólo coordenadas [easting, northing]
                 dosis = utm_coords[:, 2]  # Dosis correspondiente
 
@@ -844,16 +844,14 @@ class PointCloudApp(CTk):
                 # Asignar dosis correspondiente a los puntos dentro del área
                 dosis_nube[:] = dosis[indices_mas_cercanos]  # Dosis para cada punto en la nube
 
+                valid_points = ~np.isnan(dosis_nube)
+                puntos_dosis_elevados = puntos_dentro[valid_points]
+                dosis_filtrada = dosis_nube[valid_points]
 
-                colores_dosis = self.get_dose_color(dosis_nube, self.high_dose_rgb, self.medium_dose_rgb,
+                colores_dosis = self.get_dose_color(dosis_filtrada, self.high_dose_rgb, self.medium_dose_rgb,
                                                     self.low_dose_rgb, self.dose_min_csv, self.low_max,
                                                     self.medium_min, self.medium_max, self.high_min)
 
-                # Filtra las coordenadas y dosis de los puntos dentro del área
-                nube_puntos_filtrada = puntos_dentro
-                dosis_filtrada = dosis_nube
-
-                puntos_dosis_elevados = np.copy(nube_puntos_filtrada)
                 puntos_dosis_elevados[:, 2] += self.altura_extra  # Aumentar Z
 
                 # Crear nube de puntos Open3D
