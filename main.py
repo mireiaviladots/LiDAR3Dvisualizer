@@ -85,7 +85,7 @@ class PointCloudApp(CTk):
                                      font=("Arial", 14, "bold"), command=self.load_point_cloud)
         self.btn_open_pc.pack(side="left", padx=10, pady=5)
 
-        self.btn_open_csv = CTkButton(master=button_frame, text="📊 Open CSV Dosis", corner_radius=32,
+        self.btn_open_csv = CTkButton(master=button_frame, text="📊 Open N42 File", corner_radius=32,
                                       fg_color="#3A7EBF",
                                       hover_color="#C850C0", border_color="#FFCC70", border_width=2,
                                       font=("Arial", 14, "bold"), command=self.process_n42_files)
@@ -326,7 +326,7 @@ class PointCloudApp(CTk):
         f_name = fnmatch.filter(listOfFiles, '*.n42')
 
         # print head of output.dat file
-        print('Meas_number ', 'Dose_(nGy/h) ', 'H*(10)_nSv/h ', 'H*(10)_1m_(nSv/h) ', 'MMGC ', 'uMMGC ')
+        #print('Meas_number ', 'Dose_(nGy/h) ', 'H*(10)_nSv/h ', 'H*(10)_1m_(nSv/h) ', 'MMGC ', 'uMMGC ')
 
         # loop for each *.n42 spectrum
         cont = 0
@@ -466,7 +466,7 @@ class PointCloudApp(CTk):
             H10_conv_1m = "%.2f" % H10_conv_1m
             MMGC = "%.2f" % MMGC
             u_MMGC = "%.2f" % u_MMGC
-            print(cont, file, Dose_conv_meas, H10_conv_meas, H10_conv_1m, MMGC, u_MMGC)
+            #print(cont, file, Dose_conv_meas, H10_conv_meas, H10_conv_1m, MMGC, u_MMGC)
 
             # u_eff de acuerod con los coeficientes másicos attenuacion del aire con densidad de 1.2E-03 g/cm3
             #     u_eff_conv = 0.1344*(662)**(-0.4227)
@@ -501,7 +501,7 @@ class PointCloudApp(CTk):
 
             # tranform x,y
             x0, y0, zone_number, zone_letter = utm.from_latlon(FLatitude, FLongitude, )
-            print('center projection in utm (meters): ', x0, y0)
+            #print('center projection in utm (meters): ', x0, y0)
 
             xcenter[cont] = x0
             ycenter[cont] = y0
@@ -534,9 +534,9 @@ class PointCloudApp(CTk):
         latmax = latmax + 50
 
         # Verifica si hay NaN en los datos
-        print(type(xcenter))
-        print(type(ycenter))
-        print(type(Hcenter))
+        #print(type(xcenter))
+        #print(type(ycenter))
+        #print(type(Hcenter))
 
         xcenter = np.array(xcenter, dtype=float)
         ycenter = np.array(ycenter, dtype=float)
@@ -548,17 +548,17 @@ class PointCloudApp(CTk):
         Hcenter = np.array([float(i) for i in Hcenter if str(i).replace('.', '', 1).isdigit()])
         FAltcenter = np.array([float(i) for i in FAltcenter if str(i).replace('.', '', 1).isdigit()])
 
-        print('latmin, latmax,lonmin, lonmax: ', latmin, latmax, lonmin, lonmax)
-        print('minx,maxx,miny,maxy', min(xcenter), max(xcenter), min(ycenter), max(ycenter))
-        print('minAlt,maxAlt: ', min(FAltcenter), max(FAltcenter))
-        print('minH*(10),maxH*(10): ', min(Hcenter), max(Hcenter))
+        #print('latmin, latmax,lonmin, lonmax: ', latmin, latmax, lonmin, lonmax)
+        #print('minx,maxx,miny,maxy', min(xcenter), max(xcenter), min(ycenter), max(ycenter))
+        #print('minAlt,maxAlt: ', min(FAltcenter), max(FAltcenter))
+        #print('minH*(10),maxH*(10): ', min(Hcenter), max(Hcenter))
 
-        print(np.isnan(xcenter).any())  # True si hay algún NaN en x
-        print(np.isnan(ycenter).any())  # True si hay algún NaN en y
-        print(np.isnan(Hcenter).any())  # True si hay algún NaN en Hmax
+        #print(np.isnan(xcenter).any())  # True si hay algún NaN en x
+        #print(np.isnan(ycenter).any())  # True si hay algún NaN en y
+        #print(np.isnan(Hcenter).any())  # True si hay algún NaN en Hmax
 
-        print(len(xcenter), len(ycenter), len(Hcenter))
-        print(xcenter.shape, ycenter.shape, Hcenter.shape)
+        #print(len(xcenter), len(ycenter), len(Hcenter))
+        #print(xcenter.shape, ycenter.shape, Hcenter.shape)
 
         # Encuentra el valor máximo en Hcenter
         max_value = max(Hcenter)
@@ -617,14 +617,14 @@ class PointCloudApp(CTk):
         cmap = ListedColormap(colors)
         norm = BoundaryNorm(bounds, cmap.N)
 
-        print('------------------------------------', '\n')
-        print('Total number of analysed spectra : ', cont, '\n')
+        #print('------------------------------------', '\n')
+        #print('Total number of analysed spectra : ', cont, '\n')
 
         # Procesar el CSV existente
         dosis_values = np.genfromtxt(self.csv_filepath, delimiter=',', skip_header=1, usecols=2)
         dosis_values = dosis_values[~np.isnan(dosis_values)]  # Eliminar NaN
         self.dose_min_csv, self.dose_max_csv = np.min(dosis_values), np.max(dosis_values)
-        print(f"Dosis Range: Min={self.dose_min_csv}, Max={self.dose_max_csv}")
+        #print(f"Dosis Range: Min={self.dose_min_csv}, Max={self.dose_max_csv}")
 
         # Asignar valores a los campos de Min y Max y deshabilitarlos
         self.low_dose_min.configure(state="normal")
@@ -642,7 +642,7 @@ class PointCloudApp(CTk):
         self.medium_dose_max.configure(state="normal")
         self.high_dose_min.configure(state="normal")
 
-        print('****END PROGRAM *****')
+        #print('****END PROGRAM *****')
 
     def visualize(self):
         """Ejecuta Open3D en un proceso separado sin bloquear la GUI."""
@@ -940,7 +940,9 @@ class PointCloudApp(CTk):
         o3d.io.write_triangle_mesh(str(output_file), vox_mesh)
 
         if self.show_dose_layer:
-            utm_coords = self.convert_to_utm(self.csv_filepath)
+            utm_coords = np.genfromtxt(self.csv_filepath, delimiter=',', skip_header=1)
+            if utm_coords.shape[1] < 3:
+                raise ValueError("CSV file must have at least three columns: easting, northing, and dose.")
             utm_points = utm_coords[:, :2]  # Sólo coordenadas [easting, northing]
             dosis = utm_coords[:, 2]  # Dosis correspondiente
 
@@ -964,21 +966,19 @@ class PointCloudApp(CTk):
             dosis_nube = np.full(len(puntos_dentro), np.nan)
 
             # Encontrar el punto más cercano en el CSV para cada punto de la nube LAS (que está dentro)
-            distancias, indices_mas_cercanos = tree.query(puntos_dentro[:,
-                                                          :2])  # Devuelve distancia entre punto CSV y punto cloud; para cada nube_puntos[i] índice del punto del csv mas cercano
+            distancias, indices_mas_cercanos = tree.query(puntos_dentro[:, :2])  # Devuelve distancia entre punto CSV y punto cloud; para cada nube_puntos[i] índice del punto del csv mas cercano
 
             # Asignar dosis correspondiente a los puntos dentro del área
             dosis_nube[:] = dosis[indices_mas_cercanos]  # Dosis para cada punto en la nube
 
-            colores_dosis = self.get_dose_color(dosis_nube, self.high_dose_rgb, self.medium_dose_rgb,
+            valid_points = ~np.isnan(dosis_nube)
+            puntos_dosis_elevados = puntos_dentro[valid_points]
+            dosis_filtrada = dosis_nube[valid_points]
+
+            colores_dosis = self.get_dose_color(dosis_filtrada, self.high_dose_rgb, self.medium_dose_rgb,
                                                 self.low_dose_rgb, self.dose_min_csv, self.low_max,
                                                 self.medium_min, self.medium_max, self.high_min)
 
-            # Filtra las coordenadas y dosis de los puntos dentro del área
-            nube_puntos_filtrada = puntos_dentro
-            dosis_filtrada = dosis_nube
-
-            puntos_dosis_elevados = np.copy(nube_puntos_filtrada)
             puntos_dosis_elevados[:, 2] += self.altura_extra  # Aumentar Z
 
             pcd_dosis = o3d.geometry.PointCloud()
