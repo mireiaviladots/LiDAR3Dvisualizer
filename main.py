@@ -15,8 +15,8 @@ import fnmatch
 import os
 import sys
 import math
-import matplotlib.pyplot as plt
 import utm
+import random
 
 class WelcomeScreen(CTk):
     def __init__(self):
@@ -51,6 +51,7 @@ class PointCloudApp(CTk):
         self.geometry("900x600")
         self.configure(bg="#1E1E1E")  # Fondo oscuro
 
+        self.source_location = None
         self.pc_filepath = None
         self.csv_filepath = None
         self.xml_filepath = None
@@ -198,10 +199,17 @@ class PointCloudApp(CTk):
         self.low_dose_max.grid(row=2, column=5, padx=5)
 
         # Botón de visualización
-        self.btn_visualize = CTkButton(master=frame, text="👁️ Visualize", corner_radius=32, fg_color="#4258D0",
+        self.btn_visualize = CTkButton(master=frame, text="Visualize", corner_radius=32, fg_color="#4258D0",
                                        hover_color="#C850C0", border_color="#FFCC70", border_width=2,
                                        font=("Arial", 14, "bold"), command=self.visualize)
         self.btn_visualize.pack(pady=10)
+
+        # Add this code in the create_widgets method of the PointCloudApp class
+        self.btn_find_source = CTkButton(master=frame, text="Find Radioactive Source", corner_radius=32,
+                                         fg_color="#4258D0",
+                                         hover_color="#C850C0", border_color="#FFCC70", border_width=2,
+                                         font=("Arial", 14, "bold"), command=self.find_radioactive_source)
+        self.btn_find_source.pack(pady=10)
 
     def toggle_dose_layer(self):
         if self.dose_legend_checkbox.get() == 1:
@@ -644,10 +652,24 @@ class PointCloudApp(CTk):
 
         #print('****END PROGRAM *****')
 
+    def find_radioactive_source(self):
+        if not self.csv_filepath:
+            messagebox.showwarning("Warning", "Please select a N42 file.")
+            return
+
+        utm_coords = np.genfromtxt(self.csv_filepath, delimiter=',', skip_header=1)
+        # Filter out rows with NaN values in the dose column
+        utm_coords = utm_coords[~np.isnan(utm_coords[:, 2])]
+        ga = GeneticAlgorithm(utm_coords)
+        source_location = ga.run()
+        self.source_location = source_location
+        print(f"Estimated source location: Easting={source_location[0]}, Northing={source_location[1]}")
+        messagebox.showinfo("Source Location", f"Estimated source location: Easting={source_location[0]}, Northing={source_location[1]}")
+
     def visualize(self):
         """Ejecuta Open3D en un proceso separado sin bloquear la GUI."""
         if not self.pc_filepath or not self.csv_filepath or not self.xml_filepath:
-            messagebox.showwarning("Warning", "Please select a Point Cloud, a CSV file and a XML file.")
+            messagebox.showwarning("Warning", "Please select a Point Cloud, a  N42 file and a XML file.")
             return
 
         self.validate_dose_ranges()
@@ -703,7 +725,7 @@ class PointCloudApp(CTk):
                                           self.point_size, self.vox_size, self.altura_extra,
                                           self.high_dose_rgb, self.medium_dose_rgb, self.low_dose_rgb,
                                           self.dose_min_csv, self.low_max, self.medium_min, self.medium_max, self.high_min, self.high_max,
-                                          self.show_dose_layer, self.downsample))
+                                          self.show_dose_layer, self.downsample, self.source_location))
         process.start()
 
     def validate_dose_ranges(self):
@@ -814,8 +836,6 @@ class PointCloudApp(CTk):
 
             if self.show_dose_layer:
                 utm_coords = np.genfromtxt(self.csv_filepath, delimiter=',', skip_header=1)
-                if utm_coords.shape[1] < 3:
-                    raise ValueError("CSV file must have at least three columns: easting, northing, and dose.")
                 utm_points = utm_coords[:, :2]  # Sólo coordenadas [easting, northing]
                 dosis = utm_coords[:, 2]  # Dosis correspondiente
 
@@ -871,6 +891,13 @@ class PointCloudApp(CTk):
             self.vis.add_geometry(pcd)
             if self.show_dose_layer:
                 self.vis.add_geometry(pcd_dosis)
+
+            if self.source_location is not None:
+                source_point = np.array([[self.source_location[0], self.source_location[1], 350]])
+                source_pcd = o3d.geometry.PointCloud()
+                source_pcd.points = o3d.utility.Vector3dVector(source_point)
+                source_pcd.paint_uniform_color([0, 0, 0])  # Color negro para el punto de la fuente
+                self.vis.add_geometry(source_pcd)
 
             # Cambiar el tamaño de los puntos (ajustar para evitar cuadrados)
             render_option = self.vis.get_render_option()
@@ -941,8 +968,6 @@ class PointCloudApp(CTk):
 
         if self.show_dose_layer:
             utm_coords = np.genfromtxt(self.csv_filepath, delimiter=',', skip_header=1)
-            if utm_coords.shape[1] < 3:
-                raise ValueError("CSV file must have at least three columns: easting, northing, and dose.")
             utm_points = utm_coords[:, :2]  # Sólo coordenadas [easting, northing]
             dosis = utm_coords[:, 2]  # Dosis correspondiente
 
@@ -1020,7 +1045,61 @@ class PointCloudApp(CTk):
 
         self.vis.run()
 
-def run_visualizer(pc_filepath, csv_filepath, xml_filepath, use_voxelization, point_size, vox_size, altura_extra, high_dose_rgb, medium_dose_rgb, low_dose_rgb, dose_min_csv, low_max, medium_min, medium_max, high_min, high_max, show_dose_layer, downsample):
+# Algoritmo genético para encontrar la ubicación de una fuente radiactiva
+class GeneticAlgorithm:
+    def __init__(self, utm_coords, population_size=10, generations=10, mutation_rate=0.01):
+        self.utm_coords = utm_coords
+        self.population_size = population_size  #Define el tamaño de la población
+        self.generations = generations          #Define el número de generaciones
+        self.mutation_rate = mutation_rate      #Define la tasa de mutación
+        self.bounds = self.get_bounds()         #Obtiene los límites de las coordenadas UTM
+
+    def get_bounds(self):  #Obtiene los límites de las coordenadas UTM
+        x_min, y_min = np.min(self.utm_coords[:, :2], axis=0)
+        x_max, y_max = np.max(self.utm_coords[:, :2], axis=0)
+        return (x_min, x_max), (y_min, y_max)
+
+    def fitness(self, candidate): #Función de aptitud para evaluar la dosis en un punto candidato
+        tree = cKDTree(self.utm_coords[:, :2])
+        dist, idx = tree.query(candidate)   #Encuentra el punto más cercano en la nube de puntos a la ubicación candidata, devuelve la distancia y el índice del punto
+        return -self.utm_coords[idx, 2]  #Dosis negativa porque queremos maximizar (no minimizar), el algoritmo maximiza la dosis porque minimiza el valor negativo (nos quedamos con el mas negativo que corresponde al valor de dosis mas alto cambiado de signo).
+
+    def initialize_population(self): #Genera la población inicial de posibles candidatos, tantos como el tamaño de la población establecido
+        (x_min, x_max), (y_min, y_max) = self.bounds
+        return np.array([[random.uniform(x_min, x_max), random.uniform(y_min, y_max)] for _ in range(self.population_size)])
+
+    def select_parents(self, population, fitnesses):
+        idx = np.random.choice(np.arange(self.population_size), size=self.population_size, replace=True, p=fitnesses/fitnesses.sum()) #candidates with higher fitness values have a higher chance of being selected
+        return population[idx]
+
+    def crossover(self, parent1, parent2):
+        alpha = random.random()
+        return alpha * parent1 + (1 - alpha) * parent2
+
+    def mutate(self, candidate):
+        (x_min, x_max), (y_min, y_max) = self.bounds
+        if random.random() < self.mutation_rate:
+            candidate[0] = random.uniform(x_min, x_max)
+        if random.random() < self.mutation_rate:
+            candidate[1] = random.uniform(y_min, y_max)
+        return candidate
+
+    def run(self):
+        population = self.initialize_population()
+        for generation in range(self.generations):
+            fitnesses = np.array([self.fitness(candidate) for candidate in population])
+            parents = self.select_parents(population, fitnesses)
+            next_population = []
+            for i in range(0, self.population_size, 2):
+                parent1, parent2 = parents[i], parents[i+1]
+                child1, child2 = self.crossover(parent1, parent2), self.crossover(parent2, parent1)
+                next_population.append(self.mutate(child1))
+                next_population.append(self.mutate(child2))
+            population = np.array(next_population)
+        best_candidate = population[np.argmax(fitnesses)]
+        return best_candidate
+
+def run_visualizer(pc_filepath, csv_filepath, xml_filepath, use_voxelization, point_size, vox_size, altura_extra, high_dose_rgb, medium_dose_rgb, low_dose_rgb, dose_min_csv, low_max, medium_min, medium_max, high_min, high_max, show_dose_layer, downsample, source_location):
     """Ejecuta Open3D Visualizer en un proceso separado con la opción de voxelizar o no."""
     app = PointCloudApp()  # Instanciar la clase principal para acceder a sus métodos
     app.pc_filepath = pc_filepath  # Asignar el archivo de la nube de puntos
@@ -1040,6 +1119,7 @@ def run_visualizer(pc_filepath, csv_filepath, xml_filepath, use_voxelization, po
     app.high_max = high_max
     app.show_dose_layer = show_dose_layer
     app.downsample = downsample
+    app.source_location = source_location
 
     if use_voxelization:
         print("Voxelization applied")
