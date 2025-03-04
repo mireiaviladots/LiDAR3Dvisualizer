@@ -69,6 +69,7 @@ class PointCloudApp(CTk):
         self.previous_voxel_value = ""
         self.show_dose_layer = False
         self.downsample = None
+        self.show_source = False
 
         self.vis = None
 
@@ -151,7 +152,7 @@ class PointCloudApp(CTk):
         CTkLabel(master=legend_label_frame, text="🎨 Dose Legend", font=("Arial", 16, "bold"), text_color="white").grid(
             row=0, column=0, pady=5, sticky="e")
         self.dose_legend_checkbox = CTkCheckBox(master=legend_label_frame, text="", text_color="white",
-                                                fg_color="#FFCC70", command=self.toggle_dose_layer)
+                                                fg_color="#FFCC70", command=self.toggle_dose_layer, state='disabled')
         self.dose_legend_checkbox.grid(row=0, column=1, padx=5, sticky="w")
 
         dose_colors = CTkFrame(master=legend_frame, fg_color="transparent")
@@ -163,7 +164,7 @@ class PointCloudApp(CTk):
         self.medium_min_low_max = StringVar()
 
         CTkLabel(master=dose_colors, text="High Dose:", text_color="white").grid(row=0, column=0, padx=5)
-        self.high_dose_cb = CTkComboBox(master=dose_colors, values=self.color_options)
+        self.high_dose_cb = CTkComboBox(master=dose_colors, values=self.color_options, state="disabled")
         self.high_dose_cb.grid(row=0, column=1, padx=5)
         self.high_dose_cb.set("red")  # Color por defecto
         self.high_dose_rgb = np.array(mcolors.to_rgb("red"))
@@ -175,7 +176,7 @@ class PointCloudApp(CTk):
         self.high_dose_max.grid(row=0, column=5, padx=5)
 
         CTkLabel(master=dose_colors, text="Medium Dose:", text_color="white").grid(row=1, column=0, padx=5)
-        self.medium_dose_cb = CTkComboBox(master=dose_colors, values=self.color_options)
+        self.medium_dose_cb = CTkComboBox(master=dose_colors, values=self.color_options, state="disabled")
         self.medium_dose_cb.grid(row=1, column=1, padx=5)
         self.medium_dose_cb.set("yellow")  # Color por defecto
         self.medium_dose_rgb = np.array(mcolors.to_rgb("yellow"))
@@ -187,7 +188,7 @@ class PointCloudApp(CTk):
         self.medium_dose_max.grid(row=1, column=5, padx=5)
 
         CTkLabel(master=dose_colors, text="Low Dose:", text_color="white").grid(row=2, column=0, padx=5)
-        self.low_dose_cb = CTkComboBox(master=dose_colors, values=self.color_options)
+        self.low_dose_cb = CTkComboBox(master=dose_colors, values=self.color_options, state="disabled")
         self.low_dose_cb.grid(row=2, column=1, padx=5)
         self.low_dose_cb.set("green")  # Color por defecto
         self.low_dose_rgb = np.array(mcolors.to_rgb("green"))
@@ -204,18 +205,56 @@ class PointCloudApp(CTk):
                                        font=("Arial", 14, "bold"), command=self.visualize)
         self.btn_visualize.pack(pady=10)
 
-        # Add this code in the create_widgets method of the PointCloudApp class
-        self.btn_find_source = CTkButton(master=frame, text="Find Radioactive Source", corner_radius=32,
-                                         fg_color="#4258D0",
-                                         hover_color="#C850C0", border_color="#FFCC70", border_width=2,
+        find_source_frame = CTkFrame(master=frame, fg_color="#383838", corner_radius=10)
+        find_source_frame.pack(pady=10, padx=10, fill="x")
+
+        top_frame = CTkFrame(master=find_source_frame, fg_color="transparent")
+        top_frame.pack(pady=5, padx=10, fill="x")
+
+        self.btn_find_source = CTkButton(master=top_frame, text="Find Radioactive Source", corner_radius=32,
+                                         fg_color="#4258D0", hover_color="#C850C0", border_color="#FFCC70",
+                                         border_width=2,
                                          font=("Arial", 14, "bold"), command=self.find_radioactive_source)
-        self.btn_find_source.pack(pady=10)
+        self.btn_find_source.pack(side="left", padx=10)
+
+        self.show_source_checkbox = CTkCheckBox(master=top_frame, text="Show Source on Map", text_color="white", command=self.toggle_source, state='disabled')
+        self.show_source_checkbox.pack(side="left", padx=10)
+
+        self.source_location_label = CTkLabel(master=find_source_frame, text="", text_color="white", font=("Arial", 14))
+        self.source_location_label.pack(side="left", padx=10)
 
     def toggle_dose_layer(self):
         if self.dose_legend_checkbox.get() == 1:
             self.show_dose_layer = True
+            self.low_dose_max.configure(state="normal")
+            self.medium_dose_min.configure(state="normal")
+            self.medium_dose_max.configure(state="normal")
+            self.high_dose_min.configure(state="normal")
+            self.low_dose_cb.configure(state="normal")
+            self.low_dose_cb.set("green")
+            self.medium_dose_cb.configure(state="normal")
+            self.medium_dose_cb.set("yellow")
+            self.high_dose_cb.configure(state="normal")
+            self.high_dose_cb.set("red")
+            if self.source_location is not None:
+                self.show_source_checkbox.configure(state="normal")
         else:
             self.show_dose_layer = False
+            self.show_source_checkbox.configure(state="disabled")
+            self.show_source_checkbox.deselect()
+            self.low_dose_max.configure(state="disabled")
+            self.medium_dose_min.configure(state="disabled")
+            self.medium_dose_max.configure(state="disabled")
+            self.high_dose_min.configure(state="disabled")
+            self.low_dose_cb.configure(state="normal")
+            self.medium_dose_cb.configure(state="normal")
+            self.high_dose_cb.configure(state="normal")
+
+    def toggle_source(self):
+        if self.show_source_checkbox.get() == 1:
+            self.show_source = True
+        else:
+            self.show_source = False
 
     def toggle_voxel_size(self):
         if self.voxelizer_var.get():
@@ -634,6 +673,8 @@ class PointCloudApp(CTk):
         self.dose_min_csv, self.dose_max_csv = np.min(dosis_values), np.max(dosis_values)
         #print(f"Dosis Range: Min={self.dose_min_csv}, Max={self.dose_max_csv}")
 
+        self.dose_legend_checkbox.configure(state="normal")
+
         # Asignar valores a los campos de Min y Max y deshabilitarlos
         self.low_dose_min.configure(state="normal")
         self.low_dose_min.delete(0, "end")
@@ -644,11 +685,6 @@ class PointCloudApp(CTk):
         self.high_dose_max.delete(0, "end")
         self.high_dose_max.insert(0, str(self.dose_max_csv))
         self.high_dose_max.configure(state="disabled")
-
-        self.low_dose_max.configure(state="normal")
-        self.medium_dose_min.configure(state="normal")
-        self.medium_dose_max.configure(state="normal")
-        self.high_dose_min.configure(state="normal")
 
         #print('****END PROGRAM *****')
 
@@ -663,8 +699,11 @@ class PointCloudApp(CTk):
         ga = GeneticAlgorithm(utm_coords)
         source_location = ga.run()
         self.source_location = source_location
-        print(f"Estimated source location: Easting={source_location[0]}, Northing={source_location[1]}")
-        messagebox.showinfo("Source Location", f"Estimated source location: Easting={source_location[0]}, Northing={source_location[1]}")
+        print(f"Estimated source location: Easting = {source_location[0]}, Northing = {source_location[1]}")
+        messagebox.showinfo("Source Location", f"Estimated source location: Easting = {source_location[0]}, Northing = {source_location[1]}")
+        self.source_location_label.configure(text=f"Source Location: Easting = {source_location[0]}, Northing = {source_location[1]}")
+        if self.dose_legend_checkbox.get() == 1:
+            self.show_source_checkbox.configure(state="normal")
 
     def visualize(self):
         """Ejecuta Open3D en un proceso separado sin bloquear la GUI."""
@@ -725,7 +764,7 @@ class PointCloudApp(CTk):
                                           self.point_size, self.vox_size, self.altura_extra,
                                           self.high_dose_rgb, self.medium_dose_rgb, self.low_dose_rgb,
                                           self.dose_min_csv, self.low_max, self.medium_min, self.medium_max, self.high_min, self.high_max,
-                                          self.show_dose_layer, self.downsample, self.source_location))
+                                          self.show_dose_layer, self.downsample, self.source_location, self.show_source))
         process.start()
 
     def validate_dose_ranges(self):
@@ -892,7 +931,7 @@ class PointCloudApp(CTk):
             if self.show_dose_layer:
                 self.vis.add_geometry(pcd_dosis)
 
-            if self.source_location is not None:
+            if self.show_dose_layer and self.show_source and self.source_location is not None:
                 source_point = np.array([[self.source_location[0], self.source_location[1], 350]])
                 source_pcd = o3d.geometry.PointCloud()
                 source_pcd.points = o3d.utility.Vector3dVector(source_point)
@@ -1043,11 +1082,18 @@ class PointCloudApp(CTk):
         if self.show_dose_layer:
             self.vis.add_geometry(vox_mesh_dosis)
 
+        if self.show_dose_layer and self.show_source and self.source_location is not None:
+            source_point = np.array([[self.source_location[0], self.source_location[1], 350]])
+            source_pcd = o3d.geometry.PointCloud()
+            source_pcd.points = o3d.utility.Vector3dVector(source_point)
+            source_pcd.paint_uniform_color([0, 0, 0])  # Color negro para el punto de la fuente
+            self.vis.add_geometry(source_pcd)
+
         self.vis.run()
 
 # Algoritmo genético para encontrar la ubicación de una fuente radiactiva
 class GeneticAlgorithm:
-    def __init__(self, utm_coords, population_size=10, generations=10, mutation_rate=0.01):
+    def __init__(self, utm_coords, population_size=1000, generations=100, mutation_rate=0.01):
         self.utm_coords = utm_coords
         self.population_size = population_size  #Define el tamaño de la población
         self.generations = generations          #Define el número de generaciones
@@ -1099,7 +1145,7 @@ class GeneticAlgorithm:
         best_candidate = population[np.argmax(fitnesses)]
         return best_candidate
 
-def run_visualizer(pc_filepath, csv_filepath, xml_filepath, use_voxelization, point_size, vox_size, altura_extra, high_dose_rgb, medium_dose_rgb, low_dose_rgb, dose_min_csv, low_max, medium_min, medium_max, high_min, high_max, show_dose_layer, downsample, source_location):
+def run_visualizer(pc_filepath, csv_filepath, xml_filepath, use_voxelization, point_size, vox_size, altura_extra, high_dose_rgb, medium_dose_rgb, low_dose_rgb, dose_min_csv, low_max, medium_min, medium_max, high_min, high_max, show_dose_layer, downsample, source_location, show_source):
     """Ejecuta Open3D Visualizer en un proceso separado con la opción de voxelizar o no."""
     app = PointCloudApp()  # Instanciar la clase principal para acceder a sus métodos
     app.pc_filepath = pc_filepath  # Asignar el archivo de la nube de puntos
@@ -1120,6 +1166,7 @@ def run_visualizer(pc_filepath, csv_filepath, xml_filepath, use_voxelization, po
     app.show_dose_layer = show_dose_layer
     app.downsample = downsample
     app.source_location = source_location
+    app.show_source = show_source
 
     if use_voxelization:
         print("Voxelization applied")
