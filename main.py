@@ -199,12 +199,6 @@ class PointCloudApp(CTk):
         self.low_dose_max = CTkEntry(dose_colors, textvariable=self.medium_min_low_max, width=70, state="disabled")
         self.low_dose_max.grid(row=2, column=5, padx=5)
 
-        # Botón de visualización
-        self.btn_visualize = CTkButton(master=frame, text="Visualize", corner_radius=32, fg_color="#4258D0",
-                                       hover_color="#C850C0", border_color="#FFCC70", border_width=2,
-                                       font=("Arial", 14, "bold"), command=self.visualize)
-        self.btn_visualize.pack(pady=10)
-
         find_source_frame = CTkFrame(master=frame, fg_color="#383838", corner_radius=10)
         find_source_frame.pack(pady=10, padx=10, fill="x")
 
@@ -212,7 +206,8 @@ class PointCloudApp(CTk):
         top_frame.pack(pady=5, padx=10, fill="x")
 
         self.btn_find_source = CTkButton(master=top_frame, text="Find Radioactive Source", corner_radius=32,
-                                         fg_color="#4258D0", hover_color="#C850C0", border_color="#FFCC70",
+                                         fg_color="#3A7EBF",
+                                         hover_color="#C850C0", border_color="#FFCC70",
                                          border_width=2,
                                          font=("Arial", 14, "bold"), command=self.find_radioactive_source)
         self.btn_find_source.pack(side="left", padx=10)
@@ -222,6 +217,12 @@ class PointCloudApp(CTk):
 
         self.source_location_label = CTkLabel(master=find_source_frame, text="", text_color="white", font=("Arial", 14))
         self.source_location_label.pack(side="left", padx=10)
+
+        # Botón de visualización
+        self.btn_visualize = CTkButton(master=frame, text="Visualize", corner_radius=32, fg_color="#4258D0",
+                                       hover_color="#C850C0", border_color="#FFCC70", border_width=2,
+                                       font=("Arial", 14, "bold"), command=self.visualize)
+        self.btn_visualize.pack(pady=10)
 
     def toggle_dose_layer(self):
         if self.dose_legend_checkbox.get() == 1:
@@ -748,14 +749,19 @@ class PointCloudApp(CTk):
             if self.vox_size <= 0:
                 raise ValueError("Voxel size must be positive.")
 
-        # Obtener los colores de las dosis seleccionadas
-        high_dose_color = self.high_dose_cb.get()  # El color seleccionado para dosis alta
-        medium_dose_color = self.medium_dose_cb.get()  # El color seleccionado para dosis media
-        low_dose_color = self.low_dose_cb.get()  # El color seleccionado para dosis baja
+        if self.show_dose_layer:
+            # Obtener los colores de las dosis seleccionadas
+            high_dose_color = self.high_dose_cb.get()  # El color seleccionado para dosis alta
+            medium_dose_color = self.medium_dose_cb.get()  # El color seleccionado para dosis media
+            low_dose_color = self.low_dose_cb.get()  # El color seleccionado para dosis baja
 
-        self.high_dose_rgb = np.array(mcolors.to_rgb(high_dose_color))
-        self.medium_dose_rgb = np.array(mcolors.to_rgb(medium_dose_color))
-        self.low_dose_rgb = np.array(mcolors.to_rgb(low_dose_color))
+            self.high_dose_rgb = np.array(mcolors.to_rgb(high_dose_color))
+            self.medium_dose_rgb = np.array(mcolors.to_rgb(medium_dose_color))
+            self.low_dose_rgb = np.array(mcolors.to_rgb(low_dose_color))
+        else:
+            self.high_dose_rgb = None
+            self.medium_dose_rgb = None
+            self.low_dose_rgb = None
 
         # Crear un proceso separado para la visualización
         process = multiprocessing.Process(target=run_visualizer,
@@ -771,18 +777,22 @@ class PointCloudApp(CTk):
         """
         Validates that the dose ranges have logical values.
         """
+        if not self.show_dose_layer:
+            return
+
         try:
             self.low_max = float(self.low_dose_max.get())
             self.medium_min = float(self.medium_dose_min.get())
             self.medium_max = float(self.medium_dose_max.get())
             self.high_min = float(self.high_dose_min.get())
         except ValueError:
+            messagebox.showerror("Error", "Dose range values must be numeric.")
             raise ValueError("Dose range values must be numeric.")
 
         if not (
                 self.dose_min_csv <= self.low_max <= self.medium_min <= self.medium_max <= self.high_min <= self.dose_max_csv):
-            raise ValueError(
-                "Dose ranges are not logical. Ensure: min < low_max < medium_min < medium_max < high_min < max.")
+            messagebox.showerror("Error", "Dose ranges are not logical. Ensure: min < low_max < medium_min < medium_max < high_min < max.")
+            raise ValueError("Dose ranges are not logical.")
 
     def convert_to_utm(self, csv_filepath):
         # Convierte coordenadas lat/lon en el CSV a UTM y devuelve una matriz con easting, northing y dosis.
@@ -932,11 +942,11 @@ class PointCloudApp(CTk):
                 self.vis.add_geometry(pcd_dosis)
 
             if self.show_dose_layer and self.show_source and self.source_location is not None:
-                source_point = np.array([[self.source_location[0], self.source_location[1], 350]])
-                source_pcd = o3d.geometry.PointCloud()
-                source_pcd.points = o3d.utility.Vector3dVector(source_point)
-                source_pcd.paint_uniform_color([0, 0, 0])  # Color negro para el punto de la fuente
-                self.vis.add_geometry(source_pcd)
+                source_point = np.array([self.source_location[0], self.source_location[1], 350])
+                sphere = o3d.geometry.TriangleMesh.create_sphere(radius=1)  # Create a sphere with a radius of 5
+                sphere.translate(source_point)  # Move the sphere to the source location
+                sphere.paint_uniform_color([0, 0, 0])
+                self.vis.add_geometry(sphere)
 
             # Cambiar el tamaño de los puntos (ajustar para evitar cuadrados)
             render_option = self.vis.get_render_option()
@@ -1093,7 +1103,7 @@ class PointCloudApp(CTk):
 
 # Algoritmo genético para encontrar la ubicación de una fuente radiactiva
 class GeneticAlgorithm:
-    def __init__(self, utm_coords, population_size=1000, generations=100, mutation_rate=0.01):
+    def __init__(self, utm_coords, population_size=500, generations=100, mutation_rate=0.01):
         self.utm_coords = utm_coords
         self.population_size = population_size  #Define el tamaño de la población
         self.generations = generations          #Define el número de generaciones
