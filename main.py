@@ -247,9 +247,9 @@ class PointCloudApp(CTk):
             self.medium_dose_min.configure(state="disabled")
             self.medium_dose_max.configure(state="disabled")
             self.high_dose_min.configure(state="disabled")
-            self.low_dose_cb.configure(state="normal")
-            self.medium_dose_cb.configure(state="normal")
-            self.high_dose_cb.configure(state="normal")
+            self.low_dose_cb.configure(state="disabled")
+            self.medium_dose_cb.configure(state="disabled")
+            self.high_dose_cb.configure(state="disabled")
 
     def toggle_source(self):
         if self.show_source_checkbox.get() == 1:
@@ -288,6 +288,7 @@ class PointCloudApp(CTk):
             self.point_size_entry.configure(state="normal")
             self.point_size_entry.insert(0,2)
             self.voxelizer_checkbox.configure(state="normal")
+            self.dose_legend_checkbox.configure(state="normal")
 
     #def load_csv_dosis(self):
         #filepath = filedialog.askopenfilename(filetypes=[("CSV Files", "*.csv")])
@@ -674,8 +675,6 @@ class PointCloudApp(CTk):
         self.dose_min_csv, self.dose_max_csv = np.min(dosis_values), np.max(dosis_values)
         #print(f"Dosis Range: Min={self.dose_min_csv}, Max={self.dose_max_csv}")
 
-        self.dose_legend_checkbox.configure(state="normal")
-
         # Asignar valores a los campos de Min y Max y deshabilitarlos
         self.low_dose_min.configure(state="normal")
         self.low_dose_min.delete(0, "end")
@@ -708,8 +707,16 @@ class PointCloudApp(CTk):
 
     def visualize(self):
         """Ejecuta Open3D en un proceso separado sin bloquear la GUI."""
-        if not self.pc_filepath or not self.csv_filepath or not self.xml_filepath:
-            messagebox.showwarning("Warning", "Please select a Point Cloud, a  N42 file and a XML file.")
+        if not self.pc_filepath:
+            messagebox.showwarning("Warning", "Please select a Point Cloud.")
+            return
+
+        if self.dose_legend_checkbox.get() == 1 and not self.csv_filepath:
+            messagebox.showerror("Error", "Please select a N42 file.")
+            return
+
+        if self.dose_legend_checkbox.get() == 1 and not self.xml_filepath:
+            messagebox.showerror("Error", "Please select an XML.")
             return
 
         self.validate_dose_ranges()
@@ -872,18 +879,18 @@ class PointCloudApp(CTk):
             # Obtener coordenadas XYZ
             nube_puntos = np.asarray(pcd.points)
 
-            origin = self.get_origin_from_xml(self.xml_filepath)
-
-            # Sumar el origen a las coordenadas locales
-            geo_points = nube_puntos + origin # a utm
-
             # Obtener colores si existen, de lo contrario, usar blanco
             if pcd.has_colors():
                 rgb = np.asarray(pcd.colors)
             else:
-                rgb = np.ones_like(geo_points)
+                rgb = np.ones_like(nube_puntos)
 
             if self.show_dose_layer:
+                origin = self.get_origin_from_xml(self.xml_filepath)
+
+                # Sumar el origen a las coordenadas locales
+                geo_points = nube_puntos + origin  # a utm
+
                 utm_coords = np.genfromtxt(self.csv_filepath, delimiter=',', skip_header=1)
                 utm_points = utm_coords[:, :2]  # Sólo coordenadas [easting, northing]
                 dosis = utm_coords[:, 2]  # Dosis correspondiente
@@ -962,19 +969,23 @@ class PointCloudApp(CTk):
         pcd = o3d.io.read_point_cloud(self.pc_filepath)
         xyz = np.asarray(pcd.points)
 
-        # Obtener el origen georeferenciado desde el archivo XML
-        origin = self.get_origin_from_xml(self.xml_filepath)
-
-        geo_points = xyz + origin
-
         # Obtener colores si existen, de lo contrario usar blanco
         if pcd.has_colors():
             rgb = np.asarray(pcd.colors)
         else:
-            rgb = np.ones_like(geo_points)  # Blanco por defecto
+            rgb = np.ones_like(xyz)  # Blanco por defecto
 
-        pcd.points = o3d.utility.Vector3dVector(geo_points)
-        pcd.colors = o3d.utility.Vector3dVector(rgb)
+        if not self.show_dose_layer:
+            pcd.points = o3d.utility.Vector3dVector(xyz)
+            pcd.colors = o3d.utility.Vector3dVector(rgb)
+
+        if self.show_dose_layer:
+            origin = self.get_origin_from_xml(self.xml_filepath)
+
+            geo_points = xyz + origin
+
+            pcd.points = o3d.utility.Vector3dVector(geo_points)
+            pcd.colors = o3d.utility.Vector3dVector(rgb)
 
         # Defining the voxel size
         vsize = self.vox_size
@@ -1014,6 +1025,7 @@ class PointCloudApp(CTk):
         # Export
         output_file = Path("voxelize.ply")  # Puntos --> .las / Malla --> .obj, .ply
         o3d.io.write_triangle_mesh(str(output_file), vox_mesh)
+
 
         if self.show_dose_layer:
             utm_coords = np.genfromtxt(self.csv_filepath, delimiter=',', skip_header=1)
