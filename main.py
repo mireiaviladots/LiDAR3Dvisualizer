@@ -949,7 +949,7 @@ class PointCloudApp(CTk):
                 self.vis.add_geometry(pcd_dosis)
 
             if self.show_dose_layer and self.show_source and self.source_location is not None:
-                source_point = np.array([self.source_location[0], self.source_location[1], 350])
+                source_point = np.array([self.source_location[0], self.source_location[1], np.max(puntos_dosis_elevados[:, 2])])
                 sphere = o3d.geometry.TriangleMesh.create_sphere(radius=1)  # Create a sphere with a radius of 5
                 sphere.translate(source_point)  # Move the sphere to the source location
                 sphere.paint_uniform_color([0, 0, 0])
@@ -1105,7 +1105,7 @@ class PointCloudApp(CTk):
             self.vis.add_geometry(vox_mesh_dosis)
 
         if self.show_dose_layer and self.show_source and self.source_location is not None:
-            source_point = np.array([[self.source_location[0], self.source_location[1], 350]])
+            source_point = np.array([[self.source_location[0], self.source_location[1], np.max(puntos_dosis_elevados[:, 2])]])
             source_pcd = o3d.geometry.PointCloud()
             source_pcd.points = o3d.utility.Vector3dVector(source_point)
             source_pcd.paint_uniform_color([0, 0, 0])  # Color negro para el punto de la fuente
