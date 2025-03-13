@@ -12,6 +12,7 @@ import xml.etree.ElementTree as ET
 import matplotlib.colors as mcolors
 from matplotlib.colors import ListedColormap, BoundaryNorm
 import fnmatch
+import matplotlib.pyplot as plt
 import os
 import sys
 import math
@@ -48,7 +49,7 @@ class PointCloudApp(CTk):
         super().__init__()
 
         self.title("Point Cloud Viewer")
-        self.geometry("900x600")
+        self.geometry("900x700")
         self.configure(bg="#1E1E1E")  # Fondo oscuro
 
         self.source_location = None
@@ -72,6 +73,15 @@ class PointCloudApp(CTk):
         self.show_source = False
 
         self.vis = None
+
+        self.heatmap = None
+        self.xcenter = None
+        self.ycenter = None
+        self.Hcenter = None
+        self.lonmin = None
+        self.lonmax = None
+        self.latmin = None
+        self.latmax = None
 
         frame = CTkFrame(self, fg_color="#2E2E2E", corner_radius=15)
         frame.pack(pady=20, padx=20, fill="both", expand=True)
@@ -219,10 +229,27 @@ class PointCloudApp(CTk):
         self.source_location_label.pack(side="left", padx=10)
 
         # Botón de visualización
-        self.btn_visualize = CTkButton(master=frame, text="Visualize", corner_radius=32, fg_color="#4258D0",
+        self.btn_visualize = CTkButton(master=frame, text="Visualize", corner_radius=32, fg_color="#00008B",
                                        hover_color="#C850C0", border_color="#FFCC70", border_width=2,
-                                       font=("Arial", 14, "bold"), command=self.visualize)
-        self.btn_visualize.pack(pady=10)
+                                       font=("Arial", 16, "bold"), command=self.visualize, height=45)
+        self.btn_visualize.pack(pady=10, padx=10, anchor="center")
+
+        # Frame para los botones de los plots
+        plot_button_frame = CTkFrame(master=frame, fg_color="transparent")
+        plot_button_frame.pack(pady=10, padx=10, anchor="center")
+
+        # Button "Heatmap H*(10) rate"
+        self.btn_heatmap = CTkButton(master=plot_button_frame, text="Heatmap H*(10) rate", corner_radius=32,
+                                     fg_color="#3A7EBF", hover_color="#C850C0", border_color="#FFCC70", border_width=2,
+                                     font=("Arial", 14, "bold"), command=self.plot_heatmap)
+        self.btn_heatmap.pack(side="left", padx=10)
+
+        # Button "Heatmap with Three Color Range"
+        self.btn_three_colors = CTkButton(master=plot_button_frame, text="Heatmap with Three Color Range",
+                                          corner_radius=32, fg_color="#3A7EBF", hover_color="#C850C0",
+                                          border_color="#FFCC70",
+                                          border_width=2, font=("Arial", 14, "bold"), command=self.plot_three_color_heatmap)
+        self.btn_three_colors.pack(side="left", padx=10)
 
     def toggle_dose_layer(self):
         if self.dose_legend_checkbox.get() == 1:
@@ -232,11 +259,12 @@ class PointCloudApp(CTk):
             self.medium_dose_max.configure(state="normal")
             self.high_dose_min.configure(state="normal")
             self.low_dose_cb.configure(state="normal")
-            self.low_dose_cb.set("green")
             self.medium_dose_cb.configure(state="normal")
-            self.medium_dose_cb.set("yellow")
             self.high_dose_cb.configure(state="normal")
-            self.high_dose_cb.set("red")
+            if not self.low_dose_cb.get():
+                self.low_dose_cb.set("green")
+                self.high_dose_cb.set("red")
+                self.medium_dose_cb.set("yellow")
             if self.source_location is not None:
                 self.show_source_checkbox.configure(state="normal")
         else:
@@ -288,7 +316,6 @@ class PointCloudApp(CTk):
             self.point_size_entry.configure(state="normal")
             self.point_size_entry.insert(0,2)
             self.voxelizer_checkbox.configure(state="normal")
-            self.dose_legend_checkbox.configure(state="normal")
 
     #def load_csv_dosis(self):
         #filepath = filedialog.askopenfilename(filetypes=[("CSV Files", "*.csv")])
@@ -352,13 +379,13 @@ class PointCloudApp(CTk):
         x = [None] * 100000
         y = [None] * 100000
 
-        xcenter = [None] * 100000
-        ycenter = [None] * 100000
+        self.xcenter = [None] * 100000
+        self.ycenter = [None] * 100000
 
         intx = [None] * 100000
         inty = [None] * 100000
         Hmax = [None] * 100000
-        Hcenter = [None] * 100000
+        self.Hcenter = [None] * 100000
 
         FAltcenter = [None] * 100000
 
@@ -552,49 +579,49 @@ class PointCloudApp(CTk):
             x0, y0, zone_number, zone_letter = utm.from_latlon(FLatitude, FLongitude, )
             #print('center projection in utm (meters): ', x0, y0)
 
-            xcenter[cont] = x0
-            ycenter[cont] = y0
-            Hcenter[cont] = H10_conv_meas
+            self.xcenter[cont] = x0
+            self.ycenter[cont] = y0
+            self.Hcenter[cont] = H10_conv_meas
             FAltcenter[cont] = FAltitude
 
             if cont == 1:
-                latmin = y0
-                latmax = y0
-                lonmin = x0
-                lonmax = x0
+                self.latmin = y0
+                self.latmax = y0
+                self.lonmin = x0
+                self.lonmax = x0
 
             # looking for max and min lat l
 
-            if x0 < lonmin:
-                lonmin = x0
-            if x0 > lonmax:
-                lonmax = x0
-            if y0 < latmin:
-                latmin = y0
-            if y0 > latmax:
-                latmax = y0
+            if x0 < self.lonmin:
+                self.lonmin = x0
+            if x0 > self.lonmax:
+                self.lonmax = x0
+            if y0 < self.latmin:
+                self.latmin = y0
+            if y0 > self.latmax:
+                self.latmax = y0
 
             os.chdir(pathN42mod)
             tree.write(file)
 
-        lonmin = lonmin - 50
-        lonmax = lonmax + 50
-        latmin = latmin - 50
-        latmax = latmax + 50
+        self.lonmin = self.lonmin - 50
+        self.lonmax = self.lonmax + 50
+        self.latmin = self.latmin - 50
+        self.latmax = self.latmax + 50
 
         # Verifica si hay NaN en los datos
         #print(type(xcenter))
         #print(type(ycenter))
         #print(type(Hcenter))
 
-        xcenter = np.array(xcenter, dtype=float)
-        ycenter = np.array(ycenter, dtype=float)
-        Hcenter = np.array(Hcenter, dtype=float)
+        self.xcenter = np.array(self.xcenter, dtype=float)
+        self.ycenter = np.array(self.ycenter, dtype=float)
+        self.Hcenter = np.array(self.Hcenter, dtype=float)
 
         # conversion to string and numbers to floats
-        xcenter = np.array([float(i) for i in xcenter if str(i).replace('.', '', 1).isdigit()])
-        ycenter = np.array([float(i) for i in ycenter if str(i).replace('.', '', 1).isdigit()])
-        Hcenter = np.array([float(i) for i in Hcenter if str(i).replace('.', '', 1).isdigit()])
+        self.xcenter = np.array([float(i) for i in self.xcenter if str(i).replace('.', '', 1).isdigit()])
+        self.ycenter = np.array([float(i) for i in self.ycenter if str(i).replace('.', '', 1).isdigit()])
+        self.Hcenter = np.array([float(i) for i in self.Hcenter if str(i).replace('.', '', 1).isdigit()])
         FAltcenter = np.array([float(i) for i in FAltcenter if str(i).replace('.', '', 1).isdigit()])
 
         #print('latmin, latmax,lonmin, lonmax: ', latmin, latmax, lonmin, lonmax)
@@ -610,35 +637,35 @@ class PointCloudApp(CTk):
         #print(xcenter.shape, ycenter.shape, Hcenter.shape)
 
         # Encuentra el valor máximo en Hcenter
-        max_value = max(Hcenter)
+        max_value = max(self.Hcenter)
 
         # Encuentra el índice correspondiente al valor máximo
         # cont_max = Hcenter.index(max_value)
-        cont_max = np.argmax(Hcenter)
+        cont_max = np.argmax(self.Hcenter)
 
         # Calculo del maximo valor de H*(10) suponiento que es firnte puntual
-        HmaxP = Hcenter[cont_max] * FAltcenter[cont_max] * FAltcenter[cont_max]
+        HmaxP = self.Hcenter[cont_max] * FAltcenter[cont_max] * FAltcenter[cont_max]
 
         # Define una cuadrícula para el área de interés
         Resolution = 50
-        ygrid = np.linspace(latmin, latmax, Resolution)
-        xgrid = np.linspace(lonmin, lonmax, Resolution)
+        ygrid = np.linspace(self.latmin, self.latmax, Resolution)
+        xgrid = np.linspace(self.lonmin, self.lonmax, Resolution)
         xmesh, ymesh = np.meshgrid(xgrid, ygrid)
 
         # Inicializar el mapa con valores muy bajos
-        heatmap = np.full(xmesh.shape, -np.inf)
+        self.heatmap = np.full(xmesh.shape, -np.inf)
 
         # Iterar sobre cada circunferencia
-        for xc, yc, radius, hval in zip(xcenter, ycenter, FAltcenter, Hcenter):
+        for xc, yc, radius, hval in zip(self.xcenter, self.ycenter, FAltcenter, self.Hcenter):
             # Distancia de cada punto de la cuadrícula al centro de la circunferencia
             distance = np.sqrt((xmesh - xc) ** 2 + (ymesh - yc) ** 2)
             # Máscara para identificar puntos dentro del círculo
             mask = distance <= radius
             # Actualizar el valor máximo en el mapa
-            heatmap[mask] = np.maximum(heatmap[mask], hval)
+            self.heatmap[mask] = np.maximum(self.heatmap[mask], hval)
 
         # Configurar los valores mínimos para que sean visibles (si es necesario)
-        heatmap[heatmap == -np.inf] = np.nan
+        self.heatmap[self.heatmap == -np.inf] = np.nan
 
         # Write to CSV
         output_filename = "dose_data_pla_20m_2ms.csv"
@@ -650,21 +677,8 @@ class PointCloudApp(CTk):
             # Flatten the arrays for iteration
             for i in range(xmesh.shape[0]):
                 for j in range(xmesh.shape[1]):
-                    writer.writerow([xmesh[i, j], ymesh[i, j], heatmap[i, j]])
+                    writer.writerow([xmesh[i, j], ymesh[i, j], self.heatmap[i, j]])
 
-        # Visualización tres colores
-
-        # Crear un mapa de colores discreto
-        colors = ['green', 'yellow', 'red']  # Colores para tres rangos
-        # regiones
-        R0 = 0
-        R1 = 80
-        R2 = 120
-        R3 = HmaxP
-
-        bounds = [R0, R1, R2, R3]  # Límites de los rangos
-        cmap = ListedColormap(colors)
-        norm = BoundaryNorm(bounds, cmap.N)
 
         #print('------------------------------------', '\n')
         #print('Total number of analysed spectra : ', cont, '\n')
@@ -686,6 +700,8 @@ class PointCloudApp(CTk):
         self.high_dose_max.insert(0, str(self.dose_max_csv))
         self.high_dose_max.configure(state="disabled")
 
+        self.dose_legend_checkbox.configure(state="normal")
+
         #print('****END PROGRAM *****')
 
     def find_radioactive_source(self):
@@ -704,6 +720,112 @@ class PointCloudApp(CTk):
         self.source_location_label.configure(text=f"Source Location: Easting = {source_location[0]}, Northing = {source_location[1]}")
         if self.dose_legend_checkbox.get() == 1:
             self.show_source_checkbox.configure(state="normal")
+
+    def plot_heatmap(self):
+        # Ensure the necessary data is available
+        if not hasattr(self, 'heatmap') or self.heatmap is None or not hasattr(self,
+                                                                               'xcenter') or self.xcenter is None or not hasattr(
+                self, 'ycenter') or self.ycenter is None or not hasattr(self, 'Hcenter') or self.Hcenter is None:
+            messagebox.showerror("Error", "Please process the N42 files first.")
+            return
+
+        # Visualize the heatmap
+        plt.imshow(
+            self.heatmap,
+            extent=(self.lonmin, self.lonmax, self.latmin, self.latmax),
+            origin='lower',
+            cmap='viridis',
+            alpha=0.8
+        )
+        plt.colorbar(label='H*(10) rate nSv/h')
+        plt.title('Heatmap H*(10) rate')
+        plt.xlabel('LONGITUDE')
+        plt.ylabel('LATITUDE')
+
+        # Add colored points
+        plt.scatter(
+            self.xcenter, self.ycenter,
+            c=self.Hcenter, cmap='viridis',
+            edgecolor='black', s=50, label='Measurement'
+        )
+
+        # Add grid
+        plt.grid(visible=True, color='black', linestyle='--', linewidth=0.5)
+
+        plt.legend()
+        plt.show()
+
+    def plot_three_color_heatmap(self):
+        # Ensure the necessary data is available
+        if not hasattr(self, 'heatmap') or self.heatmap is None or not hasattr(self,
+                                                                               'xcenter') or self.xcenter is None or not hasattr(
+                self, 'ycenter') or self.ycenter is None or not hasattr(self, 'Hcenter') or self.Hcenter is None:
+            messagebox.showerror("Error", "Please process the N42 files first.")
+            return
+
+        if self.dose_legend_checkbox.get() == 1:
+            # Define the color map and boundaries
+            low_dose_color = self.low_dose_cb.get() if self.low_dose_cb.get() else 'green'
+            medium_dose_color = self.medium_dose_cb.get() if self.medium_dose_cb.get() else 'yellow'
+            high_dose_color = self.high_dose_cb.get() if self.high_dose_cb.get() else 'red'
+
+            # Define the color map and boundaries
+            colors = [low_dose_color, medium_dose_color, high_dose_color]
+
+            R0 = 0
+
+            try:
+                R1 = float(self.low_dose_max.get()) if self.low_dose_max.get() else 80
+            except ValueError:
+                R1 = 80  # Default value
+
+            try:
+                R2 = float(self.medium_dose_max.get()) if self.medium_dose_max.get() else 120
+            except ValueError:
+                R2 = 120  # Default value
+
+        else:
+            colors = ['green', 'yellow', 'red']
+            R0 = 0
+            R1 = 80
+            R2 = 120
+
+        R3 = max(self.Hcenter) * max(self.Hcenter)  # Assuming HmaxP is calculated similarly
+        bounds = [R0, R1, R2, R3]
+        cmap = ListedColormap(colors)
+        norm = BoundaryNorm(bounds, cmap.N)
+
+        # Visualize the heatmap
+        plt.imshow(
+            self.heatmap,
+            extent=(self.lonmin, self.lonmax, self.latmin, self.latmax),
+            origin='lower',
+            cmap=cmap,
+            norm=norm,
+            alpha=0.8
+        )
+        plt.colorbar(
+            label='H*(10) rate (nSv/h)',
+            boundaries=bounds,
+            ticks=[R0, R0 + (R1 - R0) / 2, R1, R1 + (R2 - R1) / 2, R2, R2 + (R3 - R2) / 2, R3]
+            # Intermediate values for the legend
+        )
+        plt.title('Heatmap with Three Color Range')
+        plt.xlabel('LONGITUDE')
+        plt.ylabel('LATITUDE')
+
+        # Add colored points
+        plt.scatter(
+            self.xcenter, self.ycenter,
+            c=self.Hcenter, cmap=cmap, norm=norm,
+            edgecolor='black', s=50, label='Measurement'
+        )
+
+        # Add grid
+        plt.grid(visible=True, color='black', linestyle='--', linewidth=0.5)
+
+        plt.legend()
+        plt.show()
 
     def visualize(self):
         """Ejecuta Open3D en un proceso separado sin bloquear la GUI."""
