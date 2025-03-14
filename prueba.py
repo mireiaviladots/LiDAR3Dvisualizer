@@ -1,112 +1,42 @@
-import numpy as np
-import threading
 import open3d as o3d
-import csv
-from pyproj import Proj
-from scipy.spatial import cKDTree
-from pathlib import Path
-from customtkinter import *
-from PIL import Image # (imagenes en los botones)
-from tkinter import filedialog, messagebox
-import multiprocessing
-
-import tkinter as tk
-from tkinter import filedialog, messagebox
 import numpy as np
-import open3d as o3d
-import multiprocessing
-import os
 
+def create_mesh_from_point_cloud(points, colors, alpha=0.5):
+    """
+    Crea una malla a partir de una nube de puntos y eleva la malla en la dirección z.
 
-class PointCloudApp:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("Point Cloud Processor")
+    :param points: Numpy array de puntos (N, 3).
+    :param colors: Numpy array de colores (N, 3).
+    :param alpha: Valor de transparencia (0.0 a 1.0).
+    :return: Malla elevada en la dirección z.
+    """
+    # Crear una nube de puntos
+    point_cloud = o3d.geometry.PointCloud()
+    point_cloud.points = o3d.utility.Vector3dVector(points)
+    point_cloud.colors = o3d.utility.Vector3dVector(colors)
 
-        self.pc_filepath = None
-        self.csv_filepath = None
+    # Estimar las normales de la nube de puntos
+    point_cloud.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30))
 
-        self.voxelizer_checkbox = tk.IntVar()
-        self.visualizer_process = None
-        self.data_queue = multiprocessing.Queue()
+    # Crear la malla a partir de la nube de puntos
+    mesh, densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(point_cloud, depth=9)
 
-        self.create_widgets()
+    # Calcular el promedio de z para cada celda de la malla
+    vertices = np.asarray(mesh.vertices)
+    z_mean = np.mean(vertices[:, 2])
 
-    def create_widgets(self):
-        tk.Button(self.root, text="Select Point Cloud File", command=self.load_point_cloud).pack(pady=5)
-        tk.Button(self.root, text="Select CSV File", command=self.load_csv).pack(pady=5)
-        tk.Checkbutton(self.root, text="Use Voxelizer", variable=self.voxelizer_checkbox).pack(pady=5)
-        tk.Button(self.root, text="Visualize", command=self.start_visualizer).pack(pady=10)
+    # Elevar la malla en la dirección z
+    vertices[:, 2] += z_mean
+    mesh.vertices = o3d.utility.Vector3dVector(vertices)
 
-    def load_point_cloud(self):
-        self.pc_filepath = filedialog.askopenfilename(filetypes=[("Point Cloud Files", "*.pcd *.ply *.xyz *.txt")])
-        if self.pc_filepath:
-            messagebox.showinfo("File Selected", f"Loaded: {os.path.basename(self.pc_filepath)}")
+    return mesh
 
-    def load_csv(self):
-        self.csv_filepath = filedialog.askopenfilename(filetypes=[("CSV Files", "*.csv")])
-        if self.csv_filepath:
-            messagebox.showinfo("File Selected", f"Loaded: {os.path.basename(self.csv_filepath)}")
+# Ejemplo de uso
+points = np.random.rand(1000, 3)  # Puntos de ejemplo
+colors = np.random.rand(1000, 3)  # Colores de ejemplo
 
-    def start_visualizer(self):
-        """Inicia un proceso separado para Open3D y envía los datos a visualizar."""
-        if not self.pc_filepath:
-            messagebox.showwarning("Warning", "Please select a Point Cloud file.")
-            return
+# Crear la malla a partir de la nube de puntos y elevarla en z
+mesh = create_mesh_from_point_cloud(points, colors, alpha=0.5)
 
-        if not self.csv_filepath:
-            messagebox.showwarning("Warning", "Please select a CSV file.")
-            return
-
-        use_voxelization = self.voxelizer_checkbox.get() == 1
-        params = {"pc_filepath": self.pc_filepath, "use_voxelization": use_voxelization}
-
-        if self.visualizer_process and self.visualizer_process.is_alive():
-            self.data_queue.put(params)  # Enviar datos al proceso en ejecución
-        else:
-            self.visualizer_process = multiprocessing.Process(target=self.run_open3d, args=(self.data_queue,))
-            self.visualizer_process.start()
-            self.data_queue.put(params)  # Enviar datos iniciales
-
-    @staticmethod
-    def run_open3d(data_queue):
-        """Proceso separado que maneja la visualización en Open3D."""
-        vis = o3d.visualization.Visualizer()
-        vis.create_window()
-
-        while True:
-            if not data_queue.empty():
-                params = data_queue.get()
-                if params is None:
-                    break  # Salir del bucle si recibimos un cierre
-
-                pc_filepath = params["pc_filepath"]
-                use_voxelization = params["use_voxelization"]
-
-                pcd = o3d.io.read_point_cloud(pc_filepath)
-                vis.clear_geometries()
-
-                if use_voxelization:
-                    voxel_grid = o3d.geometry.VoxelGrid.create_from_point_cloud(pcd, voxel_size=0.05)
-                    vis.add_geometry(voxel_grid)
-                else:
-                    vis.add_geometry(pcd)
-
-                vis.update_renderer()
-                vis.poll_events()
-
-        vis.destroy_window()
-
-    def on_closing(self):
-        """Cierra el proceso de Open3D cuando la ventana Tkinter se cierra."""
-        if self.visualizer_process and self.visualizer_process.is_alive():
-            self.data_queue.put(None)  # Enviar señal de cierre
-            self.visualizer_process.join()
-        self.root.destroy()
-
-
-if __name__ == "__main__":
-    root = tk.Tk()
-    app = PointCloudApp(root)
-    root.protocol("WM_DELETE_WINDOW", app.on_closing)
-    root.mainloop()
+# Visualizar la malla
+o3d.visualization.draw_geometries([mesh])

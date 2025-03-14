@@ -251,6 +251,13 @@ class PointCloudApp(CTk):
                                           border_width=2, font=("Arial", 14, "bold"), command=self.plot_three_color_heatmap)
         self.btn_three_colors.pack(side="left", padx=10)
 
+
+        # Botón para convertir PCD a DAT
+        self.btn_convert_pcd_to_dat = CTkButton(master=frame, text="Convert PCD to DAT", corner_radius=32, fg_color="#00008B",
+                                                hover_color="#C850C0", border_color="#FFCC70", border_width=2,
+                                                font=("Arial", 16, "bold"), command=self.convert_pcd_to_dat)
+        self.btn_convert_pcd_to_dat.pack(pady=10, padx=10, anchor="center")
+
     def toggle_dose_layer(self):
         if self.dose_legend_checkbox.get() == 1:
             self.show_dose_layer = True
@@ -1234,6 +1241,165 @@ class PointCloudApp(CTk):
             self.vis.add_geometry(source_pcd)
 
         self.vis.run()
+
+    def convert_pcd_to_dat(self):
+        """
+        Process a PCD file and save the point data to a .dat file.
+        """
+        # Load the PCD file
+        pcd = o3d.io.read_point_cloud(self.pc_filepath)
+
+        # Extract point data
+        points = np.asarray(pcd.points)
+        colors = np.asarray(pcd.colors) if pcd.has_colors() else np.zeros_like(points)
+
+        # Combine points and colors
+        nube_puntos = np.hstack((points, colors))
+
+        # Procesar los datos sin necesidad de guardarlos en un archivo
+
+        #output_dat_file = Path(self.pc_filepath).with_name('output_Guadalajara.dat')
+        ## Open the output file in append mode
+        #with open(output_dat_file, 'a') as f:
+            ## Write header if the file does not exist
+            #f.write("X Y Z Red Green Blue\n")
+
+            ## Write the point data to the file
+            #np.savetxt(f, nube_puntos, fmt="%f", delimiter=" ")
+
+        # Determinar los límites de los datos
+        min_x, min_y = np.min(points[:, :2], axis=0)
+        max_x, max_y = np.max(points[:, :2], axis=0)
+
+        # Calcular tamaños de píxel
+        num_pixels_x = 100
+        num_pixels_y = 100
+        delta_x = (max_x - min_x) / num_pixels_x
+        delta_y = (max_y - min_y) / num_pixels_y
+
+        # Inicializar estructuras para estadísticas
+        z_values = np.full((num_pixels_y, num_pixels_x), np.nan)
+        cell_stats = [[{'z_values': []} for _ in range(num_pixels_x)] for _ in range(num_pixels_y)]
+
+        total_points = 0
+
+        # Process the point cloud data to fill Z values
+        for point in points:
+            x, y, z = point[:3]
+            x_idx = int((x - min_x) // delta_x)
+            y_idx = int((y - min_y) // delta_y)
+
+            if 0 <= x_idx < num_pixels_x and 0 <= y_idx < num_pixels_y:
+                cell_stats[y_idx][x_idx]['z_values'].append(z)
+                if np.isnan(z_values[y_idx, x_idx]):
+                    z_values[y_idx, x_idx] = z
+                else:
+                    z_values[y_idx, x_idx] = z  # You can change this to max(z_values[y_idx, x_idx], z) if needed
+
+                # Count processed points
+                total_points += 1
+
+        # Identify cells with fewer points than the threshold and assign an average height based on adjacent cells
+        for i in range(num_pixels_y):
+            for j in range(num_pixels_x):
+                cell = cell_stats[i][j]
+
+                # Calculate the center of the cell
+                center_x = min_x + (j + 0.5) * delta_x
+                center_y = min_y + (i + 0.5) * delta_y
+
+                # Calculate Zmax, Zmean, and Zmin
+                Zmax = np.max(cell['z_values']) if cell['z_values'] else None
+                Zmean = np.mean(cell['z_values']) if cell['z_values'] else None
+                Zmin = np.min(cell['z_values']) if cell['z_values'] else None
+
+                # Verify if the new criterion can be calculated
+                if Zmax is not None and Zmin is not None and Zmean is not None:
+                    criterion = (Zmax - Zmean) / (Zmax - Zmin) if (Zmax - Zmin) != 0 else 0
+
+                    criterion_threshold = 0.95
+                    if criterion > criterion_threshold:
+                        z_values[i, j] = Zmean  # Assign Zmean
+                        # Print debug information
+                        print(f"Celda con valor maximo muy disperso: center_x={center_x}, center_y={center_y}")
+                        print("Valor de Z maximo: ", Zmax)
+                        print(f"Nuevo valor de Z asignado: {z_values[i, j]}")
+                    else:
+                        z_values[i, j] = Zmax  # Assign Zmax
+
+        # Plot the results
+        fig = plt.figure(figsize=(14, 10))
+        ax = fig.add_subplot(111, projection='3d')
+
+        # Calculate global Z min and max for color normalization
+        z_min_global = np.nanmin(z_values)
+        z_max_global = np.nanmax(z_values)
+
+        # Create a colormap
+        colormap = plt.colormaps.get_cmap("terrain")
+
+        # Draw horizontal cells and vertical surfaces
+        for i in range(num_pixels_y):
+            for j in range(num_pixels_x):
+                z_to_use = z_values[i, j]
+                if np.isnan(z_to_use):
+                    continue
+
+                x_center = min_x + (j + 0.5) * delta_x
+                y_center = min_y + (i + 0.5) * delta_y
+
+                x_min = x_center - delta_x / 2
+                x_max = x_center + delta_x / 2
+                y_min = y_center - delta_y / 2
+                y_max = y_center + delta_y / 2
+
+                # Draw the top horizontal cell
+                ax.plot_surface(
+                    np.array([[x_min, x_max], [x_min, x_max]]),
+                    np.array([[y_min, y_min], [y_max, y_max]]),
+                    np.array([[z_to_use, z_to_use], [z_to_use, z_to_use]]),
+                    color=colormap((z_to_use - z_min_global) / (z_max_global - z_min_global)),
+                    alpha=0.9, shade=True
+                )
+
+                # Draw vertical surfaces connecting to adjacent cells
+                neighbors = [
+                    ((i - 1, j), [x_min, x_max], [y_min, y_min]),  # Bottom
+                    ((i + 1, j), [x_min, x_max], [y_max, y_max]),  # Top
+                    ((i, j - 1), [x_min, x_min], [y_min, y_max]),  # Left
+                    ((i, j + 1), [x_max, x_max], [y_min, y_max])  # Right
+                ]
+
+                for (ni, nj), vx, vy in neighbors:
+                    if 0 <= ni < num_pixels_y and 0 <= nj < num_pixels_x:
+                        neighbor_z = z_values[ni, nj]
+                        if np.isnan(neighbor_z):
+                            continue
+
+                        if vx[0] == vx[1]:  # Surface parallel to Y axis
+                            vz = [[z_to_use, neighbor_z], [z_to_use, neighbor_z]]
+                            X, Y = np.meshgrid(vx, vy)
+                        elif vy[0] == vy[1]:  # Surface parallel to X axis
+                            vz = [[z_to_use, z_to_use], [neighbor_z, neighbor_z]]
+                            X, Y = np.meshgrid(vx, vy)
+
+                        face_color = colormap(
+                            (max(z_to_use, neighbor_z) - z_min_global) / (z_max_global - z_min_global))
+                        ax.plot_surface(X, Y, np.array(vz), color=face_color, alpha=0.6, shade=True)
+
+        # Add a color bar
+        mappable = plt.cm.ScalarMappable(cmap=colormap, norm=plt.Normalize(vmin=z_min_global, vmax=z_max_global))
+        mappable.set_array([])
+        cbar = plt.colorbar(mappable, ax=ax, shrink=0.6, aspect=10, pad=0.1)
+        cbar.set_label('Height (Z)', fontsize=12)
+
+        # Labels and adjustments
+        ax.set_xlabel('X')
+        ax.set_ylabel('Y')
+        ax.set_zlabel('Z')
+        ax.set_title('3D Grid from Point Cloud Data')
+        plt.show()
+
 
 # Algoritmo genético para encontrar la ubicación de una fuente radiactiva
 class GeneticAlgorithm:
