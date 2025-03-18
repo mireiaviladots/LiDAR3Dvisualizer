@@ -253,9 +253,9 @@ class PointCloudApp(CTk):
 
 
         # Botón para convertir PCD a DAT
-        self.btn_convert_pcd_to_dat = CTkButton(master=frame, text="Convert PCD to DAT", corner_radius=32, fg_color="#00008B",
-                                                hover_color="#C850C0", border_color="#FFCC70", border_width=2,
-                                                font=("Arial", 16, "bold"), command=self.prueba)
+        self.btn_convert_pcd_to_dat = CTkButton(master=frame, text="3D grid from PCD", corner_radius=32, fg_color="#3A7EBF",
+                                         hover_color="#C850C0", border_color="#FFCC70", border_width=2,
+                                         font=("Arial", 14, "bold"), command=self.prueba)
         self.btn_convert_pcd_to_dat.pack(pady=10, padx=10, anchor="center")
 
     def toggle_dose_layer(self):
@@ -1242,7 +1242,7 @@ class PointCloudApp(CTk):
 
         self.vis.run()
 
-    def convert_pcd_to_dat(self):
+    def grid_bcn(self):
         """
         Process a PCD file and save the point data to a .dat file.
         """
@@ -1440,32 +1440,29 @@ class PointCloudApp(CTk):
                     z_values[i, j] = np.mean(z_vals)
                     cell_stats[i][j]['color'] = np.mean(cell_stats[i][j]['colors'], axis=0)
 
-        # Normalize Z values to start from zero
-        z_min_global = np.nanmin(z_values)
-        z_values -= z_min_global
-
-        # Create a list to hold all the cubes
-        cubes = []
+        # Create a list to hold all the prisms
+        prisms = []
 
         # Draw horizontal cells and vertical surfaces
         for i in range(num_pixels_y):
             for j in range(num_pixels_x):
                 if not np.isnan(z_values[i, j]):
-                    z = z_values[i, j]
-                    depth = max(z, 0.01)
-                    cube = o3d.geometry.TriangleMesh.create_box(width=delta_x, height=delta_y, depth=depth)
-                    cube.translate((min_x + j * delta_x, min_y + i * delta_y, 0))
-                    cube.paint_uniform_color(cell_stats[i][j]['color'])
-                    cubes.append(cube)
+                    z_mean = z_values[i, j]
+                    z_min = np.min(cell_stats[i][j]['z_values'])
+                    height = z_mean - z_min
+                    if height > 0:
+                        prism = o3d.geometry.TriangleMesh.create_box(width=delta_x, height=delta_y, depth=height)
+                        prism.translate((min_x + j * delta_x, min_y + i * delta_y, z_min))
+                        prism.paint_uniform_color(cell_stats[i][j]['color'])
+                        prisms.append(prism)
 
-        # Combine all cubes into a single mesh
+        # Combine all prisms into a single mesh
         combined_mesh = o3d.geometry.TriangleMesh()
-        for cube in cubes:
-            combined_mesh += cube
+        for prism in prisms:
+            combined_mesh += prism
 
         # Visualize the combined mesh
         o3d.visualization.draw_geometries([combined_mesh])
-
 
 # Algoritmo genético para encontrar la ubicación de una fuente radiactiva
 class GeneticAlgorithm:
