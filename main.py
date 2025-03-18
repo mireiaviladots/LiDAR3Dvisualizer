@@ -83,6 +83,8 @@ class PointCloudApp(CTk):
         self.latmin = None
         self.latmax = None
 
+        self.run_prueba = False
+
         frame = CTkFrame(self, fg_color="#2E2E2E", corner_radius=15)
         frame.pack(pady=20, padx=20, fill="both", expand=True)
 
@@ -255,7 +257,7 @@ class PointCloudApp(CTk):
         # Botón para convertir PCD a DAT
         self.btn_convert_pcd_to_dat = CTkButton(master=frame, text="3D grid from PCD", corner_radius=32, fg_color="#3A7EBF",
                                          hover_color="#C850C0", border_color="#FFCC70", border_width=2,
-                                         font=("Arial", 14, "bold"), command=self.prueba)
+                                         font=("Arial", 14, "bold"), command=self.set_run_prueba_flag)
         self.btn_convert_pcd_to_dat.pack(pady=10, padx=10, anchor="center")
 
     def toggle_dose_layer(self):
@@ -899,6 +901,8 @@ class PointCloudApp(CTk):
             self.medium_dose_rgb = None
             self.low_dose_rgb = None
 
+        self.run_prueba = False
+
         # Crear un proceso separado para la visualización
         process = multiprocessing.Process(target=run_visualizer,
                                           args=(
@@ -906,7 +910,7 @@ class PointCloudApp(CTk):
                                           self.point_size, self.vox_size, self.altura_extra,
                                           self.high_dose_rgb, self.medium_dose_rgb, self.low_dose_rgb,
                                           self.dose_min_csv, self.low_max, self.medium_min, self.medium_max, self.high_min, self.high_max,
-                                          self.show_dose_layer, self.downsample, self.source_location, self.show_source))
+                                          self.show_dose_layer, self.downsample, self.source_location, self.show_source, self.run_prueba))
         process.start()
 
     def validate_dose_ranges(self):
@@ -1400,69 +1404,91 @@ class PointCloudApp(CTk):
         ax.set_title('3D Grid from Point Cloud Data')
         plt.show()
 
+    def set_run_prueba_flag(self):
+        if not self.pc_filepath:
+            messagebox.showwarning("Warning", "Please select a Point Cloud.")
+            return
+
+        self.run_prueba = True
+        process = multiprocessing.Process(target=run_visualizer,
+                                          args=(
+                                              self.pc_filepath, self.csv_filepath, self.xml_filepath, None,
+                                              self.point_size, self.vox_size, self.altura_extra,
+                                              self.high_dose_rgb, self.medium_dose_rgb, self.low_dose_rgb,
+                                              self.dose_min_csv, self.low_max, self.medium_min, self.medium_max,
+                                              self.high_min, self.high_max,
+                                              self.show_dose_layer, self.downsample, self.source_location,
+                                              self.show_source, self.run_prueba))
+        process.start()
+
     def prueba(self):
-        # Load the PCD file
-        pcd = o3d.io.read_point_cloud(self.pc_filepath)
+        try:
+            print("Run prueba")
+            # Load the PCD file
+            pcd = o3d.io.read_point_cloud(self.pc_filepath)
 
-        # Extract point data
-        points = np.asarray(pcd.points)
-        colors = np.asarray(pcd.colors) if pcd.has_colors() else np.zeros_like(points)
+            # Extract point data
+            points = np.asarray(pcd.points)
+            colors = np.asarray(pcd.colors) if pcd.has_colors() else np.zeros_like(points)
 
-        # Determine the bounds of the data
-        min_x, min_y = np.min(points[:, :2], axis=0)
-        max_x, max_y = np.max(points[:, :2], axis=0)
+            # Determine the bounds of the data
+            min_x, min_y = np.min(points[:, :2], axis=0)
+            max_x, max_y = np.max(points[:, :2], axis=0)
 
-        # Calculate pixel sizes
-        num_pixels_x = 100
-        num_pixels_y = 100
-        delta_x = (max_x - min_x) / num_pixels_x
-        delta_y = (max_y - min_y) / num_pixels_y
+            # Calculate pixel sizes
+            num_pixels_x = 100
+            num_pixels_y = 100
+            delta_x = (max_x - min_x) / num_pixels_x
+            delta_y = (max_y - min_y) / num_pixels_y
 
-        # Initialize structures for statistics
-        z_values = np.full((num_pixels_y, num_pixels_x), np.nan)
-        cell_stats = [[{'z_values': [], 'colors': []} for _ in range(num_pixels_x)] for _ in range(num_pixels_y)]
+            # Initialize structures for statistics
+            z_values = np.full((num_pixels_y, num_pixels_x), np.nan)
+            cell_stats = [[{'z_values': [], 'colors': []} for _ in range(num_pixels_x)] for _ in range(num_pixels_y)]
 
-        # Process the point cloud data to fill Z values and colors
-        for point, color in zip(points, colors):
-            x, y, z = point[:3]
-            x_idx = int((x - min_x) // delta_x)
-            y_idx = int((y - min_y) // delta_y)
+            # Process the point cloud data to fill Z values and colors
+            for point, color in zip(points, colors):
+                x, y, z = point[:3]
+                x_idx = int((x - min_x) // delta_x)
+                y_idx = int((y - min_y) // delta_y)
 
-            if 0 <= x_idx < num_pixels_x and 0 <= y_idx < num_pixels_y:
-                cell_stats[y_idx][x_idx]['z_values'].append(z)
-                cell_stats[y_idx][x_idx]['colors'].append(color)
+                if 0 <= x_idx < num_pixels_x and 0 <= y_idx < num_pixels_y:
+                    cell_stats[y_idx][x_idx]['z_values'].append(z)
+                    cell_stats[y_idx][x_idx]['colors'].append(color)
 
-        # Calculate mean Z values and predominant colors for each cell
-        for i in range(num_pixels_y):
-            for j in range(num_pixels_x):
-                z_vals = cell_stats[i][j]['z_values']
-                if z_vals:
-                    z_values[i, j] = np.mean(z_vals)
-                    cell_stats[i][j]['color'] = np.mean(cell_stats[i][j]['colors'], axis=0)
+            # Calculate mean Z values and predominant colors for each cell
+            for i in range(num_pixels_y):
+                for j in range(num_pixels_x):
+                    z_vals = cell_stats[i][j]['z_values']
+                    if z_vals:
+                        z_values[i, j] = np.mean(z_vals)
+                        cell_stats[i][j]['color'] = np.mean(cell_stats[i][j]['colors'], axis=0)
 
-        # Create a list to hold all the prisms
-        prisms = []
+            # Create a list to hold all the prisms
+            prisms = []
 
-        # Draw horizontal cells and vertical surfaces
-        for i in range(num_pixels_y):
-            for j in range(num_pixels_x):
-                if not np.isnan(z_values[i, j]):
-                    z_mean = z_values[i, j]
-                    z_min = np.min(cell_stats[i][j]['z_values'])
-                    height = z_mean - z_min
-                    if height > 0:
-                        prism = o3d.geometry.TriangleMesh.create_box(width=delta_x, height=delta_y, depth=height)
-                        prism.translate((min_x + j * delta_x, min_y + i * delta_y, z_min))
-                        prism.paint_uniform_color(cell_stats[i][j]['color'])
-                        prisms.append(prism)
+            # Draw horizontal cells and vertical surfaces
+            for i in range(num_pixels_y):
+                for j in range(num_pixels_x):
+                    if not np.isnan(z_values[i, j]):
+                        z_mean = z_values[i, j]
+                        z_min = np.min(cell_stats[i][j]['z_values'])
+                        height = z_mean - z_min
+                        if height > 0:
+                            prism = o3d.geometry.TriangleMesh.create_box(width=delta_x, height=delta_y, depth=height)
+                            prism.translate((min_x + j * delta_x, min_y + i * delta_y, z_min))
+                            prism.paint_uniform_color(cell_stats[i][j]['color'])
+                            prisms.append(prism)
 
-        # Combine all prisms into a single mesh
-        combined_mesh = o3d.geometry.TriangleMesh()
-        for prism in prisms:
-            combined_mesh += prism
+            # Combine all prisms into a single mesh
+            combined_mesh = o3d.geometry.TriangleMesh()
+            for prism in prisms:
+                combined_mesh += prism
 
-        # Visualize the combined mesh
-        o3d.visualization.draw_geometries([combined_mesh])
+            # Visualize the combined mesh
+            o3d.visualization.draw_geometries([combined_mesh])
+
+        except Exception as e:
+            messagebox.showerror("Error", f"An error occurred: {e}")
 
 # Algoritmo genético para encontrar la ubicación de una fuente radiactiva
 class GeneticAlgorithm:
@@ -1518,7 +1544,7 @@ class GeneticAlgorithm:
         best_candidate = population[np.argmax(fitnesses)]
         return best_candidate
 
-def run_visualizer(pc_filepath, csv_filepath, xml_filepath, use_voxelization, point_size, vox_size, altura_extra, high_dose_rgb, medium_dose_rgb, low_dose_rgb, dose_min_csv, low_max, medium_min, medium_max, high_min, high_max, show_dose_layer, downsample, source_location, show_source):
+def run_visualizer(pc_filepath, csv_filepath, xml_filepath, use_voxelization, point_size, vox_size, altura_extra, high_dose_rgb, medium_dose_rgb, low_dose_rgb, dose_min_csv, low_max, medium_min, medium_max, high_min, high_max, show_dose_layer, downsample, source_location, show_source, run_prueba):
     """Ejecuta Open3D Visualizer en un proceso separado con la opción de voxelizar o no."""
     app = PointCloudApp()  # Instanciar la clase principal para acceder a sus métodos
     app.pc_filepath = pc_filepath  # Asignar el archivo de la nube de puntos
@@ -1540,13 +1566,18 @@ def run_visualizer(pc_filepath, csv_filepath, xml_filepath, use_voxelization, po
     app.downsample = downsample
     app.source_location = source_location
     app.show_source = show_source
+    app.run_prueba = run_prueba
 
-    if use_voxelization:
-        print("Voxelization applied")
-        app.voxelizer()
+    if run_prueba:
+        app.prueba()
+
     else:
-        print("No voxelization applied")
-        app.process()
+        if use_voxelization:
+            print("Voxelization applied")
+            app.voxelizer()
+        else:
+            print("No voxelization applied")
+            app.process()
 
 if __name__ == "__main__":
     welcome_screen = WelcomeScreen()
