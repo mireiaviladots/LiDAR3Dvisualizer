@@ -255,7 +255,7 @@ class PointCloudApp(CTk):
         # Botón para convertir PCD a DAT
         self.btn_convert_pcd_to_dat = CTkButton(master=frame, text="Convert PCD to DAT", corner_radius=32, fg_color="#00008B",
                                                 hover_color="#C850C0", border_color="#FFCC70", border_width=2,
-                                                font=("Arial", 16, "bold"), command=self.convert_pcd_to_dat)
+                                                font=("Arial", 16, "bold"), command=self.prueba)
         self.btn_convert_pcd_to_dat.pack(pady=10, padx=10, anchor="center")
 
     def toggle_dose_layer(self):
@@ -1399,6 +1399,72 @@ class PointCloudApp(CTk):
         ax.set_zlabel('Z')
         ax.set_title('3D Grid from Point Cloud Data')
         plt.show()
+
+    def prueba(self):
+        # Load the PCD file
+        pcd = o3d.io.read_point_cloud(self.pc_filepath)
+
+        # Extract point data
+        points = np.asarray(pcd.points)
+        colors = np.asarray(pcd.colors) if pcd.has_colors() else np.zeros_like(points)
+
+        # Determine the bounds of the data
+        min_x, min_y = np.min(points[:, :2], axis=0)
+        max_x, max_y = np.max(points[:, :2], axis=0)
+
+        # Calculate pixel sizes
+        num_pixels_x = 100
+        num_pixels_y = 100
+        delta_x = (max_x - min_x) / num_pixels_x
+        delta_y = (max_y - min_y) / num_pixels_y
+
+        # Initialize structures for statistics
+        z_values = np.full((num_pixels_y, num_pixels_x), np.nan)
+        cell_stats = [[{'z_values': [], 'colors': []} for _ in range(num_pixels_x)] for _ in range(num_pixels_y)]
+
+        # Process the point cloud data to fill Z values and colors
+        for point, color in zip(points, colors):
+            x, y, z = point[:3]
+            x_idx = int((x - min_x) // delta_x)
+            y_idx = int((y - min_y) // delta_y)
+
+            if 0 <= x_idx < num_pixels_x and 0 <= y_idx < num_pixels_y:
+                cell_stats[y_idx][x_idx]['z_values'].append(z)
+                cell_stats[y_idx][x_idx]['colors'].append(color)
+
+        # Calculate mean Z values and predominant colors for each cell
+        for i in range(num_pixels_y):
+            for j in range(num_pixels_x):
+                z_vals = cell_stats[i][j]['z_values']
+                if z_vals:
+                    z_values[i, j] = np.mean(z_vals)
+                    cell_stats[i][j]['color'] = np.mean(cell_stats[i][j]['colors'], axis=0)
+
+        # Normalize Z values to start from zero
+        z_min_global = np.nanmin(z_values)
+        z_values -= z_min_global
+
+        # Create a list to hold all the cubes
+        cubes = []
+
+        # Draw horizontal cells and vertical surfaces
+        for i in range(num_pixels_y):
+            for j in range(num_pixels_x):
+                if not np.isnan(z_values[i, j]):
+                    z = z_values[i, j]
+                    depth = max(z, 0.01)
+                    cube = o3d.geometry.TriangleMesh.create_box(width=delta_x, height=delta_y, depth=depth)
+                    cube.translate((min_x + j * delta_x, min_y + i * delta_y, 0))
+                    cube.paint_uniform_color(cell_stats[i][j]['color'])
+                    cubes.append(cube)
+
+        # Combine all cubes into a single mesh
+        combined_mesh = o3d.geometry.TriangleMesh()
+        for cube in cubes:
+            combined_mesh += cube
+
+        # Visualize the combined mesh
+        o3d.visualization.draw_geometries([combined_mesh])
 
 
 # Algoritmo genético para encontrar la ubicación de una fuente radiactiva
