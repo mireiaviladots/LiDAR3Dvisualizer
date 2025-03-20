@@ -1458,9 +1458,14 @@ class PointCloudApp(CTk):
             # Calculate mean Z values and predominant colors for each cell
             for i in range(num_pixels_y):
                 for j in range(num_pixels_x):
-                    z_vals = cell_stats[i][j]['z_values']
-                    if z_vals:
-                        z_values[i, j] = np.mean(z_vals)
+                    z_vals = np.array(cell_stats[i][j]['z_values'])
+                    if len(z_vals) > 0:
+                        z_mean = np.mean(z_vals)
+                        z_std = np.std(z_vals)
+
+                        # Filtrar valores atípicos por el criterio z_mean + 2*sigma
+                        filtered_z_vals = z_vals[z_vals <= z_mean + 2 * z_std]
+                        z_values[i, j] = np.mean(filtered_z_vals) + 2 * np.std(filtered_z_vals)
                         cell_stats[i][j]['color'] = np.mean(cell_stats[i][j]['colors'], axis=0)
 
             # Create a list to hold all the prisms
@@ -1470,9 +1475,9 @@ class PointCloudApp(CTk):
             for i in range(num_pixels_y):
                 for j in range(num_pixels_x):
                     if not np.isnan(z_values[i, j]):
-                        z_mean = z_values[i, j]
+                        z_final = z_values[i, j]
                         z_min = np.min(cell_stats[i][j]['z_values'])
-                        height = z_mean - z_min
+                        height = z_final - z_min
                         if height > 0:
                             prism = o3d.geometry.TriangleMesh.create_box(width=delta_x, height=delta_y, depth=height)
                             prism.translate((min_x + j * delta_x, min_y + i * delta_y, z_min))
