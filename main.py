@@ -19,38 +19,16 @@ import math
 import utm
 import random
 
-class WelcomeScreen(CTk):
-    def __init__(self):
-        super().__init__()
-
-        self.title("Welcome")
-        self.geometry("900x600")
-
-        bg_image = Image.open("welcome.png")
-        self.bg_photo = CTkImage(light_image=bg_image, dark_image=bg_image, size=(900, 600))
-
-        # Crear un Label para mostrar la imagen de fondo
-        self.background_label = CTkLabel(self, image=self.bg_photo, text="")
-        self.background_label.place(relwidth=1, relheight=1)  # Asegura que cubra toda la ventana
-
-        self.start_button = CTkButton(self, text="Start", font=("Arial", 20), text_color="white",
-                                 corner_radius=8, fg_color="#4B4B4B", width=300, height=100,
-                                 hover_color="#6E6E6E", border_color="#2C2C2C", border_width=1,
-                                 command=self.open_main_app)
-        self.start_button.place(relx=0.5, rely=0.8, anchor="center")  # Centrado horizontalmente, más abajo
-
-    def open_main_app(self):
-        self.destroy()
-        app = PointCloudApp()
-        app.mainloop()
-
 class PointCloudApp(CTk):
     def __init__(self):
         super().__init__()
 
         self.title("Point Cloud Viewer")
-        self.geometry("900x700")
-        self.configure(bg="#1E1E1E")  # Fondo oscuro
+        self.configure(bg="#1E1E1E")  # Dark background
+
+        # Create a main frame that contains two subframes
+        main_frame = CTkFrame(self, fg_color="#1E1E1E")
+        main_frame.pack(fill="both", expand=True)
 
         self.source_location = None
         self.pc_filepath = None
@@ -85,12 +63,8 @@ class PointCloudApp(CTk):
 
         self.run_prueba = False
 
-        frame = CTkFrame(self, fg_color="#2E2E2E", corner_radius=15)
-        frame.pack(pady=20, padx=20, fill="both", expand=True)
-
-        # Botones de carga
-
-        button_frame = CTkFrame(frame, fg_color="transparent")
+        # Load buttons
+        button_frame = CTkFrame(main_frame, fg_color="transparent")
         button_frame.pack(pady=10, padx=10, fill="x")
 
         self.btn_open_pc = CTkButton(master=button_frame, text="📂 Open Point Cloud", corner_radius=32,
@@ -115,8 +89,8 @@ class PointCloudApp(CTk):
         self.downsample_entry.pack(side="left", padx=5, pady=5)
         CTkLabel(master=button_frame, text="%", text_color="white").pack(side="left", padx=5, pady=5)
 
-        # Parámetros
-        parameters_frame = CTkFrame(master=frame, fg_color="#383838", corner_radius=10)
+        # Parameters
+        parameters_frame = CTkFrame(master=main_frame, fg_color="#383838", corner_radius=10)
         parameters_frame.pack(pady=10, padx=10, fill="x")
 
         CTkLabel(master=parameters_frame, text="🔧 Parameters", font=("Arial", 16, "bold"),
@@ -142,22 +116,22 @@ class PointCloudApp(CTk):
         self.voxelizer_var = BooleanVar()
         self.voxelizer_checkbox = CTkCheckBox(master=voxelizer_frame, text="Voxelizer", text_color="white",
                                               fg_color="#FFCC70", variable=self.voxelizer_var,
-                                             command=self.toggle_voxel_size, state="disabled")
+                                              command=self.toggle_voxel_size, state="disabled")
         self.voxelizer_checkbox.grid(row=0, column=0, padx=5)
 
         CTkLabel(master=voxelizer_frame, text="Vox Size:", text_color="white").grid(row=0, column=1, padx=5)
         self.vox_size_entry = CTkEntry(voxelizer_frame, width=50, state="disabled")
         self.vox_size_entry.grid(row=0, column=2, padx=5)
 
-        # Leyenda de dosis
-        legend_frame = CTkFrame(master=frame, fg_color="#383838", corner_radius=10)
+        # Dose legend
+        legend_frame = CTkFrame(master=main_frame, fg_color="#383838", corner_radius=10)
         legend_frame.pack(pady=10, padx=10, fill="x")
 
         # Frame for label and checkbox
         legend_label_frame = CTkFrame(master=legend_frame, fg_color="transparent")
         legend_label_frame.pack(pady=5, padx=10, fill="x")
 
-        # Centrar el label y el checkbox
+        # Center the label and checkbox
         legend_label_frame.grid_columnconfigure(0, weight=1)
         legend_label_frame.grid_columnconfigure(1, weight=1)
 
@@ -178,7 +152,7 @@ class PointCloudApp(CTk):
         CTkLabel(master=dose_colors, text="High Dose:", text_color="white").grid(row=0, column=0, padx=5)
         self.high_dose_cb = CTkComboBox(master=dose_colors, values=self.color_options, state="disabled")
         self.high_dose_cb.grid(row=0, column=1, padx=5)
-        self.high_dose_cb.set("red")  # Color por defecto
+        self.high_dose_cb.set("red")  # Default color
         self.high_dose_rgb = np.array(mcolors.to_rgb("red"))
         CTkLabel(master=dose_colors, text="Min:", text_color="white").grid(row=0, column=2, padx=5)
         self.high_dose_min = CTkEntry(dose_colors, textvariable=self.high_min_medium_max, width=70, state="disabled")
@@ -190,7 +164,7 @@ class PointCloudApp(CTk):
         CTkLabel(master=dose_colors, text="Medium Dose:", text_color="white").grid(row=1, column=0, padx=5)
         self.medium_dose_cb = CTkComboBox(master=dose_colors, values=self.color_options, state="disabled")
         self.medium_dose_cb.grid(row=1, column=1, padx=5)
-        self.medium_dose_cb.set("yellow")  # Color por defecto
+        self.medium_dose_cb.set("yellow")  # Default color
         self.medium_dose_rgb = np.array(mcolors.to_rgb("yellow"))
         CTkLabel(master=dose_colors, text="Min:", text_color="white").grid(row=1, column=2, padx=5)
         self.medium_dose_min = CTkEntry(dose_colors, textvariable=self.medium_min_low_max, width=70, state="disabled")
@@ -202,7 +176,7 @@ class PointCloudApp(CTk):
         CTkLabel(master=dose_colors, text="Low Dose:", text_color="white").grid(row=2, column=0, padx=5)
         self.low_dose_cb = CTkComboBox(master=dose_colors, values=self.color_options, state="disabled")
         self.low_dose_cb.grid(row=2, column=1, padx=5)
-        self.low_dose_cb.set("green")  # Color por defecto
+        self.low_dose_cb.set("green")  # Default color
         self.low_dose_rgb = np.array(mcolors.to_rgb("green"))
         CTkLabel(master=dose_colors, text="Min:", text_color="white").grid(row=2, column=2, padx=5)
         self.low_dose_min = CTkEntry(dose_colors, width=70, state="disabled")
@@ -211,7 +185,7 @@ class PointCloudApp(CTk):
         self.low_dose_max = CTkEntry(dose_colors, textvariable=self.medium_min_low_max, width=70, state="disabled")
         self.low_dose_max.grid(row=2, column=5, padx=5)
 
-        find_source_frame = CTkFrame(master=frame, fg_color="#383838", corner_radius=10)
+        find_source_frame = CTkFrame(master=main_frame, fg_color="#383838", corner_radius=10)
         find_source_frame.pack(pady=10, padx=10, fill="x")
 
         top_frame = CTkFrame(master=find_source_frame, fg_color="transparent")
@@ -230,14 +204,14 @@ class PointCloudApp(CTk):
         self.source_location_label = CTkLabel(master=find_source_frame, text="", text_color="white", font=("Arial", 14))
         self.source_location_label.pack(side="left", padx=10)
 
-        # Botón de visualización
-        self.btn_visualize = CTkButton(master=frame, text="Visualize", corner_radius=32, fg_color="#00008B",
+        # Visualization button
+        self.btn_visualize = CTkButton(master=main_frame, text="Visualize", corner_radius=32, fg_color="#00008B",
                                        hover_color="#C850C0", border_color="#FFCC70", border_width=2,
                                        font=("Arial", 16, "bold"), command=self.visualize, height=45)
         self.btn_visualize.pack(pady=10, padx=10, anchor="center")
 
-        # Frame para los botones de los plots
-        plot_button_frame = CTkFrame(master=frame, fg_color="transparent")
+        # Frame for plot buttons
+        plot_button_frame = CTkFrame(master=main_frame, fg_color="transparent")
         plot_button_frame.pack(pady=10, padx=10, anchor="center")
 
         # Button "Heatmap H*(10) rate"
@@ -253,12 +227,14 @@ class PointCloudApp(CTk):
                                           border_width=2, font=("Arial", 14, "bold"), command=self.plot_three_color_heatmap)
         self.btn_three_colors.pack(side="left", padx=10)
 
-
-        # Botón para convertir PCD a DAT
-        self.btn_convert_pcd_to_dat = CTkButton(master=frame, text="3D grid from PCD", corner_radius=32, fg_color="#3A7EBF",
+        # Button to convert PCD to DAT
+        self.btn_convert_pcd_to_dat = CTkButton(master=main_frame, text="3D grid from PCD", corner_radius=32, fg_color="#3A7EBF",
                                          hover_color="#C850C0", border_color="#FFCC70", border_width=2,
                                          font=("Arial", 14, "bold"), command=self.set_run_prueba_flag)
         self.btn_convert_pcd_to_dat.pack(pady=10, padx=10, anchor="center")
+
+        # Ensure the window is maximized
+        self.after(0, lambda: self.wm_state('zoomed'))
 
     def toggle_dose_layer(self):
         if self.dose_legend_checkbox.get() == 1:
@@ -1585,8 +1561,8 @@ def run_visualizer(pc_filepath, csv_filepath, xml_filepath, use_voxelization, po
             app.process()
 
 if __name__ == "__main__":
-    welcome_screen = WelcomeScreen()
-    welcome_screen.mainloop()
+    pointCloud_app = PointCloudApp()
+    pointCloud_app.mainloop()
 
 ## --------------- BOTON
 #img = Image.open("emoticono.png")
