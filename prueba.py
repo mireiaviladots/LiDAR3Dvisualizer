@@ -73,9 +73,16 @@ class PointCloudApp(CTk):
             if self.parameters_visible:
                 button_parameters.configure(text=" ▲ Parameters")
                 parameters_frame.pack(pady=(10, 0), fill="x")
+                button_dose_layer.pack_forget()
+                button_dose_layer.pack(fill="x", padx=(0, 0), pady=(10, 0))
             else:
                 button_parameters.configure(text=" ▼ Parameters")
                 parameters_frame.pack_forget()
+
+            # Ensure dose_layer_frame is always below button_dose_layer
+            if self.dose_layer_visible:
+                dose_layer_frame.pack_forget()
+                dose_layer_frame.pack(pady=(10, 0), fill="x")
 
         # Parameters Button
         button_parameters = CTkButton(left_frame, text=" ▼ Parameters", text_color="#F0F0F0", fg_color="#3E3E3E", anchor="w", corner_radius=0, command=toggle_parameters)
@@ -85,7 +92,7 @@ class PointCloudApp(CTk):
 
         # Point Size
         point_size_frame = CTkFrame(parameters_frame, fg_color="#2E2E2E", corner_radius=0)
-        point_size_frame.pack(fill="x",padx=(10, 10), pady=(10, 0))
+        point_size_frame.pack(fill="x",padx=(10, 10), pady=(0, 0))
         label_point_size = CTkLabel(point_size_frame, text="Point Size:", text_color="#F0F0F0")
         entry_point_size = CTkEntry(point_size_frame, width=50)
         label_point_size.pack(side="left", padx=(10, 5))
@@ -124,6 +131,77 @@ class PointCloudApp(CTk):
         entry_vox_size.grid(row=1, column=1, padx=(0, 5), pady=(10, 10), sticky="w")
 
         # Dose Layer
+        self.dose_layer_visible = False
+
+        def toggle_dose_layer():
+            self.dose_layer_visible = not self.dose_layer_visible
+
+            if self.dose_layer_visible:
+                button_dose_layer.configure(text=" ▲ Dose Layer")
+                dose_layer_frame.pack(pady=(10, 0), fill="x")
+            else:
+                button_dose_layer.configure(text=" ▼ Dose Layer")
+                dose_layer_frame.pack_forget()
+
+        button_dose_layer = CTkButton(left_frame, text=" ▼ Dose Layer", text_color="#F0F0F0", fg_color="#3E3E3E",
+                                      anchor="w", corner_radius=0, command=toggle_dose_layer)
+        button_dose_layer.pack(fill="x", padx=(0, 0), pady=(10, 0))
+
+        # Dose Layer
+        dose_layer_frame = CTkFrame(left_frame, fg_color="#2E2E2E", corner_radius=0)
+
+        dose_layer_switch = CTkSwitch(dose_layer_frame, text="")
+        dose_layer_switch.pack(expand=True, anchor="center")
+
+        dose_sections_frame = CTkFrame(dose_layer_frame, fg_color="#2E2E2E", corner_radius=0)
+        dose_sections_frame.pack(fill="x", pady=(10, 0), anchor="center")
+
+        self.color_options = ["red", "yellow", "green", "blue", "purple", "orange", "cyan", "magenta", "pink", "white"]
+
+        # High Dose
+        label_high_dose = CTkLabel(dose_sections_frame, text="High Dose:", text_color="#F0F0F0", font=("Arial", 12))
+        label_high_dose.grid(row=0, column=0, padx=(10, 5), sticky="ew")
+        self.high_dose_cb = CTkComboBox(dose_sections_frame, values=self.color_options, font=("Arial", 12))
+        self.high_dose_cb.set("red")
+        self.high_dose_cb.grid(row=0, column=1, padx=(0, 5), sticky="ew")
+        label_min = CTkLabel(dose_sections_frame, text="Min:", text_color="#F0F0F0", font=("Arial", 12))
+        label_min.grid(row=0, column=2, padx=(0, 5), sticky="ew")
+        entry_min = CTkEntry(dose_sections_frame, width=30, font=("Arial", 12))
+        entry_min.grid(row=0, column=3, padx=(0, 5), sticky="ew")
+        label_max = CTkLabel(dose_sections_frame, text="Max:", text_color="#F0F0F0", font=("Arial", 12))
+        label_max.grid(row=0, column=4, padx=(0, 5), sticky="ew")
+        entry_max = CTkEntry(dose_sections_frame, width=30, font=("Arial", 12))
+        entry_max.grid(row=0, column=5, padx=(0, 5), sticky="ew")
+
+        # Medium Dose
+        label_medium_dose = CTkLabel(dose_sections_frame, text="Medium Dose:", text_color="#F0F0F0", font=("Arial", 12))
+        label_medium_dose.grid(row=1, column=0, padx=(10, 5), sticky="ew")
+        self.medium_dose_cb = CTkComboBox(dose_sections_frame, values=self.color_options, font=("Arial", 12))
+        self.medium_dose_cb.set("yellow")
+        self.medium_dose_cb.grid(row=1, column=1, padx=(0, 5), sticky="ew")
+        label_min_medium = CTkLabel(dose_sections_frame, text="Min:", text_color="#F0F0F0", font=("Arial", 12))
+        label_min_medium.grid(row=1, column=2, padx=(0, 5), sticky="ew")
+        entry_min_medium = CTkEntry(dose_sections_frame, width=30, font=("Arial", 12))
+        entry_min_medium.grid(row=1, column=3, padx=(0, 5), sticky="ew")
+        label_max_medium = CTkLabel(dose_sections_frame, text="Max:", text_color="#F0F0F0", font=("Arial", 12))
+        label_max_medium.grid(row=1, column=4, padx=(0, 5), sticky="ew")
+        entry_max_medium = CTkEntry(dose_sections_frame, width=30, font=("Arial", 12))
+        entry_max_medium.grid(row=1, column=5, padx=(0, 5), sticky="ew")
+
+        # Low Dose
+        label_low_dose = CTkLabel(dose_sections_frame, text="Low Dose:", text_color="#F0F0F0", font=("Arial", 12))
+        label_low_dose.grid(row=2, column=0, padx=(10, 5), sticky="ew")
+        self.low_dose_cb = CTkComboBox(dose_sections_frame, values=self.color_options, font=("Arial", 12))
+        self.low_dose_cb.set("green")
+        self.low_dose_cb.grid(row=2, column=1, padx=(0, 5), sticky="ew")
+        label_min_low = CTkLabel(dose_sections_frame, text="Min:", text_color="#F0F0F0", font=("Arial", 12))
+        label_min_low.grid(row=2, column=2, padx=(0, 5), sticky="ew")
+        entry_min_low = CTkEntry(dose_sections_frame, width=30, font=("Arial", 12))
+        entry_min_low.grid(row=2, column=3, padx=(0, 5), sticky="ew")
+        label_max_low = CTkLabel(dose_sections_frame, text="Max:", text_color="#F0F0F0", font=("Arial", 12))
+        label_max_low.grid(row=2, column=4, padx=(0, 5), sticky="ew")
+        entry_max_low = CTkEntry(dose_sections_frame, width=30, font=("Arial", 12))
+        entry_max_low.grid(row=2, column=5, padx=(0, 5), sticky="ew")
 
         # Ensure the window is maximized
         self.after(0, lambda: self.wm_state('zoomed'))
