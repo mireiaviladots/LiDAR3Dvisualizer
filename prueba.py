@@ -75,14 +75,23 @@ class PointCloudApp(CTk):
                 parameters_frame.pack(pady=(10, 0), fill="x")
                 button_dose_layer.pack_forget()
                 button_dose_layer.pack(fill="x", padx=(0, 0), pady=(10, 0))
+                button_extra_computations.pack_forget()
+                button_extra_computations.pack(fill="x", padx=(0, 0), pady=(10, 0))
+
+                if self.dose_layer_visible:
+                    button_dose_layer.pack_forget()
+                    button_dose_layer.pack(fill="x", padx=(0, 0), pady=(10, 0))
+                    dose_layer_frame.pack_forget()
+                    dose_layer_frame.pack(pady=(10, 0), fill="x")
+                    button_extra_computations.pack_forget()
+                    button_extra_computations.pack(fill="x", padx=(0, 0), pady=(10, 0))
             else:
                 button_parameters.configure(text=" ▼ Parameters")
                 parameters_frame.pack_forget()
 
-            # Ensure dose_layer_frame is always below button_dose_layer
-            if self.dose_layer_visible:
-                dose_layer_frame.pack_forget()
-                dose_layer_frame.pack(pady=(10, 0), fill="x")
+            if self.extra_computations_visible:
+                extra_computations_frame.pack_forget()
+                extra_computations_frame.pack(pady=(10, 0), fill="x")
 
         # Parameters Button
         button_parameters = CTkButton(left_frame, text=" ▼ Parameters", text_color="#F0F0F0", fg_color="#3E3E3E", anchor="w", corner_radius=0, command=toggle_parameters)
@@ -139,9 +148,16 @@ class PointCloudApp(CTk):
             if self.dose_layer_visible:
                 button_dose_layer.configure(text=" ▲ Dose Layer")
                 dose_layer_frame.pack(pady=(10, 0), fill="x")
+                button_extra_computations.pack_forget()
+                button_extra_computations.pack(fill="x", padx=(0, 0), pady=(10, 0))
             else:
                 button_dose_layer.configure(text=" ▼ Dose Layer")
                 dose_layer_frame.pack_forget()
+
+
+            if self.extra_computations_visible:
+                extra_computations_frame.pack_forget()
+                extra_computations_frame.pack(pady=(10, 0), fill="x")
 
         button_dose_layer = CTkButton(left_frame, text=" ▼ Dose Layer", text_color="#F0F0F0", fg_color="#3E3E3E",
                                       anchor="w", corner_radius=0, command=toggle_dose_layer)
@@ -166,11 +182,11 @@ class PointCloudApp(CTk):
         self.high_dose_cb.grid(row=0, column=1, padx=(0, 5), sticky="ew")
         label_min = CTkLabel(dose_sections_frame, text="Min:", text_color="#F0F0F0", font=("Arial", 12))
         label_min.grid(row=0, column=2, padx=(0, 5), sticky="ew")
-        entry_min = CTkEntry(dose_sections_frame, width=30, font=("Arial", 12))
+        entry_min = CTkEntry(dose_sections_frame, width=30, font=("Arial", 11))
         entry_min.grid(row=0, column=3, padx=(0, 5), sticky="ew")
         label_max = CTkLabel(dose_sections_frame, text="Max:", text_color="#F0F0F0", font=("Arial", 12))
         label_max.grid(row=0, column=4, padx=(0, 5), sticky="ew")
-        entry_max = CTkEntry(dose_sections_frame, width=30, font=("Arial", 12))
+        entry_max = CTkEntry(dose_sections_frame, width=30, font=("Arial", 11))
         entry_max.grid(row=0, column=5, padx=(0, 5), sticky="ew")
 
         # Medium Dose
@@ -181,11 +197,11 @@ class PointCloudApp(CTk):
         self.medium_dose_cb.grid(row=1, column=1, padx=(0, 5), sticky="ew")
         label_min_medium = CTkLabel(dose_sections_frame, text="Min:", text_color="#F0F0F0", font=("Arial", 12))
         label_min_medium.grid(row=1, column=2, padx=(0, 5), sticky="ew")
-        entry_min_medium = CTkEntry(dose_sections_frame, width=30, font=("Arial", 12))
+        entry_min_medium = CTkEntry(dose_sections_frame, width=30, font=("Arial", 11))
         entry_min_medium.grid(row=1, column=3, padx=(0, 5), sticky="ew")
         label_max_medium = CTkLabel(dose_sections_frame, text="Max:", text_color="#F0F0F0", font=("Arial", 12))
         label_max_medium.grid(row=1, column=4, padx=(0, 5), sticky="ew")
-        entry_max_medium = CTkEntry(dose_sections_frame, width=30, font=("Arial", 12))
+        entry_max_medium = CTkEntry(dose_sections_frame, width=30, font=("Arial", 11))
         entry_max_medium.grid(row=1, column=5, padx=(0, 5), sticky="ew")
 
         # Low Dose
@@ -196,12 +212,48 @@ class PointCloudApp(CTk):
         self.low_dose_cb.grid(row=2, column=1, padx=(0, 5), sticky="ew")
         label_min_low = CTkLabel(dose_sections_frame, text="Min:", text_color="#F0F0F0", font=("Arial", 12))
         label_min_low.grid(row=2, column=2, padx=(0, 5), sticky="ew")
-        entry_min_low = CTkEntry(dose_sections_frame, width=30, font=("Arial", 12))
+        entry_min_low = CTkEntry(dose_sections_frame, width=30, font=("Arial", 11))
         entry_min_low.grid(row=2, column=3, padx=(0, 5), sticky="ew")
         label_max_low = CTkLabel(dose_sections_frame, text="Max:", text_color="#F0F0F0", font=("Arial", 12))
         label_max_low.grid(row=2, column=4, padx=(0, 5), sticky="ew")
-        entry_max_low = CTkEntry(dose_sections_frame, width=30, font=("Arial", 12))
+        entry_max_low = CTkEntry(dose_sections_frame, width=30, font=("Arial", 11))
         entry_max_low.grid(row=2, column=5, padx=(0, 5), sticky="ew")
+
+        # Source
+        source_frame = CTkFrame(dose_layer_frame, fg_color="#2E2E2E", corner_radius=0)
+        source_frame.pack(fill="x", pady=(10, 0))
+        find_source_button = CTkButton(source_frame, text="Find Radioactive Source", fg_color="#3E3E3E", text_color="#F0F0F0")
+        find_source_button.grid(row=0, column=0, padx=(10, 5), pady=(5, 0), sticky="w")
+        show_source_label = CTkLabel(source_frame, text="Show Source on Map:", text_color="#F0F0F0")
+        show_source_label.grid(row=0, column=1, padx=(10, 5), pady=(5, 0), sticky="w")
+        show_source_switch = CTkSwitch(source_frame, text="")
+        show_source_switch.grid(row=0, column=2, padx=(10, 5), pady=(5, 0), sticky="w")
+
+        # Extra Computations
+        self.extra_computations_visible = False
+
+        def toggle_extra_computations():
+            self.extra_computations_visible = not self.extra_computations_visible
+
+            if self.extra_computations_visible:
+                button_extra_computations.configure(text=" ▲ Extra Computations")
+                extra_computations_frame.pack(pady=(10, 0), fill="x")
+            else:
+                button_extra_computations.configure(text=" ▼ Extra Computations")
+                extra_computations_frame.pack_forget()
+
+        button_extra_computations = CTkButton(left_frame, text=" ▼ Extra Computations", text_color="#F0F0F0",
+                                              fg_color="#3E3E3E",
+                                              anchor="w", corner_radius=0, command=toggle_extra_computations)
+        button_extra_computations.pack(fill="x", padx=(0, 0), pady=(10, 0))
+
+        extra_computations_frame = CTkFrame(left_frame, fg_color="#2E2E2E", corner_radius=0)
+        button1 = CTkButton(extra_computations_frame, text="Heatmap H*(10) rate", fg_color="#3E3E3E", text_color="#F0F0F0")
+        button1.pack(fill = "x", padx=(80, 80), pady=(5, 0))
+        button2 = CTkButton(extra_computations_frame, text="Heatmap with Three Color Range", fg_color="#3E3E3E", text_color="#F0F0F0")
+        button2.pack(fill = "x", padx=(80, 80), pady=(5, 0))
+        button3 = CTkButton(extra_computations_frame, text="3D grid from PCD", fg_color="#3E3E3E", text_color="#F0F0F0")
+        button3.pack(fill = "x", padx=(80, 80), pady=(5, 0))
 
         # Ensure the window is maximized
         self.after(0, lambda: self.wm_state('zoomed'))
