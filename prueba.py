@@ -13,12 +13,13 @@ class PointCloudApp(CTk):
 
         # Configure grid layout for main_frame
         main_frame.grid_columnconfigure(0, weight=1)  # Left frame (1/3)
-        main_frame.grid_columnconfigure(1, weight=15)  # Right frame (2/3)
+        main_frame.grid_columnconfigure(1, weight=4)  # Right frame (2/3)
         main_frame.grid_rowconfigure(0, weight=1)
 
         # Frame izquierdo
         left_frame = CTkFrame(main_frame, fg_color="#2E2E2E", corner_radius=0)
         left_frame.grid(row=0, column=0, sticky="nsew")
+        left_frame.pack_propagate(False)
 
         # Frame derecho (blanco)
         right_frame = CTkFrame(main_frame, fg_color="white", corner_radius=0)
@@ -64,11 +65,26 @@ class PointCloudApp(CTk):
         label_percent.pack(side="left")
 
         # Parameters Button
-        button_parameters = CTkButton(left_frame, text="▼ Parameters", text_color="#F0F0F0", fg_color="#3E3E3E", anchor="w")
-        button_parameters.pack(fill="x", padx=(10, 10), pady=(10, 0))
+        self.parameters_visible = False
+
+        def toggle_parameters():
+            self.parameters_visible = not self.parameters_visible
+
+            if self.parameters_visible:
+                button_parameters.configure(text=" ▲ Parameters")
+                parameters_frame.pack(pady=(10, 0), fill="x")
+            else:
+                button_parameters.configure(text=" ▼ Parameters")
+                parameters_frame.pack_forget()
+
+        # Parameters Button
+        button_parameters = CTkButton(left_frame, text=" ▼ Parameters", text_color="#F0F0F0", fg_color="#3E3E3E", anchor="w", corner_radius=0, command=toggle_parameters)
+        button_parameters.pack(fill="x", padx=(0, 0), pady=(10, 0))
+
+        parameters_frame = CTkFrame(left_frame, fg_color="#2E2E2E", corner_radius=0)
 
         # Point Size
-        point_size_frame = CTkFrame(left_frame, fg_color="#2E2E2E", corner_radius=0)
+        point_size_frame = CTkFrame(parameters_frame, fg_color="#2E2E2E", corner_radius=0)
         point_size_frame.pack(fill="x",padx=(10, 10), pady=(10, 0))
         label_point_size = CTkLabel(point_size_frame, text="Point Size:", text_color="#F0F0F0")
         entry_point_size = CTkEntry(point_size_frame, width=50)
@@ -76,7 +92,7 @@ class PointCloudApp(CTk):
         entry_point_size.pack(side="left", padx=(0, 5))
 
         # Dosis Elevation
-        dosis_elevation_frame = CTkFrame(left_frame, fg_color="#2E2E2E", corner_radius=0)
+        dosis_elevation_frame = CTkFrame(parameters_frame, fg_color="#2E2E2E", corner_radius=0)
         dosis_elevation_frame.pack(fill="x",padx=(10, 10), pady=(10, 0))
         label_dosis_elevation = CTkLabel(dosis_elevation_frame, text="Dosis Elevation:", text_color="#F0F0F0")
         label_dosis_elevation.pack(side="left", padx=(10, 5))
@@ -90,7 +106,7 @@ class PointCloudApp(CTk):
         slider_label.pack(side="left", padx=(0, 5))
 
         # Voxelizer
-        voxelizer_frame = CTkFrame(left_frame, fg_color="#252525", corner_radius=0)
+        voxelizer_frame = CTkFrame(parameters_frame, fg_color="#252525", corner_radius=0)
         voxelizer_frame.pack(fill="x", padx=(10, 10), pady=(10, 0))
         voxelizer_frame.grid_columnconfigure(0, weight=1)
         voxelizer_frame.grid_columnconfigure(1, weight=1)
@@ -100,16 +116,14 @@ class PointCloudApp(CTk):
         label_voxelizer.grid(row=0, column=1, padx=(10, 5), pady=(5, 0), sticky="e")
         voxelizer_switch = CTkSwitch(voxelizer_frame, text="")
         voxelizer_switch.grid(row=0, column=2, padx=(0, 5), pady=(5, 0), sticky="w")
-        voxelizerSize_frame = CTkFrame(left_frame, fg_color="#1E1E1E", corner_radius=0)
+        voxelizerSize_frame = CTkFrame(parameters_frame, fg_color="#1E1E1E", corner_radius=0)
         voxelizerSize_frame.pack(fill="x", padx=(10, 10), pady=(0, 0))
         label_vox_size = CTkLabel(voxelizerSize_frame, text="Vox Size:", text_color="#F0F0F0")
         label_vox_size.grid(row=1, column=0, padx=(10, 5), pady=(10, 10), sticky="w")
         entry_vox_size = CTkEntry(voxelizerSize_frame, width=50)
         entry_vox_size.grid(row=1, column=1, padx=(0, 5), pady=(10, 10), sticky="w")
 
-
         # Dose Layer
-
 
         # Ensure the window is maximized
         self.after(0, lambda: self.wm_state('zoomed'))
