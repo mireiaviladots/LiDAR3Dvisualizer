@@ -77,6 +77,8 @@ class PointCloudApp(CTk):
                 button_dose_layer.pack(fill="x", padx=(0, 0), pady=(10, 0))
                 button_extra_computations.pack_forget()
                 button_extra_computations.pack(fill="x", padx=(0, 0), pady=(10, 0))
+                button_visualize.pack_forget()
+                button_visualize.pack(padx=(0, 0), pady=(30, 0))
 
                 if self.dose_layer_visible:
                     button_dose_layer.pack_forget()
@@ -85,6 +87,8 @@ class PointCloudApp(CTk):
                     dose_layer_frame.pack(pady=(10, 0), fill="x")
                     button_extra_computations.pack_forget()
                     button_extra_computations.pack(fill="x", padx=(0, 0), pady=(10, 0))
+                    button_visualize.pack_forget()
+                    button_visualize.pack(padx=(0, 0), pady=(30, 0))
             else:
                 button_parameters.configure(text=" ▼ Parameters")
                 parameters_frame.pack_forget()
@@ -92,6 +96,8 @@ class PointCloudApp(CTk):
             if self.extra_computations_visible:
                 extra_computations_frame.pack_forget()
                 extra_computations_frame.pack(pady=(10, 0), fill="x")
+                button_visualize.pack_forget()
+                button_visualize.pack(padx=(0, 0), pady=(30, 0))
 
         # Parameters Button
         button_parameters = CTkButton(left_frame, text=" ▼ Parameters", text_color="#F0F0F0", fg_color="#3E3E3E", anchor="w", corner_radius=0, command=toggle_parameters)
@@ -150,6 +156,8 @@ class PointCloudApp(CTk):
                 dose_layer_frame.pack(pady=(10, 0), fill="x")
                 button_extra_computations.pack_forget()
                 button_extra_computations.pack(fill="x", padx=(0, 0), pady=(10, 0))
+                button_visualize.pack_forget()
+                button_visualize.pack(padx=(0, 0), pady=(30, 0))
             else:
                 button_dose_layer.configure(text=" ▼ Dose Layer")
                 dose_layer_frame.pack_forget()
@@ -158,6 +166,8 @@ class PointCloudApp(CTk):
             if self.extra_computations_visible:
                 extra_computations_frame.pack_forget()
                 extra_computations_frame.pack(pady=(10, 0), fill="x")
+                button_visualize.pack_forget()
+                button_visualize.pack(padx=(0, 0), pady=(30, 0))
 
         button_dose_layer = CTkButton(left_frame, text=" ▼ Dose Layer", text_color="#F0F0F0", fg_color="#3E3E3E",
                                       anchor="w", corner_radius=0, command=toggle_dose_layer)
@@ -238,9 +248,13 @@ class PointCloudApp(CTk):
             if self.extra_computations_visible:
                 button_extra_computations.configure(text=" ▲ Extra Computations")
                 extra_computations_frame.pack(pady=(10, 0), fill="x")
+                button_visualize.pack_forget()
+                button_visualize.pack(padx=(0, 0), pady=(30, 0))
             else:
                 button_extra_computations.configure(text=" ▼ Extra Computations")
                 extra_computations_frame.pack_forget()
+                button_visualize.pack_forget()
+                button_visualize.pack(padx=(0, 0), pady=(30, 0))
 
         button_extra_computations = CTkButton(left_frame, text=" ▼ Extra Computations", text_color="#F0F0F0",
                                               fg_color="#3E3E3E",
@@ -254,6 +268,12 @@ class PointCloudApp(CTk):
         button2.pack(fill = "x", padx=(80, 80), pady=(5, 0))
         button3 = CTkButton(extra_computations_frame, text="3D grid from PCD", fg_color="#3E3E3E", text_color="#F0F0F0")
         button3.pack(fill = "x", padx=(80, 80), pady=(5, 0))
+
+        # Visualize
+        button_visualize = CTkButton(left_frame, text="Visualize", text_color="#F0F0F0", fg_color="#1E3A5F",
+                                     hover_color="#2E4A7F",
+                                     anchor="center", corner_radius=0, border_color="#D3D3D3", border_width=2)
+        button_visualize.pack(padx=(0, 0), pady=(30, 0))
 
         # Ensure the window is maximized
         self.after(0, lambda: self.wm_state('zoomed'))
