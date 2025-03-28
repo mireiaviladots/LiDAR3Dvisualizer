@@ -53,7 +53,7 @@ class PointCloudApp(CTk):
                 btn_opcion2.pack_forget()
                 btn_opcion3.pack_forget()
 
-        btn_menu = CTkButton(menu_frame, text="Open ...", command=toggle_menu, fg_color="#6E6E6E")
+        btn_menu = CTkButton(menu_frame, text="Open ...", command=toggle_menu, fg_color="#3E3E3E")
         btn_menu.pack(pady=(5, 0))
 
         btn_opcion1 = CTkButton(menu_frame, text="Point Cloud", text_color="#2E2E2E", fg_color="#F0F0F0",
@@ -79,6 +79,9 @@ class PointCloudApp(CTk):
         def toggle_parameters():
             self.parameters_visible = not self.parameters_visible
 
+            if self.menu_visible:
+                toggle_menu()
+
             if self.parameters_visible:
                 button_parameters.configure(text=" ▲ Parameters")
                 parameters_frame.pack(pady=(10, 0), fill="x")
@@ -93,7 +96,7 @@ class PointCloudApp(CTk):
                     button_dose_layer.pack_forget()
                     button_dose_layer.pack(fill="x", padx=(0, 0), pady=(10, 0))
                     dose_layer_frame.pack_forget()
-                    dose_layer_frame.pack(pady=(10, 0), fill="x")
+                    dose_layer_frame.pack(pady=(5, 0), fill="x")
                     button_extra_computations.pack_forget()
                     button_extra_computations.pack(fill="x", padx=(0, 0), pady=(10, 0))
                     button_visualize.pack_forget()
@@ -160,9 +163,12 @@ class PointCloudApp(CTk):
         def toggle_dose_layer():
             self.dose_layer_visible = not self.dose_layer_visible
 
+            if self.menu_visible:
+                toggle_menu()
+
             if self.dose_layer_visible:
                 button_dose_layer.configure(text=" ▲ Dose Layer")
-                dose_layer_frame.pack(pady=(10, 0), fill="x")
+                dose_layer_frame.pack(pady=(5, 0), fill="x")
                 button_extra_computations.pack_forget()
                 button_extra_computations.pack(fill="x", padx=(0, 0), pady=(10, 0))
                 button_visualize.pack_forget()
@@ -170,7 +176,6 @@ class PointCloudApp(CTk):
             else:
                 button_dose_layer.configure(text=" ▼ Dose Layer")
                 dose_layer_frame.pack_forget()
-
 
             if self.extra_computations_visible:
                 extra_computations_frame.pack_forget()
@@ -253,6 +258,9 @@ class PointCloudApp(CTk):
 
         def toggle_extra_computations():
             self.extra_computations_visible = not self.extra_computations_visible
+
+            if self.menu_visible:
+                toggle_menu()
 
             if self.extra_computations_visible:
                 button_extra_computations.configure(text=" ▲ Extra Computations")
