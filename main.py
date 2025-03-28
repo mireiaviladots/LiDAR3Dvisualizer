@@ -18,6 +18,7 @@ import sys
 import math
 import utm
 import random
+import ctypes
 
 class PointCloudApp(CTk):
     def __init__(self):
@@ -55,6 +56,11 @@ class PointCloudApp(CTk):
         self.latmin = None
         self.latmax = None
         self.run_prueba = False
+        self.right_frame_width = False
+        self.right_frame_height = False
+        self.screen_width = False
+        self.left_frame_width = False
+        self.title_bar_height = False
 
         # Create a main frame that contains two subframes
         main_frame = CTkFrame(self, fg_color="#1E1E1E")
@@ -66,13 +72,13 @@ class PointCloudApp(CTk):
         main_frame.grid_rowconfigure(0, weight=1)
 
         # Frame izquierdo
-        left_frame = CTkFrame(main_frame, fg_color="#2E2E2E", corner_radius=0)
-        left_frame.grid(row=0, column=0, sticky="nsew")
-        left_frame.pack_propagate(False)
+        self.left_frame = CTkFrame(main_frame, fg_color="#2E2E2E", corner_radius=0)
+        self.left_frame.grid(row=0, column=0, sticky="nsew")
+        self.left_frame.pack_propagate(False)
 
         # Frame derecho (blanco)
-        right_frame = CTkFrame(main_frame, fg_color="white", corner_radius=0)
-        right_frame.grid(row=0, column=1, sticky="nsew")
+        self.right_frame = CTkFrame(main_frame, fg_color="white", corner_radius=0)
+        self.right_frame.grid(row=0, column=1, sticky="nsew")
 
         # Logo
         #logo_image = Image.open('logo.png')
@@ -83,7 +89,7 @@ class PointCloudApp(CTk):
         #logo_label.place(relx=0.5, rely=0.5, anchor="center")
 
         # Frame para los botones del menú
-        menu_frame = CTkFrame(left_frame, fg_color="#2E2E2E", corner_radius=0)
+        menu_frame = CTkFrame(self.left_frame, fg_color="#2E2E2E", corner_radius=0)
         menu_frame.pack(pady=(15, 0))
 
         # Open...
@@ -124,7 +130,7 @@ class PointCloudApp(CTk):
                                 border_color="#6E6E6E", border_width=1, font=("Arial", 12), command=load_xml_metadata_and_toggle)
 
         # Downsample
-        downsample_frame = CTkFrame(left_frame, fg_color="#2E2E2E", corner_radius=0)
+        downsample_frame = CTkFrame(self.left_frame, fg_color="#2E2E2E", corner_radius=0)
         downsample_frame.pack(pady=(10, 0))
         label_downsample = CTkLabel(downsample_frame, text="Downsample:", text_color="#F0F0F0", font=("Arial", 12))
         self.downsample_entry = CTkEntry(downsample_frame, width=50, font=("Arial", 12))
@@ -150,7 +156,7 @@ class PointCloudApp(CTk):
                 button_extra_computations.pack_forget()
                 button_extra_computations.pack(fill="x", padx=(0, 0), pady=(10, 0))
                 self.btn_visualize.pack_forget()
-                self.btn_visualize.pack(padx=(0, 0), pady=(30, 0))
+                self.btn_visualize.pack(side="bottom", padx=(0, 0), pady=(10, 25))
 
                 if self.dose_layer_visible:
                     button_dose_layer.pack_forget()
@@ -160,7 +166,7 @@ class PointCloudApp(CTk):
                     button_extra_computations.pack_forget()
                     button_extra_computations.pack(fill="x", padx=(0, 0), pady=(10, 0))
                     self.btn_visualize.pack_forget()
-                    self.btn_visualize.pack(padx=(0, 0), pady=(30, 0))
+                    self.btn_visualize.pack(side="bottom", padx=(0, 0), pady=(10, 25))
             else:
                 button_parameters.configure(text=" ▼ Parameters")
                 parameters_frame.pack_forget()
@@ -169,14 +175,14 @@ class PointCloudApp(CTk):
                 extra_computations_frame.pack_forget()
                 extra_computations_frame.pack(pady=(10, 0), fill="x")
                 self.btn_visualize.pack_forget()
-                self.btn_visualize.pack(padx=(0, 0), pady=(30, 0))
+                self.btn_visualize.pack(side="bottom", padx=(0, 0), pady=(10, 25))
 
         # Parameters Button
-        button_parameters = CTkButton(left_frame, text=" ▼ Parameters", text_color="#F0F0F0", fg_color="#3E3E3E",
+        button_parameters = CTkButton(self.left_frame, text=" ▼ Parameters", text_color="#F0F0F0", fg_color="#3E3E3E",
                                       anchor="w", corner_radius=0, command=toggle_parameters)
         button_parameters.pack(fill="x", padx=(0, 0), pady=(10, 0))
 
-        parameters_frame = CTkFrame(left_frame, fg_color="#2E2E2E", corner_radius=0)
+        parameters_frame = CTkFrame(self.left_frame, fg_color="#2E2E2E", corner_radius=0)
 
         # Point Size
         point_size_frame = CTkFrame(parameters_frame, fg_color="#2E2E2E", corner_radius=0)
@@ -220,7 +226,7 @@ class PointCloudApp(CTk):
                 button_extra_computations.pack_forget()
                 button_extra_computations.pack(fill="x", padx=(0, 0), pady=(10, 0))
                 self.btn_visualize.pack_forget()
-                self.btn_visualize.pack(padx=(0, 0), pady=(30, 0))
+                self.btn_visualize.pack(side="bottom", padx=(0, 0), pady=(10, 25))
             else:
                 button_dose_layer.configure(text=" ▼ Dose Layer")
                 dose_layer_frame.pack_forget()
@@ -229,14 +235,14 @@ class PointCloudApp(CTk):
                 extra_computations_frame.pack_forget()
                 extra_computations_frame.pack(pady=(10, 0), fill="x")
                 self.btn_visualize.pack_forget()
-                self.btn_visualize.pack(padx=(0, 0), pady=(30, 0))
+                self.btn_visualize.pack(side="bottom", padx=(0, 0), pady=(10, 25))
 
-        button_dose_layer = CTkButton(left_frame, text=" ▼ Dose Layer", text_color="#F0F0F0", fg_color="#3E3E3E",
+        button_dose_layer = CTkButton(self.left_frame, text=" ▼ Dose Layer", text_color="#F0F0F0", fg_color="#3E3E3E",
                                       anchor="w", corner_radius=0, command=toggle_dose_layer)
         button_dose_layer.pack(fill="x", padx=(0, 0), pady=(10, 0))
 
         # Dose Layer
-        dose_layer_frame = CTkFrame(left_frame, fg_color="#2E2E2E", corner_radius=0)
+        dose_layer_frame = CTkFrame(self.left_frame, fg_color="#2E2E2E", corner_radius=0)
 
         self.dose_layer_switch = CTkSwitch(dose_layer_frame, text="", command=self.toggle_dose_layer, state='disabled')
         self.dose_layer_switch.pack(expand=True, anchor="center", pady=(0, 0))
@@ -337,19 +343,19 @@ class PointCloudApp(CTk):
                 button_extra_computations.configure(text=" ▲ Extra Computations")
                 extra_computations_frame.pack(pady=(10, 0), fill="x")
                 self.btn_visualize.pack_forget()
-                self.btn_visualize.pack(padx=(0, 0), pady=(30, 0))
+                self.btn_visualize.pack(side="bottom", padx=(0, 0), pady=(10, 25))
             else:
                 button_extra_computations.configure(text=" ▼ Extra Computations")
                 extra_computations_frame.pack_forget()
                 self.btn_visualize.pack_forget()
-                self.btn_visualize.pack(padx=(0, 0), pady=(30, 0))
+                self.btn_visualize.pack(side="bottom", padx=(0, 0), pady=(10, 25))
 
-        button_extra_computations = CTkButton(left_frame, text=" ▼ Extra Computations", text_color="#F0F0F0",
+        button_extra_computations = CTkButton(self.left_frame, text=" ▼ Extra Computations", text_color="#F0F0F0",
                                               fg_color="#3E3E3E",
                                               anchor="w", corner_radius=0, command=toggle_extra_computations)
         button_extra_computations.pack(fill="x", padx=(0, 0), pady=(10, 0))
 
-        extra_computations_frame = CTkFrame(left_frame, fg_color="#2E2E2E", corner_radius=0)
+        extra_computations_frame = CTkFrame(self.left_frame, fg_color="#2E2E2E", corner_radius=0)
 
         self.btn_heatmap = CTkButton(extra_computations_frame, text="Heatmap H*(10) rate", fg_color="#3E3E3E",
                             text_color="#F0F0F0", font=("Arial", 12), command=self.plot_heatmap)
@@ -362,10 +368,10 @@ class PointCloudApp(CTk):
         self.btn_convert_pcd_to_dat.pack(fill="x", padx=(80, 80), pady=(5, 0))
 
         # Visualize
-        self.btn_visualize = CTkButton(left_frame, text="Visualize", text_color="#F0F0F0", fg_color="#1E3A5F",
+        self.btn_visualize = CTkButton(self.left_frame, text="Visualize", text_color="#F0F0F0", fg_color="#1E3A5F",
                                      hover_color="#2E4A7F",
                                      anchor="center", corner_radius=0, border_color="#D3D3D3", border_width=2, command=self.visualize)
-        self.btn_visualize.pack(padx=(0, 0), pady=(30, 0))
+        self.btn_visualize.pack(side="bottom", padx=(0, 0), pady=(10, 25))
 
         # Ensure the window is maximized
         self.after(0, lambda: self.wm_state('zoomed'))
@@ -1017,6 +1023,14 @@ class PointCloudApp(CTk):
 
         self.run_prueba = False
 
+        self.right_frame_width = self.right_frame.winfo_width()
+        self.right_frame_height = self.right_frame.winfo_height()
+
+        self.left_frame_width = self.left_frame.winfo_width()
+
+        user32 = ctypes.windll.user32
+        self.title_bar_height = user32.GetSystemMetrics(4)
+
         # Crear un proceso separado para la visualización
         process = multiprocessing.Process(target=run_visualizer,
                                           args=(
@@ -1024,7 +1038,8 @@ class PointCloudApp(CTk):
                                           self.point_size, self.vox_size, self.altura_extra,
                                           self.high_dose_rgb, self.medium_dose_rgb, self.low_dose_rgb,
                                           self.dose_min_csv, self.low_max, self.medium_min, self.medium_max, self.high_min, self.high_max,
-                                          self.show_dose_layer, self.downsample, self.source_location, self.show_source, self.run_prueba))
+                                          self.show_dose_layer, self.downsample, self.source_location, self.show_source, self.run_prueba,
+                                          self.right_frame_width, self.right_frame_height, self.left_frame_width, self.title_bar_height))
         process.start()
 
     def validate_dose_ranges(self):
@@ -1188,7 +1203,7 @@ class PointCloudApp(CTk):
 
             if self.vis is None:
                 self.vis = o3d.visualization.Visualizer()
-                self.vis.create_window()
+                self.vis.create_window(window_name='Open3D', width=self.right_frame_width, height=self.right_frame_height, left=self.left_frame_width, top=self.title_bar_height)
 
             self.vis.clear_geometries()  # Ahora estamos seguros de que self.vis no es None
             self.vis.add_geometry(pcd)
@@ -1663,7 +1678,7 @@ class GeneticAlgorithm:
         best_candidate = population[np.argmax(fitnesses)]
         return best_candidate
 
-def run_visualizer(pc_filepath, csv_filepath, xml_filepath, use_voxelization, point_size, vox_size, altura_extra, high_dose_rgb, medium_dose_rgb, low_dose_rgb, dose_min_csv, low_max, medium_min, medium_max, high_min, high_max, show_dose_layer, downsample, source_location, show_source, run_prueba):
+def run_visualizer(pc_filepath, csv_filepath, xml_filepath, use_voxelization, point_size, vox_size, altura_extra, high_dose_rgb, medium_dose_rgb, low_dose_rgb, dose_min_csv, low_max, medium_min, medium_max, high_min, high_max, show_dose_layer, downsample, source_location, show_source, run_prueba, right_frame_width, right_frame_height, left_frame_width, title_bar_height):
     """Ejecuta Open3D Visualizer en un proceso separado con la opción de voxelizar o no."""
     app = PointCloudApp()  # Instanciar la clase principal para acceder a sus métodos
     app.pc_filepath = pc_filepath  # Asignar el archivo de la nube de puntos
@@ -1686,6 +1701,10 @@ def run_visualizer(pc_filepath, csv_filepath, xml_filepath, use_voxelization, po
     app.source_location = source_location
     app.show_source = show_source
     app.run_prueba = run_prueba
+    app.right_frame_width = right_frame_width
+    app.right_frame_height = right_frame_height
+    app.left_frame_width = left_frame_width
+    app.title_bar_height = title_bar_height
 
     if run_prueba:
         app.prueba()
