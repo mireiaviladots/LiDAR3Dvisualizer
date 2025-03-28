@@ -1,4 +1,5 @@
 from customtkinter import *
+from PIL import Image, ImageTk
 
 class PointCloudApp(CTk):
     def __init__(self):
@@ -25,6 +26,14 @@ class PointCloudApp(CTk):
         right_frame = CTkFrame(main_frame, fg_color="white", corner_radius=0)
         right_frame.grid(row=0, column=1, sticky="nsew")
 
+        # Logo
+        logo_image = Image.open('logo.png')
+        logo_image = logo_image.resize((1000, 1000))
+        logo_image = ImageTk.PhotoImage(logo_image)
+        logo_label = CTkLabel(right_frame, image=logo_image, text="")
+        logo_label.image = logo_image 
+        logo_label.place(relx=0.5, rely=0.5, anchor="center")
+
         # Frame para los botones del menú
         menu_frame = CTkFrame(left_frame, fg_color="#2E2E2E", corner_radius=0)
         menu_frame.pack(pady=(15, 0))
@@ -48,18 +57,18 @@ class PointCloudApp(CTk):
         btn_menu.pack(pady=(5, 0))
 
         btn_opcion1 = CTkButton(menu_frame, text="Point Cloud", text_color="#2E2E2E", fg_color="#F0F0F0",
-                                border_color="#6E6E6E", border_width=1)
+                                border_color="#6E6E6E", border_width=1, font=("Arial", 12))
         btn_opcion2 = CTkButton(menu_frame, text="N42 File", text_color="#2E2E2E", fg_color="#F0F0F0",
-                                border_color="#6E6E6E", border_width=2)
+                                border_color="#6E6E6E", border_width=2, font=("Arial", 12))
         btn_opcion3 = CTkButton(menu_frame, text="XML", text_color="#2E2E2E", fg_color="#F0F0F0",
-                                border_color="#6E6E6E", border_width=1)
+                                border_color="#6E6E6E", border_width=1, font=("Arial", 12))
 
         # Downsample
         downsample_frame = CTkFrame(left_frame, fg_color="#2E2E2E", corner_radius=0)
         downsample_frame.pack(pady=(10, 0))
-        label_downsample = CTkLabel(downsample_frame, text="Downsample:", text_color="#F0F0F0")
-        entry_downsample = CTkEntry(downsample_frame, width=50)
-        label_percent = CTkLabel(downsample_frame, text="%", text_color="#F0F0F0")
+        label_downsample = CTkLabel(downsample_frame, text="Downsample:", text_color="#F0F0F0", font=("Arial", 12))
+        entry_downsample = CTkEntry(downsample_frame, width=50, font=("Arial", 12))
+        label_percent = CTkLabel(downsample_frame, text="%", text_color="#F0F0F0", font=("Arial", 12))
         label_downsample.pack(side="left", padx=(0, 5))
         entry_downsample.pack(side="left", padx=(0, 5))
         label_percent.pack(side="left")
@@ -108,19 +117,19 @@ class PointCloudApp(CTk):
         # Point Size
         point_size_frame = CTkFrame(parameters_frame, fg_color="#2E2E2E", corner_radius=0)
         point_size_frame.pack(fill="x",padx=(10, 10), pady=(0, 0))
-        label_point_size = CTkLabel(point_size_frame, text="Point Size:", text_color="#F0F0F0")
-        entry_point_size = CTkEntry(point_size_frame, width=50)
+        label_point_size = CTkLabel(point_size_frame, text="Point Size:", text_color="#F0F0F0", font=("Arial", 12))
+        entry_point_size = CTkEntry(point_size_frame, width=50, font=("Arial", 12))
         label_point_size.pack(side="left", padx=(10, 5))
         entry_point_size.pack(side="left", padx=(0, 5))
 
         # Dosis Elevation
         dosis_elevation_frame = CTkFrame(parameters_frame, fg_color="#2E2E2E", corner_radius=0)
-        dosis_elevation_frame.pack(fill="x",padx=(10, 10), pady=(10, 0))
-        label_dosis_elevation = CTkLabel(dosis_elevation_frame, text="Dosis Elevation:", text_color="#F0F0F0")
+        dosis_elevation_frame.pack(fill="x",padx=(10, 10), pady=(5, 0))
+        label_dosis_elevation = CTkLabel(dosis_elevation_frame, text="Dosis Elevation:", text_color="#F0F0F0", font=("Arial", 12))
         label_dosis_elevation.pack(side="left", padx=(10, 5))
 
         def update_slider_label(value):
-            slider_label.configure(text=f"{value:.2f}")
+            slider_label.configure(text=f"{value:.2f}", font=("Arial", 12))
 
         slider = CTkSlider(dosis_elevation_frame, from_=-100, to=100, command=update_slider_label)
         slider.pack(side="left", padx=(0, 5))
@@ -129,21 +138,21 @@ class PointCloudApp(CTk):
 
         # Voxelizer
         voxelizer_frame = CTkFrame(parameters_frame, fg_color="#252525", corner_radius=0)
-        voxelizer_frame.pack(fill="x", padx=(10, 10), pady=(10, 0))
+        voxelizer_frame.pack(fill="x", padx=(10, 10), pady=(5, 0))
         voxelizer_frame.grid_columnconfigure(0, weight=1)
         voxelizer_frame.grid_columnconfigure(1, weight=1)
         voxelizer_frame.grid_columnconfigure(2, weight=0)
         voxelizer_frame.grid_columnconfigure(3, weight=1)
-        label_voxelizer = CTkLabel(voxelizer_frame, text="Voxelizer:", text_color="#F0F0F0")
+        label_voxelizer = CTkLabel(voxelizer_frame, text="Voxelizer:", text_color="#F0F0F0", font=("Arial", 12))
         label_voxelizer.grid(row=0, column=1, padx=(10, 5), pady=(5, 0), sticky="e")
         voxelizer_switch = CTkSwitch(voxelizer_frame, text="")
         voxelizer_switch.grid(row=0, column=2, padx=(0, 5), pady=(5, 0), sticky="w")
         voxelizerSize_frame = CTkFrame(parameters_frame, fg_color="#1E1E1E", corner_radius=0)
         voxelizerSize_frame.pack(fill="x", padx=(10, 10), pady=(0, 0))
-        label_vox_size = CTkLabel(voxelizerSize_frame, text="Vox Size:", text_color="#F0F0F0")
-        label_vox_size.grid(row=1, column=0, padx=(10, 5), pady=(10, 10), sticky="w")
-        entry_vox_size = CTkEntry(voxelizerSize_frame, width=50)
-        entry_vox_size.grid(row=1, column=1, padx=(0, 5), pady=(10, 10), sticky="w")
+        label_vox_size = CTkLabel(voxelizerSize_frame, text="Vox Size:", text_color="#F0F0F0", font=("Arial", 12))
+        label_vox_size.grid(row=1, column=0, padx=(10, 5), pady=(5, 5), sticky="w")
+        entry_vox_size = CTkEntry(voxelizerSize_frame, width=50, font=("Arial", 12))
+        entry_vox_size.grid(row=1, column=1, padx=(0, 5), pady=(5, 5), sticky="w")
 
         # Dose Layer
         self.dose_layer_visible = False
@@ -177,10 +186,10 @@ class PointCloudApp(CTk):
         dose_layer_frame = CTkFrame(left_frame, fg_color="#2E2E2E", corner_radius=0)
 
         dose_layer_switch = CTkSwitch(dose_layer_frame, text="")
-        dose_layer_switch.pack(expand=True, anchor="center")
+        dose_layer_switch.pack(expand=True, anchor="center", pady=(0, 0))
 
         dose_sections_frame = CTkFrame(dose_layer_frame, fg_color="#2E2E2E", corner_radius=0)
-        dose_sections_frame.pack(fill="x", pady=(10, 0), anchor="center")
+        dose_sections_frame.pack(fill="x", pady=(5, 0), anchor="center")
 
         self.color_options = ["red", "yellow", "green", "blue", "purple", "orange", "cyan", "magenta", "pink", "white"]
 
@@ -231,10 +240,10 @@ class PointCloudApp(CTk):
 
         # Source
         source_frame = CTkFrame(dose_layer_frame, fg_color="#2E2E2E", corner_radius=0)
-        source_frame.pack(fill="x", pady=(10, 0))
-        find_source_button = CTkButton(source_frame, text="Find Radioactive Source", fg_color="#3E3E3E", text_color="#F0F0F0")
+        source_frame.pack(fill="x", pady=(5, 0))
+        find_source_button = CTkButton(source_frame, text="Find Radioactive Source", fg_color="#3E3E3E", text_color="#F0F0F0", font=("Arial", 12))
         find_source_button.grid(row=0, column=0, padx=(10, 5), pady=(5, 0), sticky="w")
-        show_source_label = CTkLabel(source_frame, text="Show Source on Map:", text_color="#F0F0F0")
+        show_source_label = CTkLabel(source_frame, text="Show Source on Map:", text_color="#F0F0F0", font=("Arial", 12))
         show_source_label.grid(row=0, column=1, padx=(10, 5), pady=(5, 0), sticky="w")
         show_source_switch = CTkSwitch(source_frame, text="")
         show_source_switch.grid(row=0, column=2, padx=(10, 5), pady=(5, 0), sticky="w")
@@ -262,11 +271,11 @@ class PointCloudApp(CTk):
         button_extra_computations.pack(fill="x", padx=(0, 0), pady=(10, 0))
 
         extra_computations_frame = CTkFrame(left_frame, fg_color="#2E2E2E", corner_radius=0)
-        button1 = CTkButton(extra_computations_frame, text="Heatmap H*(10) rate", fg_color="#3E3E3E", text_color="#F0F0F0")
+        button1 = CTkButton(extra_computations_frame, text="Heatmap H*(10) rate", fg_color="#3E3E3E", text_color="#F0F0F0", font=("Arial", 12))
         button1.pack(fill = "x", padx=(80, 80), pady=(5, 0))
-        button2 = CTkButton(extra_computations_frame, text="Heatmap with Three Color Range", fg_color="#3E3E3E", text_color="#F0F0F0")
+        button2 = CTkButton(extra_computations_frame, text="Heatmap with Three Color Range", fg_color="#3E3E3E", text_color="#F0F0F0", font=("Arial", 12))
         button2.pack(fill = "x", padx=(80, 80), pady=(5, 0))
-        button3 = CTkButton(extra_computations_frame, text="3D grid from PCD", fg_color="#3E3E3E", text_color="#F0F0F0")
+        button3 = CTkButton(extra_computations_frame, text="3D grid from PCD", fg_color="#3E3E3E", text_color="#F0F0F0", font=("Arial", 12))
         button3.pack(fill = "x", padx=(80, 80), pady=(5, 0))
 
         # Visualize
