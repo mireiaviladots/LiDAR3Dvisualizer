@@ -5,7 +5,7 @@ from pyproj import Proj
 from scipy.spatial import cKDTree
 from pathlib import Path
 from customtkinter import *
-from PIL import Image # (imagenes en los botones)
+from PIL import Image, ImageTk
 from tkinter import filedialog, messagebox
 import multiprocessing
 import xml.etree.ElementTree as ET
@@ -24,11 +24,7 @@ class PointCloudApp(CTk):
         super().__init__()
 
         self.title("Point Cloud Viewer")
-        self.configure(bg="#1E1E1E")  # Dark background
-
-        # Create a main frame that contains two subframes
-        main_frame = CTkFrame(self, fg_color="#1E1E1E")
-        main_frame.pack(fill="both", expand=True)
+        self.configure(bg="#1E1E1E")
 
         self.source_location = None
         self.pc_filepath = None
@@ -49,9 +45,7 @@ class PointCloudApp(CTk):
         self.show_dose_layer = False
         self.downsample = None
         self.show_source = False
-
         self.vis = None
-
         self.heatmap = None
         self.xcenter = None
         self.ycenter = None
@@ -60,184 +54,310 @@ class PointCloudApp(CTk):
         self.lonmax = None
         self.latmin = None
         self.latmax = None
-
         self.run_prueba = False
 
-        # Load buttons
-        button_frame = CTkFrame(main_frame, fg_color="transparent")
-        button_frame.pack(pady=10, padx=10, fill="x")
+        # Create a main frame that contains two subframes
+        main_frame = CTkFrame(self, fg_color="#1E1E1E")
+        main_frame.pack(fill="both", expand=True)
 
-        self.btn_open_pc = CTkButton(master=button_frame, text="📂 Open Point Cloud", corner_radius=32,
-                                     fg_color="#3A7EBF",
-                                     hover_color="#C850C0", border_color="#FFCC70", border_width=2,
-                                     font=("Arial", 14, "bold"), command=self.load_point_cloud)
-        self.btn_open_pc.pack(side="left", padx=10, pady=5)
+        # Configure grid layout for main_frame
+        main_frame.grid_columnconfigure(0, weight=1)  # Left frame (1/3)
+        main_frame.grid_columnconfigure(1, weight=4)  # Right frame (2/3)
+        main_frame.grid_rowconfigure(0, weight=1)
 
-        self.btn_open_csv = CTkButton(master=button_frame, text="📊 Open N42 File", corner_radius=32,
-                                      fg_color="#3A7EBF",
-                                      hover_color="#C850C0", border_color="#FFCC70", border_width=2,
-                                      font=("Arial", 14, "bold"), command=self.process_n42_files)
-        self.btn_open_csv.pack(side="left", padx=10, pady=5)
+        # Frame izquierdo
+        left_frame = CTkFrame(main_frame, fg_color="#2E2E2E", corner_radius=0)
+        left_frame.grid(row=0, column=0, sticky="nsew")
+        left_frame.pack_propagate(False)
 
-        self.btn_open_xml = CTkButton(master=button_frame, text="📜 Open XML", corner_radius=32, fg_color="#3A7EBF",
-                                      hover_color="#C850C0", border_color="#FFCC70", border_width=2,
-                                      font=("Arial", 14, "bold"), command=self.load_xml_metadata)
-        self.btn_open_xml.pack(side="left", padx=10, pady=5)
+        # Frame derecho (blanco)
+        right_frame = CTkFrame(main_frame, fg_color="white", corner_radius=0)
+        right_frame.grid(row=0, column=1, sticky="nsew")
 
-        CTkLabel(master=button_frame, text="Downsamplear:", text_color="white").pack(side="left", padx=10, pady=5)
-        self.downsample_entry = CTkEntry(button_frame, width=50)
-        self.downsample_entry.pack(side="left", padx=5, pady=5)
-        CTkLabel(master=button_frame, text="%", text_color="white").pack(side="left", padx=5, pady=5)
+        # Logo
+        #logo_image = Image.open('logo.png')
+        #logo_image = logo_image.resize((1000, 1000))
+        #logo_image = ImageTk.PhotoImage(logo_image)
+        #logo_label = CTkLabel(right_frame, image=logo_image, text="")
+        #logo_label.image = logo_image
+        #logo_label.place(relx=0.5, rely=0.5, anchor="center")
 
-        # Parameters
-        parameters_frame = CTkFrame(master=main_frame, fg_color="#383838", corner_radius=10)
-        parameters_frame.pack(pady=10, padx=10, fill="x")
+        # Frame para los botones del menú
+        menu_frame = CTkFrame(left_frame, fg_color="#2E2E2E", corner_radius=0)
+        menu_frame.pack(pady=(15, 0))
 
-        CTkLabel(master=parameters_frame, text="🔧 Parameters", font=("Arial", 16, "bold"),
-                 text_color="white").pack(pady=5)
+        # Open...
+        self.menu_visible = False
 
-        param_grid = CTkFrame(master=parameters_frame, fg_color="transparent")
-        param_grid.pack(pady=5, padx=10)
+        def toggle_menu():
+            self.menu_visible = not self.menu_visible
 
-        CTkLabel(master=param_grid, text="Point Size:", text_color="white").grid(row=0, column=0, pady=5, padx=5,
-                                                                                 sticky="w")
-        self.point_size_entry = CTkEntry(param_grid, width=50, state="disabled")
-        self.point_size_entry.grid(row=0, column=1, pady=5, padx=5)
+            if self.menu_visible:
+                self.btn_open_pc.pack(pady=0)
+                self.btn_open_csv.pack(pady=0)
+                self.btn_open_xml.pack(pady=0)
+            else:
+                self.btn_open_pc.pack_forget()
+                self.btn_open_csv.pack_forget()
+                self.btn_open_xml.pack_forget()
 
-        CTkLabel(master=param_grid, text="Dosis Elevation:", text_color="white").grid(row=1, column=0, pady=5,
-                                                                                      padx=5,
-                                                                                      sticky="w")
-        self.dosis_slider = CTkSlider(master=param_grid, from_=-100, to=110, fg_color="#FFCC70")
-        self.dosis_slider.grid(row=1, column=1, pady=5, padx=5)
+        btn_menu = CTkButton(menu_frame, text="Open ...", command=toggle_menu, fg_color="#3E3E3E")
+        btn_menu.pack(pady=(5, 0))
 
-        voxelizer_frame = CTkFrame(master=parameters_frame, fg_color="transparent")
-        voxelizer_frame.pack(pady=5)
+        self.btn_open_pc = CTkButton(menu_frame, text="Point Cloud", text_color="#2E2E2E", fg_color="#F0F0F0",
+                                border_color="#6E6E6E", border_width=1, font=("Arial", 12), command=self.load_point_cloud)
+        self.btn_open_csv = CTkButton(menu_frame, text="N42 File", text_color="#2E2E2E", fg_color="#F0F0F0",
+                                border_color="#6E6E6E", border_width=2, font=("Arial", 12), command=self.process_n42_files)
+        self.btn_open_xml = CTkButton(menu_frame, text="XML", text_color="#2E2E2E", fg_color="#F0F0F0",
+                                border_color="#6E6E6E", border_width=1, font=("Arial", 12), command=self.load_xml_metadata)
 
+        # Downsample
+        downsample_frame = CTkFrame(left_frame, fg_color="#2E2E2E", corner_radius=0)
+        downsample_frame.pack(pady=(10, 0))
+        label_downsample = CTkLabel(downsample_frame, text="Downsample:", text_color="#F0F0F0", font=("Arial", 12))
+        self.downsample_entry = CTkEntry(downsample_frame, width=50, font=("Arial", 12))
+        label_percent = CTkLabel(downsample_frame, text="%", text_color="#F0F0F0", font=("Arial", 12))
+        label_downsample.pack(side="left", padx=(0, 5))
+        self.downsample_entry.pack(side="left", padx=(0, 5))
+        label_percent.pack(side="left")
+
+        # Parameters Button
+        self.parameters_visible = False
+
+        def toggle_parameters():
+            self.parameters_visible = not self.parameters_visible
+
+            if self.menu_visible:
+                toggle_menu()
+
+            if self.parameters_visible:
+                button_parameters.configure(text=" ▲ Parameters")
+                parameters_frame.pack(pady=(10, 0), fill="x")
+                button_dose_layer.pack_forget()
+                button_dose_layer.pack(fill="x", padx=(0, 0), pady=(10, 0))
+                button_extra_computations.pack_forget()
+                button_extra_computations.pack(fill="x", padx=(0, 0), pady=(10, 0))
+                self.btn_visualize.pack_forget()
+                self.btn_visualize.pack(padx=(0, 0), pady=(30, 0))
+
+                if self.dose_layer_visible:
+                    button_dose_layer.pack_forget()
+                    button_dose_layer.pack(fill="x", padx=(0, 0), pady=(10, 0))
+                    dose_layer_frame.pack_forget()
+                    dose_layer_frame.pack(pady=(5, 0), fill="x")
+                    button_extra_computations.pack_forget()
+                    button_extra_computations.pack(fill="x", padx=(0, 0), pady=(10, 0))
+                    self.btn_visualize.pack_forget()
+                    self.btn_visualize.pack(padx=(0, 0), pady=(30, 0))
+            else:
+                button_parameters.configure(text=" ▼ Parameters")
+                parameters_frame.pack_forget()
+
+            if self.extra_computations_visible:
+                extra_computations_frame.pack_forget()
+                extra_computations_frame.pack(pady=(10, 0), fill="x")
+                self.btn_visualize.pack_forget()
+                self.btn_visualize.pack(padx=(0, 0), pady=(30, 0))
+
+        # Parameters Button
+        button_parameters = CTkButton(left_frame, text=" ▼ Parameters", text_color="#F0F0F0", fg_color="#3E3E3E",
+                                      anchor="w", corner_radius=0, command=toggle_parameters)
+        button_parameters.pack(fill="x", padx=(0, 0), pady=(10, 0))
+
+        parameters_frame = CTkFrame(left_frame, fg_color="#2E2E2E", corner_radius=0)
+
+        # Point Size
+        point_size_frame = CTkFrame(parameters_frame, fg_color="#2E2E2E", corner_radius=0)
+        point_size_frame.pack(fill="x", padx=(10, 10), pady=(0, 0))
+        label_point_size = CTkLabel(point_size_frame, text="Point Size:", text_color="#F0F0F0", font=("Arial", 12))
+        self.point_size_entry = CTkEntry(point_size_frame, width=50, font=("Arial", 12))
+        label_point_size.pack(side="left", padx=(10, 5))
+        self.point_size_entry.pack(side="left", padx=(0, 5))
+
+        # Dosis Elevation
+        dosis_elevation_frame = CTkFrame(parameters_frame, fg_color="#2E2E2E", corner_radius=0)
+        dosis_elevation_frame.pack(fill="x", padx=(10, 10), pady=(5, 0))
+        label_dosis_elevation = CTkLabel(dosis_elevation_frame, text="Dosis Elevation:", text_color="#F0F0F0", font=("Arial", 12))
+        label_dosis_elevation.pack(side="left", padx=(10, 5))
+
+        def update_slider_label(value):
+            slider_label.configure(text=f"{value:.2f}", font=("Arial", 12))
+
+        self.dosis_slider = CTkSlider(dosis_elevation_frame, from_=-100, to=100, command=update_slider_label)
+        self.dosis_slider.pack(side="left", padx=(0, 5))
+        slider_label = CTkLabel(dosis_elevation_frame, text="0.00", text_color="#F0F0F0")
+        slider_label.pack(side="left", padx=(0, 5))
+
+        # Voxelizer
+        voxelizer_frame = CTkFrame(parameters_frame, fg_color="#252525", corner_radius=0)
+        voxelizer_frame.pack(fill="x", padx=(10, 10), pady=(5, 0))
+        voxelizer_frame.grid_columnconfigure(0, weight=1)
+        voxelizer_frame.grid_columnconfigure(1, weight=1)
+        voxelizer_frame.grid_columnconfigure(2, weight=0)
+        voxelizer_frame.grid_columnconfigure(3, weight=1)
+        label_voxelizer = CTkLabel(voxelizer_frame, text="Voxelizer:", text_color="#F0F0F0", font=("Arial", 12))
+        label_voxelizer.grid(row=0, column=1, padx=(10, 5), pady=(5, 0), sticky="e")
         self.voxelizer_var = BooleanVar()
-        self.voxelizer_checkbox = CTkCheckBox(master=voxelizer_frame, text="Voxelizer", text_color="white",
-                                              fg_color="#FFCC70", variable=self.voxelizer_var,
-                                              command=self.toggle_voxel_size, state="disabled")
-        self.voxelizer_checkbox.grid(row=0, column=0, padx=5)
+        self.voxelizer_switch = CTkSwitch(voxelizer_frame, variable=self.voxelizer_var, command=self.toggle_voxel_size, text="", state="disabled")
+        self.voxelizer_switch.grid(row=0, column=2, padx=(0, 5), pady=(5, 0), sticky="w")
+        voxelizerSize_frame = CTkFrame(parameters_frame, fg_color="#1E1E1E", corner_radius=0)
+        voxelizerSize_frame.pack(fill="x", padx=(10, 10), pady=(0, 0))
+        label_vox_size = CTkLabel(voxelizerSize_frame, text="Vox Size:", text_color="#F0F0F0", font=("Arial", 12))
+        label_vox_size.grid(row=1, column=0, padx=(10, 5), pady=(5, 5), sticky="w")
+        self.vox_size_entry = CTkEntry(voxelizerSize_frame, width=50, font=("Arial", 12), state="disabled")
+        self.vox_size_entry.grid(row=1, column=1, padx=(0, 5), pady=(5, 5), sticky="w")
 
-        CTkLabel(master=voxelizer_frame, text="Vox Size:", text_color="white").grid(row=0, column=1, padx=5)
-        self.vox_size_entry = CTkEntry(voxelizer_frame, width=50, state="disabled")
-        self.vox_size_entry.grid(row=0, column=2, padx=5)
+        # Dose Layer
+        self.dose_layer_visible = False
 
-        # Dose legend
-        legend_frame = CTkFrame(master=main_frame, fg_color="#383838", corner_radius=10)
-        legend_frame.pack(pady=10, padx=10, fill="x")
+        def toggle_dose_layer():
+            self.dose_layer_visible = not self.dose_layer_visible
 
-        # Frame for label and checkbox
-        legend_label_frame = CTkFrame(master=legend_frame, fg_color="transparent")
-        legend_label_frame.pack(pady=5, padx=10, fill="x")
+            if self.menu_visible:
+                toggle_menu()
 
-        # Center the label and checkbox
-        legend_label_frame.grid_columnconfigure(0, weight=1)
-        legend_label_frame.grid_columnconfigure(1, weight=1)
+            if self.dose_layer_visible:
+                button_dose_layer.configure(text=" ▲ Dose Layer")
+                dose_layer_frame.pack(pady=(5, 0), fill="x")
+                button_extra_computations.pack_forget()
+                button_extra_computations.pack(fill="x", padx=(0, 0), pady=(10, 0))
+                self.btn_visualize.pack_forget()
+                self.btn_visualize.pack(padx=(0, 0), pady=(30, 0))
+            else:
+                button_dose_layer.configure(text=" ▼ Dose Layer")
+                dose_layer_frame.pack_forget()
 
-        CTkLabel(master=legend_label_frame, text="🎨 Dose Legend", font=("Arial", 16, "bold"), text_color="white").grid(
-            row=0, column=0, pady=5, sticky="e")
-        self.dose_legend_checkbox = CTkCheckBox(master=legend_label_frame, text="", text_color="white",
-                                                fg_color="#FFCC70", command=self.toggle_dose_layer, state='disabled')
-        self.dose_legend_checkbox.grid(row=0, column=1, padx=5, sticky="w")
+            if self.extra_computations_visible:
+                extra_computations_frame.pack_forget()
+                extra_computations_frame.pack(pady=(10, 0), fill="x")
+                self.btn_visualize.pack_forget()
+                self.btn_visualize.pack(padx=(0, 0), pady=(30, 0))
 
-        dose_colors = CTkFrame(master=legend_frame, fg_color="transparent")
-        dose_colors.pack(pady=5, padx=10)
+        button_dose_layer = CTkButton(left_frame, text=" ▼ Dose Layer", text_color="#F0F0F0", fg_color="#3E3E3E",
+                                      anchor="w", corner_radius=0, command=toggle_dose_layer)
+        button_dose_layer.pack(fill="x", padx=(0, 0), pady=(10, 0))
 
-        self.color_options = ["red", "yellow", "green", "blue", "purple", "orange", "pink", "white", "cyan"]
+        # Dose Layer
+        dose_layer_frame = CTkFrame(left_frame, fg_color="#2E2E2E", corner_radius=0)
+
+        self.dose_layer_switch = CTkSwitch(dose_layer_frame, text="", command=self.toggle_dose_layer, state='disabled')
+        self.dose_layer_switch.pack(expand=True, anchor="center", pady=(0, 0))
+
+        dose_sections_frame = CTkFrame(dose_layer_frame, fg_color="#2E2E2E", corner_radius=0)
+        dose_sections_frame.pack(fill="x", pady=(5, 0), anchor="center")
+
+        self.color_options = ["red", "yellow", "green", "blue", "purple", "orange", "cyan", "magenta", "pink", "white"]
 
         self.high_min_medium_max = StringVar()
         self.medium_min_low_max = StringVar()
 
-        CTkLabel(master=dose_colors, text="High Dose:", text_color="white").grid(row=0, column=0, padx=5)
-        self.high_dose_cb = CTkComboBox(master=dose_colors, values=self.color_options, state="disabled")
-        self.high_dose_cb.grid(row=0, column=1, padx=5)
-        self.high_dose_cb.set("red")  # Default color
+        # High Dose
+        label_high_dose = CTkLabel(dose_sections_frame, text="High Dose:", text_color="#F0F0F0", font=("Arial", 12))
+        label_high_dose.grid(row=0, column=0, padx=(10, 5), sticky="ew")
+        self.high_dose_cb = CTkComboBox(dose_sections_frame, values=self.color_options, font=("Arial", 12), state="disabled")
+        self.high_dose_cb.set("red")
+        self.high_dose_cb.grid(row=0, column=1, padx=(0, 5), sticky="ew")
         self.high_dose_rgb = np.array(mcolors.to_rgb("red"))
-        CTkLabel(master=dose_colors, text="Min:", text_color="white").grid(row=0, column=2, padx=5)
-        self.high_dose_min = CTkEntry(dose_colors, textvariable=self.high_min_medium_max, width=70, state="disabled")
-        self.high_dose_min.grid(row=0, column=3, padx=5)
-        CTkLabel(master=dose_colors, text="Max:", text_color="white").grid(row=0, column=4, padx=5)
-        self.high_dose_max = CTkEntry(dose_colors, width=70, state="disabled")
-        self.high_dose_max.grid(row=0, column=5, padx=5)
+        label_min = CTkLabel(dose_sections_frame, text="Min:", text_color="#F0F0F0", font=("Arial", 12))
+        label_min.grid(row=0, column=2, padx=(0, 5), sticky="ew")
+        self.high_dose_min = CTkEntry(dose_sections_frame, width=30, font=("Arial", 11), textvariable=self.high_min_medium_max, state="disabled")
+        self.high_dose_min.grid(row=0, column=3, padx=(0, 5), sticky="ew")
+        label_max = CTkLabel(dose_sections_frame, text="Max:", text_color="#F0F0F0", font=("Arial", 12))
+        label_max.grid(row=0, column=4, padx=(0, 5), sticky="ew")
+        self.high_dose_max = CTkEntry(dose_sections_frame, width=30, font=("Arial", 11), state="disabled")
+        self.high_dose_max.grid(row=0, column=5, padx=(0, 5), sticky="ew")
 
-        CTkLabel(master=dose_colors, text="Medium Dose:", text_color="white").grid(row=1, column=0, padx=5)
-        self.medium_dose_cb = CTkComboBox(master=dose_colors, values=self.color_options, state="disabled")
-        self.medium_dose_cb.grid(row=1, column=1, padx=5)
-        self.medium_dose_cb.set("yellow")  # Default color
+        # Medium Dose
+        label_medium_dose = CTkLabel(dose_sections_frame, text="Medium Dose:", text_color="#F0F0F0", font=("Arial", 12))
+        label_medium_dose.grid(row=1, column=0, padx=(10, 5), sticky="ew")
+        self.medium_dose_cb = CTkComboBox(dose_sections_frame, values=self.color_options, font=("Arial", 12), state="disabled")
+        self.medium_dose_cb.set("yellow")
+        self.medium_dose_cb.grid(row=1, column=1, padx=(0, 5), sticky="ew")
         self.medium_dose_rgb = np.array(mcolors.to_rgb("yellow"))
-        CTkLabel(master=dose_colors, text="Min:", text_color="white").grid(row=1, column=2, padx=5)
-        self.medium_dose_min = CTkEntry(dose_colors, textvariable=self.medium_min_low_max, width=70, state="disabled")
-        self.medium_dose_min.grid(row=1, column=3, padx=5)
-        CTkLabel(master=dose_colors, text="Max:", text_color="white").grid(row=1, column=4, padx=5)
-        self.medium_dose_max = CTkEntry(dose_colors, textvariable=self.high_min_medium_max, width=70, state="disabled")
-        self.medium_dose_max.grid(row=1, column=5, padx=5)
+        label_min_medium = CTkLabel(dose_sections_frame, text="Min:", text_color="#F0F0F0", font=("Arial", 12))
+        label_min_medium.grid(row=1, column=2, padx=(0, 5), sticky="ew")
+        self.medium_dose_min = CTkEntry(dose_sections_frame, width=30, font=("Arial", 11), textvariable=self.medium_min_low_max, state="disabled")
+        self.medium_dose_min.grid(row=1, column=3, padx=(0, 5), sticky="ew")
+        label_max_medium = CTkLabel(dose_sections_frame, text="Max:", text_color="#F0F0F0", font=("Arial", 12))
+        label_max_medium.grid(row=1, column=4, padx=(0, 5), sticky="ew")
+        self.medium_dose_max = CTkEntry(dose_sections_frame, width=30, font=("Arial", 11), textvariable=self.high_min_medium_max, state="disabled")
+        self.medium_dose_max.grid(row=1, column=5, padx=(0, 5), sticky="ew")
 
-        CTkLabel(master=dose_colors, text="Low Dose:", text_color="white").grid(row=2, column=0, padx=5)
-        self.low_dose_cb = CTkComboBox(master=dose_colors, values=self.color_options, state="disabled")
-        self.low_dose_cb.grid(row=2, column=1, padx=5)
-        self.low_dose_cb.set("green")  # Default color
+        # Low Dose
+        label_low_dose = CTkLabel(dose_sections_frame, text="Low Dose:", text_color="#F0F0F0", font=("Arial", 12))
+        label_low_dose.grid(row=2, column=0, padx=(10, 5), sticky="ew")
+        self.low_dose_cb = CTkComboBox(dose_sections_frame, values=self.color_options, font=("Arial", 12), state="disabled")
+        self.low_dose_cb.set("green")
+        self.low_dose_cb.grid(row=2, column=1, padx=(0, 5), sticky="ew")
         self.low_dose_rgb = np.array(mcolors.to_rgb("green"))
-        CTkLabel(master=dose_colors, text="Min:", text_color="white").grid(row=2, column=2, padx=5)
-        self.low_dose_min = CTkEntry(dose_colors, width=70, state="disabled")
-        self.low_dose_min.grid(row=2, column=3, padx=5)
-        CTkLabel(master=dose_colors, text="Max:", text_color="white").grid(row=2, column=4, padx=5)
-        self.low_dose_max = CTkEntry(dose_colors, textvariable=self.medium_min_low_max, width=70, state="disabled")
-        self.low_dose_max.grid(row=2, column=5, padx=5)
+        label_min_low = CTkLabel(dose_sections_frame, text="Min:", text_color="#F0F0F0", font=("Arial", 12))
+        label_min_low.grid(row=2, column=2, padx=(0, 5), sticky="ew")
+        self.low_dose_min = CTkEntry(dose_sections_frame, width=30, font=("Arial", 11), state="disabled")
+        self.low_dose_min.grid(row=2, column=3, padx=(0, 5), sticky="ew")
+        label_max_low = CTkLabel(dose_sections_frame, text="Max:", text_color="#F0F0F0", font=("Arial", 12))
+        label_max_low.grid(row=2, column=4, padx=(0, 5), sticky="ew")
+        self.low_dose_max = CTkEntry(dose_sections_frame, width=30, font=("Arial", 11), textvariable=self.medium_min_low_max, state="disabled")
+        self.low_dose_max.grid(row=2, column=5, padx=(0, 5), sticky="ew")
 
-        find_source_frame = CTkFrame(master=main_frame, fg_color="#383838", corner_radius=10)
-        find_source_frame.pack(pady=10, padx=10, fill="x")
+        # Source
+        source_frame = CTkFrame(dose_layer_frame, fg_color="#2E2E2E", corner_radius=0)
+        source_frame.pack(fill="x", pady=(5, 0))
+        self.btn_find_source = CTkButton(source_frame, text="Find Radioactive Source", fg_color="#3E3E3E",
+                                       text_color="#F0F0F0", font=("Arial", 12), command=self.find_radioactive_source)
+        self.btn_find_source.grid(row=0, column=0, padx=(10, 5), pady=(5, 0), sticky="w")
+        show_source_label = CTkLabel(source_frame, text="Show Source on Map:", text_color="#F0F0F0", font=("Arial", 12))
+        show_source_label.grid(row=0, column=1, padx=(10, 5), pady=(5, 0), sticky="w")
+        self.show_source_switch = CTkSwitch(source_frame, text="", command=self.toggle_source, state='disabled')
+        self.show_source_switch.grid(row=0, column=2, padx=(10, 5), pady=(5, 0), sticky="w")
 
-        top_frame = CTkFrame(master=find_source_frame, fg_color="transparent")
-        top_frame.pack(pady=5, padx=10, fill="x")
+        # Extra Computations
+        self.extra_computations_visible = False
 
-        self.btn_find_source = CTkButton(master=top_frame, text="Find Radioactive Source", corner_radius=32,
-                                         fg_color="#3A7EBF",
-                                         hover_color="#C850C0", border_color="#FFCC70",
-                                         border_width=2,
-                                         font=("Arial", 14, "bold"), command=self.find_radioactive_source)
-        self.btn_find_source.pack(side="left", padx=10)
+        def toggle_extra_computations():
+            self.extra_computations_visible = not self.extra_computations_visible
 
-        self.show_source_checkbox = CTkCheckBox(master=top_frame, text="Show Source on Map", text_color="white", command=self.toggle_source, state='disabled')
-        self.show_source_checkbox.pack(side="left", padx=10)
+            if self.menu_visible:
+                toggle_menu()
 
-        self.source_location_label = CTkLabel(master=find_source_frame, text="", text_color="white", font=("Arial", 14))
-        self.source_location_label.pack(side="left", padx=10)
+            if self.extra_computations_visible:
+                button_extra_computations.configure(text=" ▲ Extra Computations")
+                extra_computations_frame.pack(pady=(10, 0), fill="x")
+                self.btn_visualize.pack_forget()
+                self.btn_visualize.pack(padx=(0, 0), pady=(30, 0))
+            else:
+                button_extra_computations.configure(text=" ▼ Extra Computations")
+                extra_computations_frame.pack_forget()
+                self.btn_visualize.pack_forget()
+                self.btn_visualize.pack(padx=(0, 0), pady=(30, 0))
 
-        # Visualization button
-        self.btn_visualize = CTkButton(master=main_frame, text="Visualize", corner_radius=32, fg_color="#00008B",
-                                       hover_color="#C850C0", border_color="#FFCC70", border_width=2,
-                                       font=("Arial", 16, "bold"), command=self.visualize, height=45)
-        self.btn_visualize.pack(pady=10, padx=10, anchor="center")
+        button_extra_computations = CTkButton(left_frame, text=" ▼ Extra Computations", text_color="#F0F0F0",
+                                              fg_color="#3E3E3E",
+                                              anchor="w", corner_radius=0, command=toggle_extra_computations)
+        button_extra_computations.pack(fill="x", padx=(0, 0), pady=(10, 0))
 
-        # Frame for plot buttons
-        plot_button_frame = CTkFrame(master=main_frame, fg_color="transparent")
-        plot_button_frame.pack(pady=10, padx=10, anchor="center")
+        extra_computations_frame = CTkFrame(left_frame, fg_color="#2E2E2E", corner_radius=0)
 
-        # Button "Heatmap H*(10) rate"
-        self.btn_heatmap = CTkButton(master=plot_button_frame, text="Heatmap H*(10) rate", corner_radius=32,
-                                     fg_color="#3A7EBF", hover_color="#C850C0", border_color="#FFCC70", border_width=2,
-                                     font=("Arial", 14, "bold"), command=self.plot_heatmap)
-        self.btn_heatmap.pack(side="left", padx=10)
+        self.btn_heatmap = CTkButton(extra_computations_frame, text="Heatmap H*(10) rate", fg_color="#3E3E3E",
+                            text_color="#F0F0F0", font=("Arial", 12), command=self.plot_heatmap)
+        self.btn_heatmap.pack(fill="x", padx=(80, 80), pady=(5, 0))
+        self.btn_three_colors = CTkButton(extra_computations_frame, text="Heatmap with Three Color Range", fg_color="#3E3E3E",
+                            text_color="#F0F0F0", font=("Arial", 12), command=self.plot_three_color_heatmap)
+        self.btn_three_colors.pack(fill="x", padx=(80, 80), pady=(5, 0))
+        self.btn_convert_pcd_to_dat = CTkButton(extra_computations_frame, text="3D grid from PCD", fg_color="#3E3E3E", text_color="#F0F0F0",
+                            font=("Arial", 12), command=self.set_run_prueba_flag)
+        self.btn_convert_pcd_to_dat.pack(fill="x", padx=(80, 80), pady=(5, 0))
 
-        # Button "Heatmap with Three Color Range"
-        self.btn_three_colors = CTkButton(master=plot_button_frame, text="Heatmap with Three Color Range",
-                                          corner_radius=32, fg_color="#3A7EBF", hover_color="#C850C0",
-                                          border_color="#FFCC70",
-                                          border_width=2, font=("Arial", 14, "bold"), command=self.plot_three_color_heatmap)
-        self.btn_three_colors.pack(side="left", padx=10)
-
-        # Button to convert PCD to DAT
-        self.btn_convert_pcd_to_dat = CTkButton(master=main_frame, text="3D grid from PCD", corner_radius=32, fg_color="#3A7EBF",
-                                         hover_color="#C850C0", border_color="#FFCC70", border_width=2,
-                                         font=("Arial", 14, "bold"), command=self.set_run_prueba_flag)
-        self.btn_convert_pcd_to_dat.pack(pady=10, padx=10, anchor="center")
+        # Visualize
+        self.btn_visualize = CTkButton(left_frame, text="Visualize", text_color="#F0F0F0", fg_color="#1E3A5F",
+                                     hover_color="#2E4A7F",
+                                     anchor="center", corner_radius=0, border_color="#D3D3D3", border_width=2, command=self.visualize)
+        self.btn_visualize.pack(padx=(0, 0), pady=(30, 0))
 
         # Ensure the window is maximized
         self.after(0, lambda: self.wm_state('zoomed'))
 
     def toggle_dose_layer(self):
-        if self.dose_legend_checkbox.get() == 1:
+        if self.dose_layer_switch.get() == 1:
             self.show_dose_layer = True
             self.low_dose_max.configure(state="normal")
             self.medium_dose_min.configure(state="normal")
@@ -251,11 +371,11 @@ class PointCloudApp(CTk):
                 self.high_dose_cb.set("red")
                 self.medium_dose_cb.set("yellow")
             if self.source_location is not None:
-                self.show_source_checkbox.configure(state="normal")
+                self.show_source_switch.configure(state="normal")
         else:
             self.show_dose_layer = False
-            self.show_source_checkbox.configure(state="disabled")
-            self.show_source_checkbox.deselect()
+            self.show_source_switch.configure(state="disabled")
+            self.show_source_switch.deselect()
             self.low_dose_max.configure(state="disabled")
             self.medium_dose_min.configure(state="disabled")
             self.medium_dose_max.configure(state="disabled")
@@ -265,7 +385,7 @@ class PointCloudApp(CTk):
             self.high_dose_cb.configure(state="disabled")
 
     def toggle_source(self):
-        if self.show_source_checkbox.get() == 1:
+        if self.show_source_switch.get() == 1:
             self.show_source = True
         else:
             self.show_source = False
@@ -300,7 +420,7 @@ class PointCloudApp(CTk):
             print("Point Cloud Selected:", self.pc_filepath)
             self.point_size_entry.configure(state="normal")
             self.point_size_entry.insert(0,2)
-            self.voxelizer_checkbox.configure(state="normal")
+            self.voxelizer_switch.configure(state="normal")
 
     #def load_csv_dosis(self):
         #filepath = filedialog.askopenfilename(filetypes=[("CSV Files", "*.csv")])
@@ -685,7 +805,7 @@ class PointCloudApp(CTk):
         self.high_dose_max.insert(0, str(self.dose_max_csv))
         self.high_dose_max.configure(state="disabled")
 
-        self.dose_legend_checkbox.configure(state="normal")
+        self.dose_layer_switch.configure(state="normal")
 
         #print('****END PROGRAM *****')
 
@@ -702,9 +822,8 @@ class PointCloudApp(CTk):
         self.source_location = source_location
         print(f"Estimated source location: Easting = {source_location[0]}, Northing = {source_location[1]}")
         messagebox.showinfo("Source Location", f"Estimated source location: Easting = {source_location[0]}, Northing = {source_location[1]}")
-        self.source_location_label.configure(text=f"Source Location: Easting = {source_location[0]}, Northing = {source_location[1]}")
-        if self.dose_legend_checkbox.get() == 1:
-            self.show_source_checkbox.configure(state="normal")
+        if self.dose_layer_switch.get() == 1:
+            self.show_source_switch.configure(state="normal")
 
     def plot_heatmap(self):
         # Ensure the necessary data is available
@@ -748,7 +867,7 @@ class PointCloudApp(CTk):
             messagebox.showerror("Error", "Please process the N42 files first.")
             return
 
-        if self.dose_legend_checkbox.get() == 1:
+        if self.dose_layer_switch.get() == 1:
             # Define the color map and boundaries
             low_dose_color = self.low_dose_cb.get() if self.low_dose_cb.get() else 'green'
             medium_dose_color = self.medium_dose_cb.get() if self.medium_dose_cb.get() else 'yellow'
@@ -818,11 +937,11 @@ class PointCloudApp(CTk):
             messagebox.showwarning("Warning", "Please select a Point Cloud.")
             return
 
-        if self.dose_legend_checkbox.get() == 1 and not self.csv_filepath:
+        if self.dose_layer_switch.get() == 1 and not self.csv_filepath:
             messagebox.showerror("Error", "Please select a N42 file.")
             return
 
-        if self.dose_legend_checkbox.get() == 1 and not self.xml_filepath:
+        if self.dose_layer_switch.get() == 1 and not self.xml_filepath:
             messagebox.showerror("Error", "Please select an XML.")
             return
 
@@ -834,8 +953,8 @@ class PointCloudApp(CTk):
         else:
             self.downsample = None
 
-        # Obtener el estado del checkbox (1 si está marcado, 0 si no)
-        use_voxelization = self.voxelizer_checkbox.get() == 1
+        # Obtener el estado del switch (1 si está marcado, 0 si no)
+        use_voxelization = self.voxelizer_switch.get() == 1
 
         point_size_str = self.point_size_entry.get().strip()
         vox_size_str = self.vox_size_entry.get().strip()
@@ -1563,48 +1682,3 @@ def run_visualizer(pc_filepath, csv_filepath, xml_filepath, use_voxelization, po
 if __name__ == "__main__":
     pointCloud_app = PointCloudApp()
     pointCloud_app.mainloop()
-
-## --------------- BOTON
-#img = Image.open("emoticono.png")
-#btn = CTkButton(master=app, text="Prueba", corner_radius=32, fg_color="#4258D0",
-                #hover_color="#C850C0", border_color="#FFCC70", border_width=2,
-                #image = CTkImage(dark_image=img, light_image=img))
-#btn.place(relx=0.5, rely=0.5, anchor="center")
-
-## --------------- LABEL (ya escrito)
-#label = CTkLabel(master=app, text="Hola", font=("Arial",20), text_color="#FFCC70")
-#label.place(relx=0.5, rely=0.5, anchor="center")
-
-## --------------- COMBOBOX (desplegable)
-#comboBox = CTkComboBox(master=app, values=["Option 1", "Option 2", "Option 3"],
-                       #fg_color="#0093E9", border_color="#FBAB7E", dropdown_fg_color="#0093E9")
-#comboBox.place(relx=0.5, rely=0.5, anchor="center")
-
-## --------------- CHECKBOX (marcar varias opciones)
-#checkBox = CTkCheckBox(master=app, text="Option 1",
-                       #fg_color="#C850C0", checkbox_height=30, checkbox_width=30, corner_radius=36)
-#checkBox.place(relx=0.5, rely=0.5, anchor="center")
-
-## --------------- SWITCH (Mateix que checkbox, seleccionar pero amb una barra)
-#switch = CTkSwitch(master=app, text="Option 1")
-#switch.place(relx=0.5, rely=0.5, anchor="center")
-
-## --------------- SLIDER (barrita)
-#def change_handler (value):
-    #print(f"Selected value {value}")
-
-#slider = CTkSlider(master=app, from_=0, to=100, number_of_steps=5, button_color="#C850C0", orientation="vertical", command=change_handler) #command pasa el valor del slider a la def
-#slider.place(relx=0.5, rely=0.5, anchor="center")
-
-## --------------- ENTRY TEXT (escribir texto)
-#entry = CTkEntry (master=app, placeholder_text="Start typing...", width=300, text_color="#FFCC70")
-#entry.place(relx=0.5, rely=0.5, anchor="center")
-
-## --------------- TEXTBOX (escribir texto)
-#textbox = CTkTextbox (master=app, scrollbar_button_color="#FFCC70", corner_radius=16,
-                      #border_color="#FFCC70", border_width=2)
-#textbox.place(relx=0.5, rely=0.5, anchor="center")
-
-
-
-

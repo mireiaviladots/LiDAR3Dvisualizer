@@ -6,7 +6,7 @@ class PointCloudApp(CTk):
         super().__init__()
 
         self.title("Point Cloud Viewer")
-        self.configure(bg="#1E1E1E")  # Dark background
+        self.configure(bg="#1E1E1E")
 
         # Create a main frame that contains two subframes
         main_frame = CTkFrame(self, fg_color="#1E1E1E")
