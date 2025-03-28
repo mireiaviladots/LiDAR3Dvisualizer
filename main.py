@@ -104,12 +104,24 @@ class PointCloudApp(CTk):
         btn_menu = CTkButton(menu_frame, text="Open ...", command=toggle_menu, fg_color="#3E3E3E")
         btn_menu.pack(pady=(5, 0))
 
+        def load_point_cloud_and_toggle():
+            self.load_point_cloud()
+            toggle_menu()
+
+        def process_n42_files_and_toggle():
+            self.process_n42_files()
+            toggle_menu()
+
+        def load_xml_metadata_and_toggle():
+            self.load_xml_metadata()
+            toggle_menu()
+
         self.btn_open_pc = CTkButton(menu_frame, text="Point Cloud", text_color="#2E2E2E", fg_color="#F0F0F0",
-                                border_color="#6E6E6E", border_width=1, font=("Arial", 12), command=self.load_point_cloud)
+                                border_color="#6E6E6E", border_width=1, font=("Arial", 12), command=load_point_cloud_and_toggle)
         self.btn_open_csv = CTkButton(menu_frame, text="N42 File", text_color="#2E2E2E", fg_color="#F0F0F0",
-                                border_color="#6E6E6E", border_width=2, font=("Arial", 12), command=self.process_n42_files)
+                                border_color="#6E6E6E", border_width=2, font=("Arial", 12), command=process_n42_files_and_toggle)
         self.btn_open_xml = CTkButton(menu_frame, text="XML", text_color="#2E2E2E", fg_color="#F0F0F0",
-                                border_color="#6E6E6E", border_width=1, font=("Arial", 12), command=self.load_xml_metadata)
+                                border_color="#6E6E6E", border_width=1, font=("Arial", 12), command=load_xml_metadata_and_toggle)
 
         # Downsample
         downsample_frame = CTkFrame(left_frame, fg_color="#2E2E2E", corner_radius=0)
@@ -174,20 +186,6 @@ class PointCloudApp(CTk):
         label_point_size.pack(side="left", padx=(10, 5))
         self.point_size_entry.pack(side="left", padx=(0, 5))
 
-        # Dosis Elevation
-        dosis_elevation_frame = CTkFrame(parameters_frame, fg_color="#2E2E2E", corner_radius=0)
-        dosis_elevation_frame.pack(fill="x", padx=(10, 10), pady=(5, 0))
-        label_dosis_elevation = CTkLabel(dosis_elevation_frame, text="Dosis Elevation:", text_color="#F0F0F0", font=("Arial", 12))
-        label_dosis_elevation.pack(side="left", padx=(10, 5))
-
-        def update_slider_label(value):
-            slider_label.configure(text=f"{value:.2f}", font=("Arial", 12))
-
-        self.dosis_slider = CTkSlider(dosis_elevation_frame, from_=-100, to=100, command=update_slider_label)
-        self.dosis_slider.pack(side="left", padx=(0, 5))
-        slider_label = CTkLabel(dosis_elevation_frame, text="0.00", text_color="#F0F0F0")
-        slider_label.pack(side="left", padx=(0, 5))
-
         # Voxelizer
         voxelizer_frame = CTkFrame(parameters_frame, fg_color="#252525", corner_radius=0)
         voxelizer_frame.pack(fill="x", padx=(10, 10), pady=(5, 0))
@@ -243,6 +241,22 @@ class PointCloudApp(CTk):
         self.dose_layer_switch = CTkSwitch(dose_layer_frame, text="", command=self.toggle_dose_layer, state='disabled')
         self.dose_layer_switch.pack(expand=True, anchor="center", pady=(0, 0))
 
+        # Dosis Elevation
+        dosis_elevation_frame = CTkFrame(dose_layer_frame, fg_color="#2E2E2E", corner_radius=0)
+        dosis_elevation_frame.pack(fill="x", pady=(5, 0), anchor="center")
+        label_dosis_elevation = CTkLabel(dosis_elevation_frame, text="Dose Elevation:", text_color="#F0F0F0",
+                                         font=("Arial", 12))
+        label_dosis_elevation.pack(side="left", padx=(10, 5))
+
+        def update_slider_label(value):
+            slider_label.configure(text=f"{value:.2f}", font=("Arial", 12))
+
+        self.dosis_slider = CTkSlider(dosis_elevation_frame, from_=-100, to=100, command=update_slider_label, state="disabled")
+        self.dosis_slider.set(1)
+        self.dosis_slider.pack(side="left", padx=(0, 5))
+        slider_label = CTkLabel(dosis_elevation_frame, text="1.00", text_color="#F0F0F0")
+        slider_label.pack(side="left", padx=(0, 5))
+
         dose_sections_frame = CTkFrame(dose_layer_frame, fg_color="#2E2E2E", corner_radius=0)
         dose_sections_frame.pack(fill="x", pady=(5, 0), anchor="center")
 
@@ -254,49 +268,49 @@ class PointCloudApp(CTk):
         # High Dose
         label_high_dose = CTkLabel(dose_sections_frame, text="High Dose:", text_color="#F0F0F0", font=("Arial", 12))
         label_high_dose.grid(row=0, column=0, padx=(10, 5), sticky="ew")
-        self.high_dose_cb = CTkComboBox(dose_sections_frame, values=self.color_options, font=("Arial", 12), state="disabled")
+        self.high_dose_cb = CTkComboBox(dose_sections_frame, values=self.color_options, font=("Arial", 12), width=90, state="disabled")
         self.high_dose_cb.set("red")
         self.high_dose_cb.grid(row=0, column=1, padx=(0, 5), sticky="ew")
         self.high_dose_rgb = np.array(mcolors.to_rgb("red"))
         label_min = CTkLabel(dose_sections_frame, text="Min:", text_color="#F0F0F0", font=("Arial", 12))
         label_min.grid(row=0, column=2, padx=(0, 5), sticky="ew")
-        self.high_dose_min = CTkEntry(dose_sections_frame, width=30, font=("Arial", 11), textvariable=self.high_min_medium_max, state="disabled")
+        self.high_dose_min = CTkEntry(dose_sections_frame, width=50, font=("Arial", 11), textvariable=self.high_min_medium_max, state="disabled")
         self.high_dose_min.grid(row=0, column=3, padx=(0, 5), sticky="ew")
         label_max = CTkLabel(dose_sections_frame, text="Max:", text_color="#F0F0F0", font=("Arial", 12))
         label_max.grid(row=0, column=4, padx=(0, 5), sticky="ew")
-        self.high_dose_max = CTkEntry(dose_sections_frame, width=30, font=("Arial", 11), state="disabled")
+        self.high_dose_max = CTkEntry(dose_sections_frame, width=50, font=("Arial", 11), state="disabled")
         self.high_dose_max.grid(row=0, column=5, padx=(0, 5), sticky="ew")
 
         # Medium Dose
         label_medium_dose = CTkLabel(dose_sections_frame, text="Medium Dose:", text_color="#F0F0F0", font=("Arial", 12))
         label_medium_dose.grid(row=1, column=0, padx=(10, 5), sticky="ew")
-        self.medium_dose_cb = CTkComboBox(dose_sections_frame, values=self.color_options, font=("Arial", 12), state="disabled")
+        self.medium_dose_cb = CTkComboBox(dose_sections_frame, values=self.color_options, font=("Arial", 12), width=90, state="disabled")
         self.medium_dose_cb.set("yellow")
         self.medium_dose_cb.grid(row=1, column=1, padx=(0, 5), sticky="ew")
         self.medium_dose_rgb = np.array(mcolors.to_rgb("yellow"))
         label_min_medium = CTkLabel(dose_sections_frame, text="Min:", text_color="#F0F0F0", font=("Arial", 12))
         label_min_medium.grid(row=1, column=2, padx=(0, 5), sticky="ew")
-        self.medium_dose_min = CTkEntry(dose_sections_frame, width=30, font=("Arial", 11), textvariable=self.medium_min_low_max, state="disabled")
+        self.medium_dose_min = CTkEntry(dose_sections_frame, width=50, font=("Arial", 11), textvariable=self.medium_min_low_max, state="disabled")
         self.medium_dose_min.grid(row=1, column=3, padx=(0, 5), sticky="ew")
         label_max_medium = CTkLabel(dose_sections_frame, text="Max:", text_color="#F0F0F0", font=("Arial", 12))
         label_max_medium.grid(row=1, column=4, padx=(0, 5), sticky="ew")
-        self.medium_dose_max = CTkEntry(dose_sections_frame, width=30, font=("Arial", 11), textvariable=self.high_min_medium_max, state="disabled")
+        self.medium_dose_max = CTkEntry(dose_sections_frame, width=50, font=("Arial", 11), textvariable=self.high_min_medium_max, state="disabled")
         self.medium_dose_max.grid(row=1, column=5, padx=(0, 5), sticky="ew")
 
         # Low Dose
         label_low_dose = CTkLabel(dose_sections_frame, text="Low Dose:", text_color="#F0F0F0", font=("Arial", 12))
         label_low_dose.grid(row=2, column=0, padx=(10, 5), sticky="ew")
-        self.low_dose_cb = CTkComboBox(dose_sections_frame, values=self.color_options, font=("Arial", 12), state="disabled")
+        self.low_dose_cb = CTkComboBox(dose_sections_frame, values=self.color_options, font=("Arial", 12), width=90, state="disabled")
         self.low_dose_cb.set("green")
         self.low_dose_cb.grid(row=2, column=1, padx=(0, 5), sticky="ew")
         self.low_dose_rgb = np.array(mcolors.to_rgb("green"))
         label_min_low = CTkLabel(dose_sections_frame, text="Min:", text_color="#F0F0F0", font=("Arial", 12))
         label_min_low.grid(row=2, column=2, padx=(0, 5), sticky="ew")
-        self.low_dose_min = CTkEntry(dose_sections_frame, width=30, font=("Arial", 11), state="disabled")
+        self.low_dose_min = CTkEntry(dose_sections_frame, width=50, font=("Arial", 11), state="disabled")
         self.low_dose_min.grid(row=2, column=3, padx=(0, 5), sticky="ew")
         label_max_low = CTkLabel(dose_sections_frame, text="Max:", text_color="#F0F0F0", font=("Arial", 12))
         label_max_low.grid(row=2, column=4, padx=(0, 5), sticky="ew")
-        self.low_dose_max = CTkEntry(dose_sections_frame, width=30, font=("Arial", 11), textvariable=self.medium_min_low_max, state="disabled")
+        self.low_dose_max = CTkEntry(dose_sections_frame, width=50, font=("Arial", 11), textvariable=self.medium_min_low_max, state="disabled")
         self.low_dose_max.grid(row=2, column=5, padx=(0, 5), sticky="ew")
 
         # Source
@@ -356,6 +370,9 @@ class PointCloudApp(CTk):
         # Ensure the window is maximized
         self.after(0, lambda: self.wm_state('zoomed'))
 
+    def show_dose_layer_message(self):
+        messagebox.showinfo("Information", "Please select a N42 file.")
+
     def toggle_dose_layer(self):
         if self.dose_layer_switch.get() == 1:
             self.show_dose_layer = True
@@ -366,6 +383,7 @@ class PointCloudApp(CTk):
             self.low_dose_cb.configure(state="normal")
             self.medium_dose_cb.configure(state="normal")
             self.high_dose_cb.configure(state="normal")
+            self.dosis_slider.configure(state="normal")
             if not self.low_dose_cb.get():
                 self.low_dose_cb.set("green")
                 self.high_dose_cb.set("red")
@@ -383,6 +401,7 @@ class PointCloudApp(CTk):
             self.low_dose_cb.configure(state="disabled")
             self.medium_dose_cb.configure(state="disabled")
             self.high_dose_cb.configure(state="disabled")
+            self.dosis_slider.configure(state="disabled")
 
     def toggle_source(self):
         if self.show_source_switch.get() == 1:
@@ -806,7 +825,7 @@ class PointCloudApp(CTk):
         self.high_dose_max.configure(state="disabled")
 
         self.dose_layer_switch.configure(state="normal")
-
+        
         #print('****END PROGRAM *****')
 
     def find_radioactive_source(self):
