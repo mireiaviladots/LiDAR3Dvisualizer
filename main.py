@@ -5,7 +5,6 @@ from pyproj import Proj
 from scipy.spatial import cKDTree
 from pathlib import Path
 from customtkinter import *
-from PIL import Image, ImageTk
 from tkinter import filedialog, messagebox
 import multiprocessing
 import xml.etree.ElementTree as ET
@@ -19,6 +18,7 @@ import math
 import utm
 import random
 import ctypes
+
 
 class PointCloudApp(CTk):
     def __init__(self):
@@ -62,31 +62,14 @@ class PointCloudApp(CTk):
         self.left_frame_width = False
         self.title_bar_height = False
 
-        # Create a main frame that contains two subframes
-        main_frame = CTkFrame(self, fg_color="#1E1E1E")
-        main_frame.pack(fill="both", expand=True)
-
-        # Configure grid layout for main_frame
-        main_frame.grid_columnconfigure(0, weight=1)  # Left frame (1/3)
-        main_frame.grid_columnconfigure(1, weight=4)  # Right frame (2/3)
-        main_frame.grid_rowconfigure(0, weight=1)
-
         # Frame izquierdo
-        self.left_frame = CTkFrame(main_frame, fg_color="#2E2E2E", corner_radius=0)
-        self.left_frame.grid(row=0, column=0, sticky="nsew")
+        self.left_frame_width = 370
+        screen_height = self.winfo_screenheight()
+        self.geometry(f"{self.left_frame_width}x{screen_height}+0+0")
+        self.left_frame = CTkFrame(self, fg_color="#2E2E2E", corner_radius=0, width=self.left_frame_width,
+                                   height=screen_height)
+        self.left_frame.pack(side="left", fill="y", expand=True)
         self.left_frame.pack_propagate(False)
-
-        # Frame derecho (blanco)
-        self.right_frame = CTkFrame(main_frame, fg_color="white", corner_radius=0)
-        self.right_frame.grid(row=0, column=1, sticky="nsew")
-
-        # Logo
-        #logo_image = Image.open('logo.png')
-        #logo_image = logo_image.resize((1000, 1000))
-        #logo_image = ImageTk.PhotoImage(logo_image)
-        #logo_label = CTkLabel(right_frame, image=logo_image, text="")
-        #logo_label.image = logo_image
-        #logo_label.place(relx=0.5, rely=0.5, anchor="center")
 
         # Frame para los botones del menú
         menu_frame = CTkFrame(self.left_frame, fg_color="#2E2E2E", corner_radius=0)
@@ -123,11 +106,14 @@ class PointCloudApp(CTk):
             toggle_menu()
 
         self.btn_open_pc = CTkButton(menu_frame, text="Point Cloud", text_color="#2E2E2E", fg_color="#F0F0F0",
-                                border_color="#6E6E6E", border_width=1, font=("Arial", 12), command=load_point_cloud_and_toggle)
+                                     border_color="#6E6E6E", border_width=1, font=("Arial", 12),
+                                     command=load_point_cloud_and_toggle)
         self.btn_open_csv = CTkButton(menu_frame, text="N42 File", text_color="#2E2E2E", fg_color="#F0F0F0",
-                                border_color="#6E6E6E", border_width=2, font=("Arial", 12), command=process_n42_files_and_toggle)
+                                      border_color="#6E6E6E", border_width=2, font=("Arial", 12),
+                                      command=process_n42_files_and_toggle)
         self.btn_open_xml = CTkButton(menu_frame, text="XML", text_color="#2E2E2E", fg_color="#F0F0F0",
-                                border_color="#6E6E6E", border_width=1, font=("Arial", 12), command=load_xml_metadata_and_toggle)
+                                      border_color="#6E6E6E", border_width=1, font=("Arial", 12),
+                                      command=load_xml_metadata_and_toggle)
 
         # Downsample
         downsample_frame = CTkFrame(self.left_frame, fg_color="#2E2E2E", corner_radius=0)
@@ -202,7 +188,8 @@ class PointCloudApp(CTk):
         label_voxelizer = CTkLabel(voxelizer_frame, text="Voxelizer:", text_color="#F0F0F0", font=("Arial", 12))
         label_voxelizer.grid(row=0, column=1, padx=(10, 5), pady=(5, 0), sticky="e")
         self.voxelizer_var = BooleanVar()
-        self.voxelizer_switch = CTkSwitch(voxelizer_frame, variable=self.voxelizer_var, command=self.toggle_voxel_size, text="", state="disabled")
+        self.voxelizer_switch = CTkSwitch(voxelizer_frame, variable=self.voxelizer_var, command=self.toggle_voxel_size,
+                                          text="", state="disabled")
         self.voxelizer_switch.grid(row=0, column=2, padx=(0, 5), pady=(5, 0), sticky="w")
         voxelizerSize_frame = CTkFrame(parameters_frame, fg_color="#1E1E1E", corner_radius=0)
         voxelizerSize_frame.pack(fill="x", padx=(10, 10), pady=(0, 0))
@@ -257,7 +244,8 @@ class PointCloudApp(CTk):
         def update_slider_label(value):
             slider_label.configure(text=f"{value:.2f}", font=("Arial", 12))
 
-        self.dosis_slider = CTkSlider(dosis_elevation_frame, from_=-100, to=100, command=update_slider_label, state="disabled")
+        self.dosis_slider = CTkSlider(dosis_elevation_frame, from_=-100, to=100, command=update_slider_label,
+                                      state="disabled")
         self.dosis_slider.set(1)
         self.dosis_slider.pack(side="left", padx=(0, 5))
         slider_label = CTkLabel(dosis_elevation_frame, text="1.00", text_color="#F0F0F0")
@@ -274,13 +262,15 @@ class PointCloudApp(CTk):
         # High Dose
         label_high_dose = CTkLabel(dose_sections_frame, text="High Dose:", text_color="#F0F0F0", font=("Arial", 12))
         label_high_dose.grid(row=0, column=0, padx=(10, 5), sticky="ew")
-        self.high_dose_cb = CTkComboBox(dose_sections_frame, values=self.color_options, font=("Arial", 12), width=90, state="disabled")
+        self.high_dose_cb = CTkComboBox(dose_sections_frame, values=self.color_options, font=("Arial", 12), width=90,
+                                        state="disabled")
         self.high_dose_cb.set("red")
         self.high_dose_cb.grid(row=0, column=1, padx=(0, 5), sticky="ew")
         self.high_dose_rgb = np.array(mcolors.to_rgb("red"))
         label_min = CTkLabel(dose_sections_frame, text="Min:", text_color="#F0F0F0", font=("Arial", 12))
         label_min.grid(row=0, column=2, padx=(0, 5), sticky="ew")
-        self.high_dose_min = CTkEntry(dose_sections_frame, width=50, font=("Arial", 11), textvariable=self.high_min_medium_max, state="disabled")
+        self.high_dose_min = CTkEntry(dose_sections_frame, width=50, font=("Arial", 11),
+                                      textvariable=self.high_min_medium_max, state="disabled")
         self.high_dose_min.grid(row=0, column=3, padx=(0, 5), sticky="ew")
         label_max = CTkLabel(dose_sections_frame, text="Max:", text_color="#F0F0F0", font=("Arial", 12))
         label_max.grid(row=0, column=4, padx=(0, 5), sticky="ew")
@@ -290,23 +280,27 @@ class PointCloudApp(CTk):
         # Medium Dose
         label_medium_dose = CTkLabel(dose_sections_frame, text="Medium Dose:", text_color="#F0F0F0", font=("Arial", 12))
         label_medium_dose.grid(row=1, column=0, padx=(10, 5), sticky="ew")
-        self.medium_dose_cb = CTkComboBox(dose_sections_frame, values=self.color_options, font=("Arial", 12), width=90, state="disabled")
+        self.medium_dose_cb = CTkComboBox(dose_sections_frame, values=self.color_options, font=("Arial", 12), width=90,
+                                          state="disabled")
         self.medium_dose_cb.set("yellow")
         self.medium_dose_cb.grid(row=1, column=1, padx=(0, 5), sticky="ew")
         self.medium_dose_rgb = np.array(mcolors.to_rgb("yellow"))
         label_min_medium = CTkLabel(dose_sections_frame, text="Min:", text_color="#F0F0F0", font=("Arial", 12))
         label_min_medium.grid(row=1, column=2, padx=(0, 5), sticky="ew")
-        self.medium_dose_min = CTkEntry(dose_sections_frame, width=50, font=("Arial", 11), textvariable=self.medium_min_low_max, state="disabled")
+        self.medium_dose_min = CTkEntry(dose_sections_frame, width=50, font=("Arial", 11),
+                                        textvariable=self.medium_min_low_max, state="disabled")
         self.medium_dose_min.grid(row=1, column=3, padx=(0, 5), sticky="ew")
         label_max_medium = CTkLabel(dose_sections_frame, text="Max:", text_color="#F0F0F0", font=("Arial", 12))
         label_max_medium.grid(row=1, column=4, padx=(0, 5), sticky="ew")
-        self.medium_dose_max = CTkEntry(dose_sections_frame, width=50, font=("Arial", 11), textvariable=self.high_min_medium_max, state="disabled")
+        self.medium_dose_max = CTkEntry(dose_sections_frame, width=50, font=("Arial", 11),
+                                        textvariable=self.high_min_medium_max, state="disabled")
         self.medium_dose_max.grid(row=1, column=5, padx=(0, 5), sticky="ew")
 
         # Low Dose
         label_low_dose = CTkLabel(dose_sections_frame, text="Low Dose:", text_color="#F0F0F0", font=("Arial", 12))
         label_low_dose.grid(row=2, column=0, padx=(10, 5), sticky="ew")
-        self.low_dose_cb = CTkComboBox(dose_sections_frame, values=self.color_options, font=("Arial", 12), width=90, state="disabled")
+        self.low_dose_cb = CTkComboBox(dose_sections_frame, values=self.color_options, font=("Arial", 12), width=90,
+                                       state="disabled")
         self.low_dose_cb.set("green")
         self.low_dose_cb.grid(row=2, column=1, padx=(0, 5), sticky="ew")
         self.low_dose_rgb = np.array(mcolors.to_rgb("green"))
@@ -316,14 +310,15 @@ class PointCloudApp(CTk):
         self.low_dose_min.grid(row=2, column=3, padx=(0, 5), sticky="ew")
         label_max_low = CTkLabel(dose_sections_frame, text="Max:", text_color="#F0F0F0", font=("Arial", 12))
         label_max_low.grid(row=2, column=4, padx=(0, 5), sticky="ew")
-        self.low_dose_max = CTkEntry(dose_sections_frame, width=50, font=("Arial", 11), textvariable=self.medium_min_low_max, state="disabled")
+        self.low_dose_max = CTkEntry(dose_sections_frame, width=50, font=("Arial", 11),
+                                     textvariable=self.medium_min_low_max, state="disabled")
         self.low_dose_max.grid(row=2, column=5, padx=(0, 5), sticky="ew")
 
         # Source
         source_frame = CTkFrame(dose_layer_frame, fg_color="#2E2E2E", corner_radius=0)
         source_frame.pack(fill="x", pady=(5, 0))
         self.btn_find_source = CTkButton(source_frame, text="Find Radioactive Source", fg_color="#3E3E3E",
-                                       text_color="#F0F0F0", font=("Arial", 12), command=self.find_radioactive_source)
+                                         text_color="#F0F0F0", font=("Arial", 12), command=self.find_radioactive_source)
         self.btn_find_source.grid(row=0, column=0, padx=(10, 5), pady=(5, 0), sticky="w")
         show_source_label = CTkLabel(source_frame, text="Show Source on Map:", text_color="#F0F0F0", font=("Arial", 12))
         show_source_label.grid(row=0, column=1, padx=(10, 5), pady=(5, 0), sticky="w")
@@ -358,23 +353,27 @@ class PointCloudApp(CTk):
         extra_computations_frame = CTkFrame(self.left_frame, fg_color="#2E2E2E", corner_radius=0)
 
         self.btn_heatmap = CTkButton(extra_computations_frame, text="Heatmap H*(10) rate", fg_color="#3E3E3E",
-                            text_color="#F0F0F0", font=("Arial", 12), command=self.plot_heatmap)
+                                     text_color="#F0F0F0", font=("Arial", 12), command=self.plot_heatmap)
         self.btn_heatmap.pack(fill="x", padx=(80, 80), pady=(5, 0))
-        self.btn_three_colors = CTkButton(extra_computations_frame, text="Heatmap with Three Color Range", fg_color="#3E3E3E",
-                            text_color="#F0F0F0", font=("Arial", 12), command=self.plot_three_color_heatmap)
+        self.btn_three_colors = CTkButton(extra_computations_frame, text="Heatmap with Three Color Range",
+                                          fg_color="#3E3E3E",
+                                          text_color="#F0F0F0", font=("Arial", 12),
+                                          command=self.plot_three_color_heatmap)
         self.btn_three_colors.pack(fill="x", padx=(80, 80), pady=(5, 0))
-        self.btn_convert_pcd_to_dat = CTkButton(extra_computations_frame, text="3D grid from PCD", fg_color="#3E3E3E", text_color="#F0F0F0",
-                            font=("Arial", 12), command=self.set_run_prueba_flag)
+        self.btn_convert_pcd_to_dat = CTkButton(extra_computations_frame, text="3D grid from PCD", fg_color="#3E3E3E",
+                                                text_color="#F0F0F0",
+                                                font=("Arial", 12), command=self.set_run_prueba_flag)
         self.btn_convert_pcd_to_dat.pack(fill="x", padx=(80, 80), pady=(5, 0))
 
         # Visualize
         self.btn_visualize = CTkButton(self.left_frame, text="Visualize", text_color="#F0F0F0", fg_color="#1E3A5F",
-                                     hover_color="#2E4A7F",
-                                     anchor="center", corner_radius=0, border_color="#D3D3D3", border_width=2, command=self.visualize)
+                                       hover_color="#2E4A7F",
+                                       anchor="center", corner_radius=0, border_color="#D3D3D3", border_width=2,
+                                       command=self.visualize)
         self.btn_visualize.pack(side="bottom", padx=(0, 0), pady=(10, 25))
 
         # Ensure the window is maximized
-        self.after(0, lambda: self.wm_state('zoomed'))
+        # self.after(0, lambda: self.wm_state('zoomed'))
 
     def show_dose_layer_message(self):
         messagebox.showinfo("Information", "Please select a N42 file.")
@@ -444,33 +443,33 @@ class PointCloudApp(CTk):
             self.pc_filepath = filepath
             print("Point Cloud Selected:", self.pc_filepath)
             self.point_size_entry.configure(state="normal")
-            self.point_size_entry.insert(0,2)
+            self.point_size_entry.insert(0, 2)
             self.voxelizer_switch.configure(state="normal")
 
-    #def load_csv_dosis(self):
-        #filepath = filedialog.askopenfilename(filetypes=[("CSV Files", "*.csv")])
-        #if filepath:
-            #self.csv_filepath = filepath
-            #print("CSV Selected:", self.csv_filepath)
-            #dosis_values = np.genfromtxt(filepath, delimiter=',', skip_header=1)[:, 2]
-            #self.dose_min_csv, self.dose_max_csv = np.min(dosis_values), np.max(dosis_values)
-            #print(f"Dosis Range: Min={self.dose_min_csv}, Max={self.dose_max_csv}")
+    # def load_csv_dosis(self):
+    # filepath = filedialog.askopenfilename(filetypes=[("CSV Files", "*.csv")])
+    # if filepath:
+    # self.csv_filepath = filepath
+    # print("CSV Selected:", self.csv_filepath)
+    # dosis_values = np.genfromtxt(filepath, delimiter=',', skip_header=1)[:, 2]
+    # self.dose_min_csv, self.dose_max_csv = np.min(dosis_values), np.max(dosis_values)
+    # print(f"Dosis Range: Min={self.dose_min_csv}, Max={self.dose_max_csv}")
 
-            # Asignar valores a los campos de Min y Max y deshabilitarlos
-            #self.low_dose_min.configure(state="normal")
-            #self.low_dose_min.delete(0, "end")
-            #self.low_dose_min.insert(0, str(self.dose_min_csv))
-            #self.low_dose_min.configure(state="disabled")
+    # Asignar valores a los campos de Min y Max y deshabilitarlos
+    # self.low_dose_min.configure(state="normal")
+    # self.low_dose_min.delete(0, "end")
+    # self.low_dose_min.insert(0, str(self.dose_min_csv))
+    # self.low_dose_min.configure(state="disabled")
 
-            #self.high_dose_max.configure(state="normal")
-            #self.high_dose_max.delete(0, "end")
-            #self.high_dose_max.insert(0, str(self.dose_max_csv))
-            #self.high_dose_max.configure(state="disabled")
+    # self.high_dose_max.configure(state="normal")
+    # self.high_dose_max.delete(0, "end")
+    # self.high_dose_max.insert(0, str(self.dose_max_csv))
+    # self.high_dose_max.configure(state="disabled")
 
-            #self.low_dose_max.configure(state="normal")
-            #self.medium_dose_min.configure(state="normal")
-            #self.medium_dose_max.configure(state="normal")
-            #self.high_dose_min.configure(state="normal")
+    # self.low_dose_max.configure(state="normal")
+    # self.medium_dose_min.configure(state="normal")
+    # self.medium_dose_max.configure(state="normal")
+    # self.high_dose_min.configure(state="normal")
 
     def load_xml_metadata(self):
         filepath = filedialog.askopenfilename(filetypes=[("XML Files", "*.xml")])
@@ -523,7 +522,8 @@ class PointCloudApp(CTk):
 
         sys.path.insert(0, pathN42)
 
-        os.chdir(pathN42)  # Change according to where  are the *.42 files for calculations, i.e., just rebinned or rebinned and summed
+        os.chdir(
+            pathN42)  # Change according to where  are the *.42 files for calculations, i.e., just rebinned or rebinned and summed
         listOfFiles = os.listdir(pathN42)
 
         # If the program is in the same directory than the data .n42 uncomment the following line and comment lines 80-82
@@ -532,7 +532,7 @@ class PointCloudApp(CTk):
         f_name = fnmatch.filter(listOfFiles, '*.n42')
 
         # print head of output.dat file
-        #print('Meas_number ', 'Dose_(nGy/h) ', 'H*(10)_nSv/h ', 'H*(10)_1m_(nSv/h) ', 'MMGC ', 'uMMGC ')
+        # print('Meas_number ', 'Dose_(nGy/h) ', 'H*(10)_nSv/h ', 'H*(10)_1m_(nSv/h) ', 'MMGC ', 'uMMGC ')
 
         # loop for each *.n42 spectrum
         cont = 0
@@ -666,13 +666,13 @@ class PointCloudApp(CTk):
             H10_conv_1m = H10_conv_meas * math.exp(0.008 * (FAltitude - 1))
             MMGC = (float(low_ROI) - R * float(high_ROI)) / float(LTime)
             u_MMGC = ((float(low_ROI)) / (float(LTime)) ** 2 + ((float(R) / float(LTime)) ** 2) * (float(high_ROI)) + (
-                        (float(high_ROI) / float(LTime)) ** 2) * (0.05 * float(R)) ** 2) ** 0.5
+                    (float(high_ROI) / float(LTime)) ** 2) * (0.05 * float(R)) ** 2) ** 0.5
             Dose_conv_meas = "%.2f" % Dose_conv_meas
             H10_conv_meas = "%.2f" % H10_conv_meas
             H10_conv_1m = "%.2f" % H10_conv_1m
             MMGC = "%.2f" % MMGC
             u_MMGC = "%.2f" % u_MMGC
-            #print(cont, file, Dose_conv_meas, H10_conv_meas, H10_conv_1m, MMGC, u_MMGC)
+            # print(cont, file, Dose_conv_meas, H10_conv_meas, H10_conv_1m, MMGC, u_MMGC)
 
             # u_eff de acuerod con los coeficientes másicos attenuacion del aire con densidad de 1.2E-03 g/cm3
             #     u_eff_conv = 0.1344*(662)**(-0.4227)
@@ -707,7 +707,7 @@ class PointCloudApp(CTk):
 
             # tranform x,y
             x0, y0, zone_number, zone_letter = utm.from_latlon(FLatitude, FLongitude, )
-            #print('center projection in utm (meters): ', x0, y0)
+            # print('center projection in utm (meters): ', x0, y0)
 
             self.xcenter[cont] = x0
             self.ycenter[cont] = y0
@@ -740,9 +740,9 @@ class PointCloudApp(CTk):
         self.latmax = self.latmax + 50
 
         # Verifica si hay NaN en los datos
-        #print(type(xcenter))
-        #print(type(ycenter))
-        #print(type(Hcenter))
+        # print(type(xcenter))
+        # print(type(ycenter))
+        # print(type(Hcenter))
 
         self.xcenter = np.array(self.xcenter, dtype=float)
         self.ycenter = np.array(self.ycenter, dtype=float)
@@ -754,17 +754,17 @@ class PointCloudApp(CTk):
         self.Hcenter = np.array([float(i) for i in self.Hcenter if str(i).replace('.', '', 1).isdigit()])
         FAltcenter = np.array([float(i) for i in FAltcenter if str(i).replace('.', '', 1).isdigit()])
 
-        #print('latmin, latmax,lonmin, lonmax: ', latmin, latmax, lonmin, lonmax)
-        #print('minx,maxx,miny,maxy', min(xcenter), max(xcenter), min(ycenter), max(ycenter))
-        #print('minAlt,maxAlt: ', min(FAltcenter), max(FAltcenter))
-        #print('minH*(10),maxH*(10): ', min(Hcenter), max(Hcenter))
+        # print('latmin, latmax,lonmin, lonmax: ', latmin, latmax, lonmin, lonmax)
+        # print('minx,maxx,miny,maxy', min(xcenter), max(xcenter), min(ycenter), max(ycenter))
+        # print('minAlt,maxAlt: ', min(FAltcenter), max(FAltcenter))
+        # print('minH*(10),maxH*(10): ', min(Hcenter), max(Hcenter))
 
-        #print(np.isnan(xcenter).any())  # True si hay algún NaN en x
-        #print(np.isnan(ycenter).any())  # True si hay algún NaN en y
-        #print(np.isnan(Hcenter).any())  # True si hay algún NaN en Hmax
+        # print(np.isnan(xcenter).any())  # True si hay algún NaN en x
+        # print(np.isnan(ycenter).any())  # True si hay algún NaN en y
+        # print(np.isnan(Hcenter).any())  # True si hay algún NaN en Hmax
 
-        #print(len(xcenter), len(ycenter), len(Hcenter))
-        #print(xcenter.shape, ycenter.shape, Hcenter.shape)
+        # print(len(xcenter), len(ycenter), len(Hcenter))
+        # print(xcenter.shape, ycenter.shape, Hcenter.shape)
 
         # Encuentra el valor máximo en Hcenter
         max_value = max(self.Hcenter)
@@ -809,15 +809,14 @@ class PointCloudApp(CTk):
                 for j in range(xmesh.shape[1]):
                     writer.writerow([xmesh[i, j], ymesh[i, j], self.heatmap[i, j]])
 
-
-        #print('------------------------------------', '\n')
-        #print('Total number of analysed spectra : ', cont, '\n')
+        # print('------------------------------------', '\n')
+        # print('Total number of analysed spectra : ', cont, '\n')
 
         # Procesar el CSV existente
         dosis_values = np.genfromtxt(self.csv_filepath, delimiter=',', skip_header=1, usecols=2)
         dosis_values = dosis_values[~np.isnan(dosis_values)]  # Eliminar NaN
         self.dose_min_csv, self.dose_max_csv = np.min(dosis_values), np.max(dosis_values)
-        #print(f"Dosis Range: Min={self.dose_min_csv}, Max={self.dose_max_csv}")
+        # print(f"Dosis Range: Min={self.dose_min_csv}, Max={self.dose_max_csv}")
 
         # Asignar valores a los campos de Min y Max y deshabilitarlos
         self.low_dose_min.configure(state="normal")
@@ -831,8 +830,8 @@ class PointCloudApp(CTk):
         self.high_dose_max.configure(state="disabled")
 
         self.dose_layer_switch.configure(state="normal")
-        
-        #print('****END PROGRAM *****')
+
+        # print('****END PROGRAM *****')
 
     def find_radioactive_source(self):
         if not self.csv_filepath:
@@ -846,7 +845,8 @@ class PointCloudApp(CTk):
         source_location = ga.run()
         self.source_location = source_location
         print(f"Estimated source location: Easting = {source_location[0]}, Northing = {source_location[1]}")
-        messagebox.showinfo("Source Location", f"Estimated source location: Easting = {source_location[0]}, Northing = {source_location[1]}")
+        messagebox.showinfo("Source Location",
+                            f"Estimated source location: Easting = {source_location[0]}, Northing = {source_location[1]}")
         if self.dose_layer_switch.get() == 1:
             self.show_source_switch.configure(state="normal")
 
@@ -854,7 +854,7 @@ class PointCloudApp(CTk):
         # Ensure the necessary data is available
         if not hasattr(self, 'heatmap') or self.heatmap is None or not hasattr(self,
                                                                                'xcenter') or self.xcenter is None or not hasattr(
-                self, 'ycenter') or self.ycenter is None or not hasattr(self, 'Hcenter') or self.Hcenter is None:
+            self, 'ycenter') or self.ycenter is None or not hasattr(self, 'Hcenter') or self.Hcenter is None:
             messagebox.showerror("Error", "Please process the N42 files first.")
             return
 
@@ -888,7 +888,7 @@ class PointCloudApp(CTk):
         # Ensure the necessary data is available
         if not hasattr(self, 'heatmap') or self.heatmap is None or not hasattr(self,
                                                                                'xcenter') or self.xcenter is None or not hasattr(
-                self, 'ycenter') or self.ycenter is None or not hasattr(self, 'Hcenter') or self.Hcenter is None:
+            self, 'ycenter') or self.ycenter is None or not hasattr(self, 'Hcenter') or self.Hcenter is None:
             messagebox.showerror("Error", "Please process the N42 files first.")
             return
 
@@ -987,7 +987,7 @@ class PointCloudApp(CTk):
 
         if use_voxelization:
             if vox_size_str == "":
-                self.vox_size_entry.insert(0,2)
+                self.vox_size_entry.insert(0, 2)
         else:
             if point_size_str == "":
                 self.point_size_entry.insert(0, 2)
@@ -1023,8 +1023,8 @@ class PointCloudApp(CTk):
 
         self.run_prueba = False
 
-        self.right_frame_width = self.right_frame.winfo_width()
-        self.right_frame_height = self.right_frame.winfo_height()
+        self.right_frame_width = self.winfo_screenwidth() - self.left_frame_width
+        self.right_frame_height = self.left_frame.winfo_height()
 
         self.left_frame_width = self.left_frame.winfo_width()
 
@@ -1034,12 +1034,15 @@ class PointCloudApp(CTk):
         # Crear un proceso separado para la visualización
         process = multiprocessing.Process(target=run_visualizer,
                                           args=(
-                                          self.pc_filepath, self.csv_filepath, self.xml_filepath, use_voxelization,
-                                          self.point_size, self.vox_size, self.altura_extra,
-                                          self.high_dose_rgb, self.medium_dose_rgb, self.low_dose_rgb,
-                                          self.dose_min_csv, self.low_max, self.medium_min, self.medium_max, self.high_min, self.high_max,
-                                          self.show_dose_layer, self.downsample, self.source_location, self.show_source, self.run_prueba,
-                                          self.right_frame_width, self.right_frame_height, self.left_frame_width, self.title_bar_height))
+                                              self.pc_filepath, self.csv_filepath, self.xml_filepath, use_voxelization,
+                                              self.point_size, self.vox_size, self.altura_extra,
+                                              self.high_dose_rgb, self.medium_dose_rgb, self.low_dose_rgb,
+                                              self.dose_min_csv, self.low_max, self.medium_min, self.medium_max,
+                                              self.high_min, self.high_max,
+                                              self.show_dose_layer, self.downsample, self.source_location,
+                                              self.show_source, self.run_prueba,
+                                              self.right_frame_width, self.right_frame_height, self.left_frame_width,
+                                              self.title_bar_height))
         process.start()
 
     def validate_dose_ranges(self):
@@ -1060,7 +1063,8 @@ class PointCloudApp(CTk):
 
         if not (
                 self.dose_min_csv <= self.low_max <= self.medium_min <= self.medium_max <= self.high_min <= self.dose_max_csv):
-            messagebox.showerror("Error", "Dose ranges are not logical. Ensure: min < low_max < medium_min < medium_max < high_min < max.")
+            messagebox.showerror("Error",
+                                 "Dose ranges are not logical. Ensure: min < low_max < medium_min < medium_max < high_min < max.")
             raise ValueError("Dose ranges are not logical.")
 
     def convert_to_utm(self, csv_filepath):
@@ -1093,7 +1097,8 @@ class PointCloudApp(CTk):
 
         return utm_coords
 
-    def get_dose_color(self, dosis_nube, high_dose_rgb, medium_dose_rgb, low_dose_rgb, dose_min_csv, low_max, medium_min, medium_max, high_min):
+    def get_dose_color(self, dosis_nube, high_dose_rgb, medium_dose_rgb, low_dose_rgb, dose_min_csv, low_max,
+                       medium_min, medium_max, high_min):
         """ Asigna colores a los puntos según la dosis usando los valores actualizados. """
 
         colores_dosis = np.zeros((len(dosis_nube), 3))
@@ -1177,7 +1182,8 @@ class PointCloudApp(CTk):
                 dosis_nube = np.full(len(puntos_dentro), np.nan)
 
                 # Encontrar el punto más cercano en el CSV para cada punto de la nube LAS (que está dentro)
-                distancias, indices_mas_cercanos = tree.query(puntos_dentro[:, :2])  # Devuelve distancia entre punto CSV y punto cloud; para cada nube_puntos[i] índice del punto del csv mas cercano
+                distancias, indices_mas_cercanos = tree.query(puntos_dentro[:,
+                                                              :2])  # Devuelve distancia entre punto CSV y punto cloud; para cada nube_puntos[i] índice del punto del csv mas cercano
 
                 # Asignar dosis correspondiente a los puntos dentro del área
                 dosis_nube[:] = dosis[indices_mas_cercanos]  # Dosis para cada punto en la nube
@@ -1203,7 +1209,10 @@ class PointCloudApp(CTk):
 
             if self.vis is None:
                 self.vis = o3d.visualization.Visualizer()
-                self.vis.create_window(window_name='Open3D', width=self.right_frame_width, height=self.right_frame_height, left=self.left_frame_width, top=self.title_bar_height)
+
+                self.vis.create_window(window_name='Open3D', width=self.winfo_screenwidth() + 100,
+                                       height=self.right_frame_height, left=self.left_frame_width,
+                                       top=self.title_bar_height)
 
             self.vis.clear_geometries()  # Ahora estamos seguros de que self.vis no es None
             self.vis.add_geometry(pcd)
@@ -1211,7 +1220,8 @@ class PointCloudApp(CTk):
                 self.vis.add_geometry(pcd_dosis)
 
             if self.show_dose_layer and self.show_source and self.source_location is not None:
-                source_point = np.array([self.source_location[0], self.source_location[1], np.max(puntos_dosis_elevados[:, 2])])
+                source_point = np.array(
+                    [self.source_location[0], self.source_location[1], np.max(puntos_dosis_elevados[:, 2])])
                 sphere = o3d.geometry.TriangleMesh.create_sphere(radius=1)  # Create a sphere with a radius of 5
                 sphere.translate(source_point)  # Move the sphere to the source location
                 sphere.paint_uniform_color([0, 0, 0])
@@ -1255,19 +1265,19 @@ class PointCloudApp(CTk):
         # Creating the voxel grid
         voxel_grid = o3d.geometry.VoxelGrid.create_from_point_cloud(pcd, voxel_size=vsize)
 
-        #Extracting the bounds
-        bounds = voxel_grid.get_max_bound()-voxel_grid.get_min_bound()
-                #o3d.visualization.draw_geometries([voxel_grid])
+        # Extracting the bounds
+        bounds = voxel_grid.get_max_bound() - voxel_grid.get_min_bound()
+        # o3d.visualization.draw_geometries([voxel_grid])
 
         # Generating a single box entity
         cube = o3d.geometry.TriangleMesh.create_box(width=1, height=1, depth=1)
-        cube.paint_uniform_color([1,0,0])   # Red
+        cube.paint_uniform_color([1, 0, 0])  # Red
         cube.compute_vertex_normals()
-                #o3d.visualization.draw_geometries([cube])
+        # o3d.visualization.draw_geometries([cube])
 
         # Automate and Loop to cerate one voxel Dataset (efficient)
-        voxels = voxel_grid.get_voxels() # Cada voxel con su grid index (posicion desde el centro, 0) y color, hay que hacer offset y translate
-        vox_mesh = o3d.geometry.TriangleMesh() # Creamos un mesh para ir colocando cada voxel
+        voxels = voxel_grid.get_voxels()  # Cada voxel con su grid index (posicion desde el centro, 0) y color, hay que hacer offset y translate
+        vox_mesh = o3d.geometry.TriangleMesh()  # Creamos un mesh para ir colocando cada voxel
 
         for v in voxels:
             cube = o3d.geometry.TriangleMesh.create_box(width=1, height=1, depth=1)
@@ -1287,7 +1297,6 @@ class PointCloudApp(CTk):
         # Export
         output_file = Path("voxelize.ply")  # Puntos --> .las / Malla --> .obj, .ply
         o3d.io.write_triangle_mesh(str(output_file), vox_mesh)
-
 
         if self.show_dose_layer:
             utm_coords = np.genfromtxt(self.csv_filepath, delimiter=',', skip_header=1)
@@ -1314,7 +1323,8 @@ class PointCloudApp(CTk):
             dosis_nube = np.full(len(puntos_dentro), np.nan)
 
             # Encontrar el punto más cercano en el CSV para cada punto de la nube LAS (que está dentro)
-            distancias, indices_mas_cercanos = tree.query(puntos_dentro[:, :2])  # Devuelve distancia entre punto CSV y punto cloud; para cada nube_puntos[i] índice del punto del csv mas cercano
+            distancias, indices_mas_cercanos = tree.query(puntos_dentro[:,
+                                                          :2])  # Devuelve distancia entre punto CSV y punto cloud; para cada nube_puntos[i] índice del punto del csv mas cercano
 
             # Asignar dosis correspondiente a los puntos dentro del área
             dosis_nube[:] = dosis[indices_mas_cercanos]  # Dosis para cada punto en la nube
@@ -1367,7 +1377,8 @@ class PointCloudApp(CTk):
             self.vis.add_geometry(vox_mesh_dosis)
 
         if self.show_dose_layer and self.show_source and self.source_location is not None:
-            source_point = np.array([[self.source_location[0], self.source_location[1], np.max(puntos_dosis_elevados[:, 2])]])
+            source_point = np.array(
+                [[self.source_location[0], self.source_location[1], np.max(puntos_dosis_elevados[:, 2])]])
             source_pcd = o3d.geometry.PointCloud()
             source_pcd.points = o3d.utility.Vector3dVector(source_point)
             source_pcd.paint_uniform_color([0, 0, 0])  # Color negro para el punto de la fuente
@@ -1391,14 +1402,14 @@ class PointCloudApp(CTk):
 
         # Procesar los datos sin necesidad de guardarlos en un archivo
 
-        #output_dat_file = Path(self.pc_filepath).with_name('output_Guadalajara.dat')
+        # output_dat_file = Path(self.pc_filepath).with_name('output_Guadalajara.dat')
         ## Open the output file in append mode
-        #with open(output_dat_file, 'a') as f:
-            ## Write header if the file does not exist
-            #f.write("X Y Z Red Green Blue\n")
+        # with open(output_dat_file, 'a') as f:
+        ## Write header if the file does not exist
+        # f.write("X Y Z Red Green Blue\n")
 
-            ## Write the point data to the file
-            #np.savetxt(f, nube_puntos, fmt="%f", delimiter=" ")
+        ## Write the point data to the file
+        # np.savetxt(f, nube_puntos, fmt="%f", delimiter=" ")
 
         # Determinar los límites de los datos
         min_x, min_y = np.min(points[:, :2], axis=0)
@@ -1624,31 +1635,37 @@ class PointCloudApp(CTk):
         except Exception as e:
             messagebox.showerror("Error", f"An error occurred: {e}")
 
+
 # Algoritmo genético para encontrar la ubicación de una fuente radiactiva
 class GeneticAlgorithm:
     def __init__(self, utm_coords, population_size=500, generations=100, mutation_rate=0.01):
         self.utm_coords = utm_coords
-        self.population_size = population_size  #Define el tamaño de la población
-        self.generations = generations          #Define el número de generaciones
-        self.mutation_rate = mutation_rate      #Define la tasa de mutación
-        self.bounds = self.get_bounds()         #Obtiene los límites de las coordenadas UTM
+        self.population_size = population_size  # Define el tamaño de la población
+        self.generations = generations  # Define el número de generaciones
+        self.mutation_rate = mutation_rate  # Define la tasa de mutación
+        self.bounds = self.get_bounds()  # Obtiene los límites de las coordenadas UTM
 
-    def get_bounds(self):  #Obtiene los límites de las coordenadas UTM
+    def get_bounds(self):  # Obtiene los límites de las coordenadas UTM
         x_min, y_min = np.min(self.utm_coords[:, :2], axis=0)
         x_max, y_max = np.max(self.utm_coords[:, :2], axis=0)
         return (x_min, x_max), (y_min, y_max)
 
-    def fitness(self, candidate): #Función de aptitud para evaluar la dosis en un punto candidato
+    def fitness(self, candidate):  # Función de aptitud para evaluar la dosis en un punto candidato
         tree = cKDTree(self.utm_coords[:, :2])
-        dist, idx = tree.query(candidate)   #Encuentra el punto más cercano en la nube de puntos a la ubicación candidata, devuelve la distancia y el índice del punto
-        return -self.utm_coords[idx, 2]  #Dosis negativa porque queremos maximizar (no minimizar), el algoritmo maximiza la dosis porque minimiza el valor negativo (nos quedamos con el mas negativo que corresponde al valor de dosis mas alto cambiado de signo).
+        dist, idx = tree.query(
+            candidate)  # Encuentra el punto más cercano en la nube de puntos a la ubicación candidata, devuelve la distancia y el índice del punto
+        return -self.utm_coords[
+            idx, 2]  # Dosis negativa porque queremos maximizar (no minimizar), el algoritmo maximiza la dosis porque minimiza el valor negativo (nos quedamos con el mas negativo que corresponde al valor de dosis mas alto cambiado de signo).
 
-    def initialize_population(self): #Genera la población inicial de posibles candidatos, tantos como el tamaño de la población establecido
+    def initialize_population(
+            self):  # Genera la población inicial de posibles candidatos, tantos como el tamaño de la población establecido
         (x_min, x_max), (y_min, y_max) = self.bounds
-        return np.array([[random.uniform(x_min, x_max), random.uniform(y_min, y_max)] for _ in range(self.population_size)])
+        return np.array(
+            [[random.uniform(x_min, x_max), random.uniform(y_min, y_max)] for _ in range(self.population_size)])
 
     def select_parents(self, population, fitnesses):
-        idx = np.random.choice(np.arange(self.population_size), size=self.population_size, replace=True, p=fitnesses/fitnesses.sum()) #candidates with higher fitness values have a higher chance of being selected
+        idx = np.random.choice(np.arange(self.population_size), size=self.population_size, replace=True,
+                               p=fitnesses / fitnesses.sum())  # candidates with higher fitness values have a higher chance of being selected
         return population[idx]
 
     def crossover(self, parent1, parent2):
@@ -1670,7 +1687,7 @@ class GeneticAlgorithm:
             parents = self.select_parents(population, fitnesses)
             next_population = []
             for i in range(0, self.population_size, 2):
-                parent1, parent2 = parents[i], parents[i+1]
+                parent1, parent2 = parents[i], parents[i + 1]
                 child1, child2 = self.crossover(parent1, parent2), self.crossover(parent2, parent1)
                 next_population.append(self.mutate(child1))
                 next_population.append(self.mutate(child2))
@@ -1678,7 +1695,11 @@ class GeneticAlgorithm:
         best_candidate = population[np.argmax(fitnesses)]
         return best_candidate
 
-def run_visualizer(pc_filepath, csv_filepath, xml_filepath, use_voxelization, point_size, vox_size, altura_extra, high_dose_rgb, medium_dose_rgb, low_dose_rgb, dose_min_csv, low_max, medium_min, medium_max, high_min, high_max, show_dose_layer, downsample, source_location, show_source, run_prueba, right_frame_width, right_frame_height, left_frame_width, title_bar_height):
+
+def run_visualizer(pc_filepath, csv_filepath, xml_filepath, use_voxelization, point_size, vox_size, altura_extra,
+                   high_dose_rgb, medium_dose_rgb, low_dose_rgb, dose_min_csv, low_max, medium_min, medium_max,
+                   high_min, high_max, show_dose_layer, downsample, source_location, show_source, run_prueba,
+                   right_frame_width, right_frame_height, left_frame_width, title_bar_height):
     """Ejecuta Open3D Visualizer en un proceso separado con la opción de voxelizar o no."""
     app = PointCloudApp()  # Instanciar la clase principal para acceder a sus métodos
     app.pc_filepath = pc_filepath  # Asignar el archivo de la nube de puntos
@@ -1716,6 +1737,7 @@ def run_visualizer(pc_filepath, csv_filepath, xml_filepath, use_voxelization, po
         else:
             print("No voxelization applied")
             app.process()
+
 
 if __name__ == "__main__":
     pointCloud_app = PointCloudApp()
