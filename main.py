@@ -1369,7 +1369,9 @@ class PointCloudApp(CTk):
 
         if self.vis is None:
             self.vis = o3d.visualization.Visualizer()
-            self.vis.create_window()
+            self.vis.create_window(window_name='Open3D', width=self.winfo_screenwidth() + 100,
+                                   height=self.right_frame_height, left=self.left_frame_width,
+                                   top=self.title_bar_height)
 
         self.vis.clear_geometries()
         self.vis.add_geometry(vox_mesh)
@@ -1549,6 +1551,14 @@ class PointCloudApp(CTk):
             messagebox.showwarning("Warning", "Please select a Point Cloud.")
             return
 
+        self.right_frame_width = self.winfo_screenwidth() - self.left_frame_width
+        self.right_frame_height = self.left_frame.winfo_height()
+
+        self.left_frame_width = self.left_frame.winfo_width()
+
+        user32 = ctypes.windll.user32
+        self.title_bar_height = user32.GetSystemMetrics(4)
+
         self.run_prueba = True
         process = multiprocessing.Process(target=run_visualizer,
                                           args=(
@@ -1558,7 +1568,9 @@ class PointCloudApp(CTk):
                                               self.dose_min_csv, self.low_max, self.medium_min, self.medium_max,
                                               self.high_min, self.high_max,
                                               self.show_dose_layer, self.downsample, self.source_location,
-                                              self.show_source, self.run_prueba))
+                                              self.show_source, self.run_prueba,
+                                              self.right_frame_width, self.right_frame_height, self.left_frame_width,
+                                              self.title_bar_height))
         process.start()
 
     def prueba(self):
@@ -1630,7 +1642,15 @@ class PointCloudApp(CTk):
                 combined_mesh += prism
 
             # Visualize the combined mesh
-            o3d.visualization.draw_geometries([combined_mesh])
+            if self.vis is None:
+                self.vis = o3d.visualization.Visualizer()
+                self.vis.create_window(window_name='Open3D', width=self.winfo_screenwidth() + 100,
+                                       height=self.right_frame_height, left=self.left_frame_width,
+                                       top=self.title_bar_height)
+
+            self.vis.clear_geometries()
+            self.vis.add_geometry(combined_mesh)
+            self.vis.run()
 
         except Exception as e:
             messagebox.showerror("Error", f"An error occurred: {e}")
