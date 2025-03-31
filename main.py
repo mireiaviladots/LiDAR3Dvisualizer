@@ -174,7 +174,7 @@ class PointCloudApp(CTk):
         point_size_frame = CTkFrame(parameters_frame, fg_color="#2E2E2E", corner_radius=0)
         point_size_frame.pack(fill="x", padx=(10, 10), pady=(0, 0))
         label_point_size = CTkLabel(point_size_frame, text="Point Size:", text_color="#F0F0F0", font=("Arial", 12))
-        self.point_size_entry = CTkEntry(point_size_frame, width=50, font=("Arial", 12))
+        self.point_size_entry = CTkEntry(point_size_frame, width=50, font=("Arial", 12), state="disabled")
         label_point_size.pack(side="left", padx=(10, 5))
         self.point_size_entry.pack(side="left", padx=(0, 5))
 
@@ -231,8 +231,18 @@ class PointCloudApp(CTk):
         # Dose Layer
         dose_layer_frame = CTkFrame(self.left_frame, fg_color="#2E2E2E", corner_radius=0)
 
-        self.dose_layer_switch = CTkSwitch(dose_layer_frame, text="", command=self.toggle_dose_layer, state='disabled')
-        self.dose_layer_switch.pack(expand=True, anchor="center", pady=(0, 0))
+        yes_no_frame = CTkFrame(dose_layer_frame, fg_color="#2E2E2E", corner_radius=0)
+        yes_no_frame.pack(pady=(5, 0), anchor="center")
+
+        label_no = CTkLabel(yes_no_frame, text="No", text_color="#F0F0F0", font=("Arial", 12))
+        label_no.pack(side="left", padx=(5, 5))  # Reducido el espacio después de "No"
+
+        self.dose_layer_switch = CTkSwitch(yes_no_frame, text="", command=self.toggle_dose_layer, state='disabled',
+                                           width=36, height=18)
+        self.dose_layer_switch.pack(side="left", padx=(5, 2))  # Menos espacio entre switch y "Yes"
+
+        label_yes = CTkLabel(yes_no_frame, text="Yes", text_color="#F0F0F0", font=("Arial", 12))
+        label_yes.pack(side="left", padx=(2, 5))  # Reducido el espacio antes de "Yes"
 
         # Dosis Elevation
         dosis_elevation_frame = CTkFrame(dose_layer_frame, fg_color="#2E2E2E", corner_radius=0)
@@ -397,8 +407,6 @@ class PointCloudApp(CTk):
                 self.show_source_switch.configure(state="normal")
         else:
             self.show_dose_layer = False
-            self.show_source_switch.configure(state="disabled")
-            self.show_source_switch.deselect()
             self.low_dose_max.configure(state="disabled")
             self.medium_dose_min.configure(state="disabled")
             self.medium_dose_max.configure(state="disabled")
@@ -406,7 +414,6 @@ class PointCloudApp(CTk):
             self.low_dose_cb.configure(state="disabled")
             self.medium_dose_cb.configure(state="disabled")
             self.high_dose_cb.configure(state="disabled")
-            self.dosis_slider.configure(state="disabled")
 
     def toggle_source(self):
         if self.show_source_switch.get() == 1:
@@ -829,6 +836,19 @@ class PointCloudApp(CTk):
         self.high_dose_max.insert(0, str(self.dose_max_csv))
         self.high_dose_max.configure(state="disabled")
 
+        resta = self.dose_max_csv - self.dose_min_csv
+        ranges = resta/3
+
+        self.low_dose_max.configure(state="normal")
+        self.low_dose_max.delete(0, "end")
+        self.low_dose_max.insert(0, f"{ranges + self.dose_min_csv:.2f}")
+        self.low_dose_max.configure(state="disabled")
+
+        self.medium_dose_max.configure(state="normal")
+        self.medium_dose_max.delete(0, "end")
+        self.medium_dose_max.insert(0, f"{(2 * ranges) + self.dose_min_csv:.2f}")
+        self.medium_dose_max.configure(state="disabled")
+
         self.dose_layer_switch.configure(state="normal")
 
         # print('****END PROGRAM *****')
@@ -847,8 +867,7 @@ class PointCloudApp(CTk):
         print(f"Estimated source location: Easting = {source_location[0]}, Northing = {source_location[1]}")
         messagebox.showinfo("Source Location",
                             f"Estimated source location: Easting = {source_location[0]}, Northing = {source_location[1]}")
-        if self.dose_layer_switch.get() == 1:
-            self.show_source_switch.configure(state="normal")
+        self.show_source_switch.configure(state="normal")
 
     def plot_heatmap(self):
         # Ensure the necessary data is available
