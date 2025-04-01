@@ -18,7 +18,7 @@ import math
 import utm
 import random
 import ctypes
-
+import threading
 
 class PointCloudApp(CTk):
     def __init__(self):
@@ -381,9 +381,6 @@ class PointCloudApp(CTk):
                                        anchor="center", corner_radius=0, border_color="#D3D3D3", border_width=2,
                                        command=self.visualize)
         self.btn_visualize.pack(side="bottom", padx=(0, 0), pady=(10, 25))
-
-        # Ensure the window is maximized
-        # self.after(0, lambda: self.wm_state('zoomed'))
 
     def show_dose_layer_message(self):
         messagebox.showinfo("Information", "Please select a N42 file.")
@@ -976,7 +973,6 @@ class PointCloudApp(CTk):
         plt.show()
 
     def visualize(self):
-        """Ejecuta Open3D en un proceso separado sin bloquear la GUI."""
         if not self.pc_filepath:
             messagebox.showwarning("Warning", "Please select a Point Cloud.")
             return
@@ -997,7 +993,6 @@ class PointCloudApp(CTk):
         else:
             self.downsample = None
 
-        # Obtener el estado del switch (1 si está marcado, 0 si no)
         use_voxelization = self.voxelizer_switch.get() == 1
 
         point_size_str = self.point_size_entry.get().strip()
@@ -1011,26 +1006,24 @@ class PointCloudApp(CTk):
             if point_size_str == "":
                 self.point_size_entry.insert(0, 2)
 
-        # Verificar si está vacío y usar el valor predeterminado
         if point_size_str == "":
-            self.point_size = 2  # Valor predeterminado
+            self.point_size = 2
         else:
             self.point_size = float(point_size_str)
             if self.point_size <= 0:
                 raise ValueError("Point size must be positive.")
 
         if vox_size_str == "":
-            self.vox_size = 2  # Valor predeterminado para el tamaño de voxel
+            self.vox_size = 2
         else:
             self.vox_size = float(vox_size_str)
             if self.vox_size <= 0:
                 raise ValueError("Voxel size must be positive.")
 
         if self.show_dose_layer:
-            # Obtener los colores de las dosis seleccionadas
-            high_dose_color = self.high_dose_cb.get()  # El color seleccionado para dosis alta
-            medium_dose_color = self.medium_dose_cb.get()  # El color seleccionado para dosis media
-            low_dose_color = self.low_dose_cb.get()  # El color seleccionado para dosis baja
+            high_dose_color = self.high_dose_cb.get()
+            medium_dose_color = self.medium_dose_cb.get()
+            low_dose_color = self.low_dose_cb.get()
 
             self.high_dose_rgb = np.array(mcolors.to_rgb(high_dose_color))
             self.medium_dose_rgb = np.array(mcolors.to_rgb(medium_dose_color))
@@ -1050,19 +1043,18 @@ class PointCloudApp(CTk):
         user32 = ctypes.windll.user32
         self.title_bar_height = user32.GetSystemMetrics(4)
 
-        # Crear un proceso separado para la visualización
-        process = multiprocessing.Process(target=run_visualizer,
-                                          args=(
-                                              self.pc_filepath, self.csv_filepath, self.xml_filepath, use_voxelization,
-                                              self.point_size, self.vox_size, self.altura_extra,
-                                              self.high_dose_rgb, self.medium_dose_rgb, self.low_dose_rgb,
-                                              self.dose_min_csv, self.low_max, self.medium_min, self.medium_max,
-                                              self.high_min, self.high_max,
-                                              self.show_dose_layer, self.downsample, self.source_location,
-                                              self.show_source, self.run_prueba,
-                                              self.right_frame_width, self.right_frame_height, self.left_frame_width,
-                                              self.title_bar_height))
-        process.start()
+        # Create a separate thread for the visualization
+        thread = threading.Thread(target=run_visualizer,
+                                  args=(self.pc_filepath, self.csv_filepath, self.xml_filepath, use_voxelization,
+                                        self.point_size, self.vox_size, self.altura_extra,
+                                        self.high_dose_rgb, self.medium_dose_rgb, self.low_dose_rgb,
+                                        self.dose_min_csv, self.low_max, self.medium_min, self.medium_max,
+                                        self.high_min, self.high_max,
+                                        self.show_dose_layer, self.downsample, self.source_location,
+                                        self.show_source, self.run_prueba,
+                                        self.right_frame_width, self.right_frame_height, self.left_frame_width,
+                                        self.title_bar_height))
+        thread.start()
 
     def validate_dose_ranges(self):
         """
@@ -1229,7 +1221,7 @@ class PointCloudApp(CTk):
             if self.vis is None:
                 self.vis = o3d.visualization.Visualizer()
 
-                self.vis.create_window(window_name='Open3D', width=self.winfo_screenwidth() + 100,
+                self.vis.create_window(window_name='Open3D', width=self.winfo_screenwidth(),
                                        height=self.right_frame_height, left=self.left_frame_width,
                                        top=self.title_bar_height)
 
@@ -1388,7 +1380,7 @@ class PointCloudApp(CTk):
 
         if self.vis is None:
             self.vis = o3d.visualization.Visualizer()
-            self.vis.create_window(window_name='Open3D', width=self.winfo_screenwidth() + 100,
+            self.vis.create_window(window_name='Open3D', width=self.winfo_screenwidth(),
                                    height=self.right_frame_height, left=self.left_frame_width,
                                    top=self.title_bar_height)
 
