@@ -168,7 +168,11 @@ def mostrar_nube_no_vox(show_dose_layer, pc_filepath, downsample, xml_filepath, 
             render_option = vis.get_render_option()
             render_option.point_size = point_size
 
-            vis.run()
+            while True:
+                vis.poll_events()
+                vis.update_renderer()
+
+            vis.destroy_window()
 
         except Exception as e:
             messagebox.showerror("Error", f"An error occurred: {e}")
