@@ -327,11 +327,17 @@ def load_point_cloud():
         root.point_size_entry.insert(0, 2)
         root.voxelizer_switch.configure(state="normal")
 
+def load_xml_metadata():
+    global xml_filepath
+    xml_filepath = filedialog.askopenfilename(filetypes=[("XML Files", "*.xml")])
+    if xml_filepath:
+        print("XML Selected:", xml_filepath)
+
 def process_n42_files():
-    global dose_min_csv, dose_max_csv
-    folder_path = filedialog.askdirectory(title="Select Folder with .n42 Files")
-    pathN42 = folder_path
-    pathN42mod = os.path.join(folder_path)
+    global dose_min_csv, dose_max_csv, csv_filepath
+    csv_filepath = filedialog.askdirectory(title="Select Folder with .n42 Files")
+    pathN42 = csv_filepath
+    pathN42mod = os.path.join(csv_filepath)
 
     # Internal_background. This should be determined in a ultra low bagcgroundo facility like the UDOII facility at PTB
     Dose_int = 0.0
@@ -392,10 +398,10 @@ def process_n42_files():
         os.chdir(pathN42)
         f = open(file, "r")
         tree = ET.parse(file)
-        root = tree.getroot()
+        roots = tree.getroot()
 
         # Read Start Date Time, LiveTime, DeadTime, ChannelData
-        for each in root.findall('.//RadMeasurement'):
+        for each in roots.findall('.//RadMeasurement'):
             # read LiveTime
             rating = each.find('.//LiveTimeDuration')
             LiveTime = rating.text
@@ -425,7 +431,7 @@ def process_n42_files():
         #         print('number of channels = ',n_channels)
 
         # Read Energy calibration
-        for each in root.findall('.//EnergyCalibration'):
+        for each in roots.findall('.//EnergyCalibration'):
             rating = each.find('.//CoefficientValues')
             Ecal = rating.text
             #    print('energy_CoefficientValues = ',Ecal)
@@ -437,7 +443,7 @@ def process_n42_files():
         #         float_coeff[1]=float_coeff[1]*1461./1480.
 
         # Read altitude a.g.l.
-        for each in root.findall('.//GeographicPoint'):
+        for each in roots.findall('.//GeographicPoint'):
             rating = each.find('.//ElevationValue')
             Altitude = rating.text
             #         print('Altitude = ',Altitude)
@@ -513,26 +519,26 @@ def process_n42_files():
         u_MMGC = "%.2f" % u_MMGC
         # print(cont, file, Dose_conv_meas, H10_conv_meas, H10_conv_1m, MMGC, u_MMGC)
 
-        for dose in root.iter('DoseRateValue'):
+        for dose in roots.iter('DoseRateValue'):
             # giving the value.
             dose.text = str(Dose_conv_meas)
             # dose.set('unit','nGy/h')
 
-        for Ader in root.iter('AmbientDoseEquivalentRateValue'):
+        for Ader in roots.iter('AmbientDoseEquivalentRateValue'):
             # giving the value.
             Ader.text = str(H10_conv_meas)
         #       Ader.set('unit','nSv/h')
 
-        for Ader1m in root.iter('AmbientDoseEquivalentRateValue_1m'):
+        for Ader1m in roots.iter('AmbientDoseEquivalentRateValue_1m'):
             # giving the value.
             Ader1m.text = str(H10_conv_1m)
         #       dose.set('unit','nSv/h')
 
-        for Man_Made in root.iter('MMGC'):
+        for Man_Made in roots.iter('MMGC'):
             # giving the value.
             Man_Made.text = str(MMGC)
 
-        for uMan_Made in root.iter('uncertainty_MMGC'):
+        for uMan_Made in roots.iter('uncertainty_MMGC'):
             # giving the value.
             uMan_Made.text = str(u_MMGC)
 
@@ -692,8 +698,8 @@ def get_origin_from_xml(xml_filepath):
     """Extrae el origen georeferenciado del archivo metadatos.xml."""
     try:
         tree = ET.parse(xml_filepath)
-        root = tree.getroot()
-        srs_origin = root.find("SRSOrigin")
+        roots = tree.getroot()
+        srs_origin = roots.find("SRSOrigin")
 
         if srs_origin is None or not srs_origin.text:
             print("Error: No se encontró la etiqueta <SRSOrigin> en el XML.")
@@ -915,7 +921,7 @@ def set_run_prueba_flag(self):
     #######################hacer prueba
 
 def visualize(pc_filepath, csv_filepath, xml_filepath, show_dose_layer, dose_min_csv, dose_max_csv):
-    global altura_extra, point_size, vox_size, high_dose_rgb, medium_dose_rgb, low_dose_rgb, vis
+    global altura_extra, point_size, vox_size, high_dose_rgb, medium_dose_rgb, low_dose_rgb, vis, downsample
     if not pc_filepath:
         messagebox.showwarning("Warning", "Please select a Point Cloud.")
         return
@@ -969,6 +975,11 @@ def visualize(pc_filepath, csv_filepath, xml_filepath, show_dose_layer, dose_min
         high_dose_rgb = None
         medium_dose_rgb = None
         low_dose_rgb = None
+
+    if root.downsample_entry.get().strip():
+        downsample = float(root.downsample_entry.get().strip())
+    else:
+        downsample = None
 
     if use_voxelization:
         mostrar_nube_si_vox(show_dose_layer, pc_filepath, xml_filepath, csv_filepath, high_dose_rgb, medium_dose_rgb, low_dose_rgb, dose_min_csv, low_max,
@@ -1026,7 +1037,7 @@ def process_n42_files_and_toggle():
 
 
 def load_xml_metadata_and_toggle():
-    root.load_xml_metadata()
+    load_xml_metadata()
     toggle_menu()
 
 
