@@ -56,30 +56,23 @@ left_frame_width = False
 title_bar_height = False
 
 def mostrar_nube_no_vox(show_dose_layer, pc_filepath, downsample, xml_filepath, csv_filepath, high_dose_rgb, medium_dose_rgb,
-            low_dose_rgb, dose_min_csv, low_max, medium_min, medium_max, high_min, altura_extra, vis, show_source, source_location, point_size):
-
+                        low_dose_rgb, dose_min_csv, low_max, medium_min, medium_max, high_min, altura_extra, vis, show_source, source_location, point_size):
     def run():
         try:
             print(f"Show Dose Layer: {show_dose_layer}")
             # Cargar la nube de puntos PCD
             pcd = o3d.io.read_point_cloud(pc_filepath)
 
-            downsample_value = root.downsample_entry.get()
-            if downsample_value:
-                downsample = float(downsample_value)
-            else:
-                downsample = None
-
             # Downsamplear la nube de puntos si se ha especificado un porcentaje
             if downsample is not None:
                 if not (1 <= downsample <= 100):
                     messagebox.showerror("Error", "El valor de downsample debe estar entre 1 y 100.")
                     return
-                downsample = float(downsample) / 100.0
-                if 0 < downsample <= 1:
-                    if downsample == 1:
-                       downsample = 0.99  # Evitar downsamplear a 0
-                    voxel_size = 1 * downsample
+                downsample_value = float(downsample) / 100.0
+                if 0 < downsample_value <= 1:
+                    if downsample_value == 1:
+                        downsample_value = 0.99  # Evitar downsamplear a 0
+                    voxel_size = 1 * downsample_value
                     downsampled_pcd = pcd.voxel_down_sample(voxel_size=voxel_size)
                     pcd = downsampled_pcd
 
@@ -111,8 +104,8 @@ def mostrar_nube_no_vox(show_dose_layer, pc_filepath, downsample, xml_filepath, 
 
                 # Filtrar puntos de la nube dentro del área de dosis
                 dentro_area = (
-                        (geo_points[:, 0] >= x_min) & (geo_points[:, 0] <= x_max) &
-                        (geo_points[:, 1] >= y_min) & (geo_points[:, 1] <= y_max)
+                    (geo_points[:, 0] >= x_min) & (geo_points[:, 0] <= x_max) &
+                    (geo_points[:, 1] >= y_min) & (geo_points[:, 1] <= y_max)
                 )
 
                 # Solo los puntos dentro del área
@@ -122,8 +115,7 @@ def mostrar_nube_no_vox(show_dose_layer, pc_filepath, downsample, xml_filepath, 
                 dosis_nube = np.full(len(puntos_dentro), np.nan)
 
                 # Encontrar el punto más cercano en el CSV para cada punto de la nube LAS (que está dentro)
-                distancias, indices_mas_cercanos = tree.query(puntos_dentro[:,
-                                                              :2])  # Devuelve distancia entre punto CSV y punto cloud; para cada nube_puntos[i] índice del punto del csv mas cercano
+                distancias, indices_mas_cercanos = tree.query(puntos_dentro[:, :2])
 
                 # Asignar dosis correspondiente a los puntos dentro del área
                 dosis_nube[:] = dosis[indices_mas_cercanos]  # Dosis para cada punto en la nube
@@ -132,9 +124,7 @@ def mostrar_nube_no_vox(show_dose_layer, pc_filepath, downsample, xml_filepath, 
                 puntos_dosis_elevados = puntos_dentro[valid_points]
                 dosis_filtrada = dosis_nube[valid_points]
 
-                colores_dosis = get_dose_color(dosis_filtrada, high_dose_rgb, medium_dose_rgb,
-                                                    low_dose_rgb, dose_min_csv, low_max,
-                                                    medium_min, medium_max, high_min)
+                colores_dosis = get_dose_color(dosis_filtrada, high_dose_rgb, medium_dose_rgb, low_dose_rgb, dose_min_csv, low_max, medium_min, medium_max, high_min)
 
                 puntos_dosis_elevados[:, 2] += altura_extra  # Aumentar Z
 
@@ -148,7 +138,6 @@ def mostrar_nube_no_vox(show_dose_layer, pc_filepath, downsample, xml_filepath, 
                 pcd_dosis.colors = o3d.utility.Vector3dVector(colores_dosis)  # Asignar colores según dosis
 
             vis = o3d.visualization.Visualizer()
-
             vis.create_window(window_name='Open3D')
 
             vis.clear_geometries()  # Ahora estamos seguros de que self.vis no es None
@@ -157,8 +146,7 @@ def mostrar_nube_no_vox(show_dose_layer, pc_filepath, downsample, xml_filepath, 
                 vis.add_geometry(pcd_dosis)
 
             if show_dose_layer and show_source and source_location is not None:
-                source_point = np.array(
-                    [source_location[0], source_location[1], np.max(puntos_dosis_elevados[:, 2])])
+                source_point = np.array([[source_location[0], source_location[1], np.max(puntos_dosis_elevados[:, 2])]])
                 sphere = o3d.geometry.TriangleMesh.create_sphere(radius=1)  # Create a sphere with a radius of 5
                 sphere.translate(source_point)  # Move the sphere to the source location
                 sphere.paint_uniform_color([0, 0, 0])
@@ -168,19 +156,16 @@ def mostrar_nube_no_vox(show_dose_layer, pc_filepath, downsample, xml_filepath, 
             render_option = vis.get_render_option()
             render_option.point_size = point_size
 
-            while True:
-                vis.poll_events()
-                vis.update_renderer()
-
-            vis.destroy_window()
+            vis.run()
 
         except Exception as e:
             messagebox.showerror("Error", f"An error occurred: {e}")
 
     threading.Thread(target=run, daemon=True).start()
 
-def mostrar_nube_si_vox():
-    def run(downsample, vis, pc_filepath, csv_filepath, xml_filepath, show_dose_layer, high_dose_rgb, medium_dose_rgb, low_dose_rgb, dose_min_csv, low_max, medium_min, medium_max, high_min, point_size, altura_extra, source_location):
+def mostrar_nube_si_vox(show_dose_layer, pc_filepath, xml_filepath, csv_filepath, high_dose_rgb, medium_dose_rgb, low_dose_rgb, dose_min_csv, low_max,
+            medium_min, medium_max, high_min, altura_extra, vis):
+    def run():
         print(f"Show Dose Layer: {show_dose_layer}")
         pcd = o3d.io.read_point_cloud(pc_filepath)
         xyz = np.asarray(pcd.points)
@@ -311,9 +296,8 @@ def mostrar_nube_si_vox():
             output_file = Path("voxelize_dosis.ply")  # Puntos --> .las / Malla --> .obj, .ply
             o3d.io.write_triangle_mesh(str(output_file), vox_mesh_dosis)
 
-        if vis is None:
-            vis = o3d.visualization.Visualizer()
-            vis.create_window(window_name='Open3D')
+        vis = o3d.visualization.Visualizer()
+        vis.create_window(window_name='Open3D')
 
         vis.clear_geometries()
         vis.add_geometry(vox_mesh)
@@ -987,7 +971,8 @@ def visualize(pc_filepath, csv_filepath, xml_filepath, show_dose_layer, dose_min
         low_dose_rgb = None
 
     if use_voxelization:
-        mostrar_nube_si_vox(downsample, vis, pc_filepath, csv_filepath, xml_filepath, show_dose_layer, high_dose_rgb, medium_dose_rgb, low_dose_rgb, dose_min_csv, low_max, medium_min, medium_max, high_min, point_size, altura_extra, source_location)
+        mostrar_nube_si_vox(show_dose_layer, pc_filepath, xml_filepath, csv_filepath, high_dose_rgb, medium_dose_rgb, low_dose_rgb, dose_min_csv, low_max,
+            medium_min, medium_max, high_min, altura_extra, vis)
     else:
         mostrar_nube_no_vox(show_dose_layer, pc_filepath, downsample, xml_filepath, csv_filepath, high_dose_rgb, medium_dose_rgb,
             low_dose_rgb, dose_min_csv, low_max, medium_min, medium_max, high_min, altura_extra, vis, show_source, source_location, point_size)
