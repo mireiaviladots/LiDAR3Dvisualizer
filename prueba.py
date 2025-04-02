@@ -146,7 +146,7 @@ def mostrar_nube_no_vox(show_dose_layer, pc_filepath, downsample, xml_filepath, 
                 vis.add_geometry(pcd_dosis)
 
             if show_dose_layer and show_source and source_location is not None:
-                source_point = np.array([[source_location[0], source_location[1], np.max(puntos_dosis_elevados[:, 2])]])
+                source_point = [source_location[0], source_location[1], np.max(puntos_dosis_elevados[:, 2])]
                 sphere = o3d.geometry.TriangleMesh.create_sphere(radius=1)  # Create a sphere with a radius of 5
                 sphere.translate(source_point)  # Move the sphere to the source location
                 sphere.paint_uniform_color([0, 0, 0])
@@ -305,8 +305,7 @@ def mostrar_nube_si_vox(show_dose_layer, pc_filepath, xml_filepath, csv_filepath
             vis.add_geometry(vox_mesh_dosis)
 
         if show_dose_layer and show_source and source_location is not None:
-            source_point = np.array(
-                [[source_location[0], source_location[1], np.max(puntos_dosis_elevados[:, 2])]])
+            source_point = [[source_location[0], source_location[1], np.max(puntos_dosis_elevados[:, 2])]]
             source_pcd = o3d.geometry.PointCloud()
             source_pcd.points = o3d.utility.Vector3dVector(source_point)
             source_pcd.paint_uniform_color([0, 0, 0])  # Color negro para el punto de la fuente
@@ -335,9 +334,9 @@ def load_xml_metadata():
 
 def process_n42_files():
     global dose_min_csv, dose_max_csv, csv_filepath
-    csv_filepath = filedialog.askdirectory(title="Select Folder with .n42 Files")
-    pathN42 = csv_filepath
-    pathN42mod = os.path.join(csv_filepath)
+    fp = filedialog.askdirectory(title="Select Folder with .n42 Files")
+    pathN42 = fp
+    pathN42mod = os.path.join(fp)
 
     # Internal_background. This should be determined in a ultra low bagcgroundo facility like the UDOII facility at PTB
     Dose_int = 0.0
@@ -636,7 +635,7 @@ def process_n42_files():
 
     # Write to CSV
     output_filename = "dose_data_pla_20m_2ms.csv"
-    filepath = output_filename
+    csv_filepath = output_filename
     with open(output_filename, mode='w', newline='') as csv_file:
         writer = csv.writer(csv_file)
         writer.writerow(["Latitude", "Longitude", "Dose"])  # Header row
@@ -650,7 +649,7 @@ def process_n42_files():
     # print('Total number of analysed spectra : ', cont, '\n')
 
     # Procesar el CSV existente
-    dosis_values = np.genfromtxt(filepath, delimiter=',', skip_header=1, usecols=2)
+    dosis_values = np.genfromtxt(csv_filepath, delimiter=',', skip_header=1, usecols=2)
     dosis_values = dosis_values[~np.isnan(dosis_values)]  # Eliminar NaN
     dose_min_csv, dose_max_csv = np.min(dosis_values), np.max(dosis_values)
     # print(f"Dosis Range: Min={self.dose_min_csv}, Max={self.dose_max_csv}")
