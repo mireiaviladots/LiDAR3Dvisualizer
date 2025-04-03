@@ -315,6 +315,87 @@ def mostrar_nube_si_vox(show_dose_layer, pc_filepath, xml_filepath, csv_filepath
 
     threading.Thread(target=run, daemon=True).start()
 
+def gridfrompcd(pc_filepath):
+    def run():
+        try:
+            print("Run prueba")
+            # Load the PCD file
+            pcd = o3d.io.read_point_cloud(pc_filepath)
+
+            # Extract point data
+            points = np.asarray(pcd.points)
+            colors = np.asarray(pcd.colors) if pcd.has_colors() else np.zeros_like(points)
+
+            # Determine the bounds of the data
+            min_x, min_y = np.min(points[:, :2], axis=0)
+            max_x, max_y = np.max(points[:, :2], axis=0)
+
+            # Calculate pixel sizes
+            num_pixels_x = 100
+            num_pixels_y = 100
+            delta_x = (max_x - min_x) / num_pixels_x
+            delta_y = (max_y - min_y) / num_pixels_y
+
+            # Initialize structures for statistics
+            z_values = np.full((num_pixels_y, num_pixels_x), np.nan)
+            cell_stats = [[{'z_values': [], 'colors': []} for _ in range(num_pixels_x)] for _ in range(num_pixels_y)]
+
+            # Process the point cloud data to fill Z values and colors
+            for point, color in zip(points, colors):
+                x, y, z = point[:3]
+                x_idx = int((x - min_x) // delta_x)
+                y_idx = int((y - min_y) // delta_y)
+
+                if 0 <= x_idx < num_pixels_x and 0 <= y_idx < num_pixels_y:
+                    cell_stats[y_idx][x_idx]['z_values'].append(z)
+                    cell_stats[y_idx][x_idx]['colors'].append(color)
+
+            # Calculate mean Z values and predominant colors for each cell
+            for i in range(num_pixels_y):
+                for j in range(num_pixels_x):
+                    z_vals = np.array(cell_stats[i][j]['z_values'])
+                    if len(z_vals) > 0:
+                        z_mean = np.mean(z_vals)
+                        z_std = np.std(z_vals)
+
+                        # Filtrar valores atípicos por el criterio z_mean + 2*sigma
+                        filtered_z_vals = z_vals[z_vals <= z_mean + 2 * z_std]
+                        z_values[i, j] = np.mean(filtered_z_vals) + 2 * np.std(filtered_z_vals)
+                        cell_stats[i][j]['color'] = np.mean(cell_stats[i][j]['colors'], axis=0)
+
+            # Create a list to hold all the prisms
+            prisms = []
+
+            # Draw horizontal cells and vertical surfaces
+            for i in range(num_pixels_y):
+                for j in range(num_pixels_x):
+                    if not np.isnan(z_values[i, j]):
+                        z_final = z_values[i, j]
+                        z_min = np.min(cell_stats[i][j]['z_values'])
+                        height = z_final - z_min
+                        if height > 0:
+                            prism = o3d.geometry.TriangleMesh.create_box(width=delta_x, height=delta_y, depth=height)
+                            prism.translate((min_x + j * delta_x, min_y + i * delta_y, z_min))
+                            prism.paint_uniform_color(cell_stats[i][j]['color'])
+                            prisms.append(prism)
+
+            # Combine all prisms into a single mesh
+            combined_mesh = o3d.geometry.TriangleMesh()
+            for prism in prisms:
+                combined_mesh += prism
+
+            vis = o3d.visualization.Visualizer()
+            vis.create_window(window_name='Open3D')
+
+            vis.clear_geometries()
+            vis.add_geometry(combined_mesh)
+            vis.run()
+
+        except Exception as e:
+            messagebox.showerror("Error", f"An error occurred: {e}")
+
+    threading.Thread(target=run, daemon=True).start()
+
 def load_point_cloud():
     global pc_filepath
     root.point_size_entry.delete(0, "end")
@@ -333,7 +414,7 @@ def load_xml_metadata():
         print("XML Selected:", xml_filepath)
 
 def process_n42_files():
-    global dose_min_csv, dose_max_csv, csv_filepath
+    global dose_min_csv, dose_max_csv, csv_filepath, heatmap, xcenter, ycenter, Hcenter, lonmin, lonmax, latmin, latmax
     fp = filedialog.askdirectory(title="Select Folder with .n42 Files")
     pathN42 = fp
     pathN42mod = os.path.join(fp)
@@ -908,16 +989,12 @@ def plot_three_color_heatmap(heatmap, xcenter, ycenter, Hcenter, lonmin, lonmax,
     plt.legend()
     plt.show()
 
-def set_run_prueba_flag(self):
-    if not self.pc_filepath:
+def set_run_prueba_flag(pc_filepath):
+    if not pc_filepath:
         messagebox.showwarning("Warning", "Please select a Point Cloud.")
         return
 
-    user32 = ctypes.windll.user32
-    title_bar_height = user32.GetSystemMetrics(4)
-
-
-    #######################hacer prueba
+    gridfrompcd(pc_filepath)
 
 def visualize(pc_filepath, csv_filepath, xml_filepath, show_dose_layer, dose_min_csv, dose_max_csv):
     global altura_extra, point_size, vox_size, high_dose_rgb, medium_dose_rgb, low_dose_rgb, vis, downsample
@@ -1314,7 +1391,7 @@ root.btn_three_colors = CTkButton(extra_computations_frame, text="Heatmap with T
 root.btn_three_colors.pack(fill="x", padx=(80, 80), pady=(5, 0))
 root.btn_convert_pcd_to_dat = CTkButton(extra_computations_frame, text="3D grid from PCD", fg_color="#3E3E3E",
                                         text_color="#F0F0F0",
-                                        font=("Arial", 12), command=set_run_prueba_flag)
+                                        font=("Arial", 12), command=lambda: set_run_prueba_flag(pc_filepath))
 root.btn_convert_pcd_to_dat.pack(fill="x", padx=(80, 80), pady=(5, 0))
 
 # Visualize
