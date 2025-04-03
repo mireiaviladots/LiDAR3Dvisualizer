@@ -407,9 +407,12 @@ def mostrar_nube_si_vox(show_dose_layer, pc_filepath, xml_filepath, csv_filepath
 
     threading.Thread(target=run, daemon=True).start()
 
-def gridfrompcd(pc_filepath):
+def gridfrompcd(pc_filepath, progress_bar):
     def run():
         try:
+            # Actualizar la barra de progreso
+            update_progress_bar(progress_bar, 10)
+
             print("Run prueba")
             # Load the PCD file
             pcd = o3d.io.read_point_cloud(pc_filepath)
@@ -417,6 +420,9 @@ def gridfrompcd(pc_filepath):
             # Extract point data
             points = np.asarray(pcd.points)
             colors = np.asarray(pcd.colors) if pcd.has_colors() else np.zeros_like(points)
+
+            # Actualizar la barra de progreso
+            update_progress_bar(progress_bar, 20)
 
             # Determine the bounds of the data
             min_x, min_y = np.min(points[:, :2], axis=0)
@@ -432,6 +438,9 @@ def gridfrompcd(pc_filepath):
             z_values = np.full((num_pixels_y, num_pixels_x), np.nan)
             cell_stats = [[{'z_values': [], 'colors': []} for _ in range(num_pixels_x)] for _ in range(num_pixels_y)]
 
+            # Actualizar la barra de progreso
+            update_progress_bar(progress_bar, 40)
+
             # Process the point cloud data to fill Z values and colors
             for point, color in zip(points, colors):
                 x, y, z = point[:3]
@@ -441,6 +450,9 @@ def gridfrompcd(pc_filepath):
                 if 0 <= x_idx < num_pixels_x and 0 <= y_idx < num_pixels_y:
                     cell_stats[y_idx][x_idx]['z_values'].append(z)
                     cell_stats[y_idx][x_idx]['colors'].append(color)
+
+            # Actualizar la barra de progreso
+            update_progress_bar(progress_bar, 60)
 
             # Calculate mean Z values and predominant colors for each cell
             for i in range(num_pixels_y):
@@ -454,6 +466,9 @@ def gridfrompcd(pc_filepath):
                         filtered_z_vals = z_vals[z_vals <= z_mean + 2 * z_std]
                         z_values[i, j] = np.mean(filtered_z_vals) + 2 * np.std(filtered_z_vals)
                         cell_stats[i][j]['color'] = np.mean(cell_stats[i][j]['colors'], axis=0)
+
+            # Actualizar la barra de progreso
+            update_progress_bar(progress_bar, 80)
 
             # Create a list to hold all the prisms
             prisms = []
@@ -475,6 +490,12 @@ def gridfrompcd(pc_filepath):
             combined_mesh = o3d.geometry.TriangleMesh()
             for prism in prisms:
                 combined_mesh += prism
+
+            # Actualizar la barra de progreso
+            update_progress_bar(progress_bar, 100)
+
+            # Eliminar la barra de progreso
+            progress_bar.grid_forget()
 
             vis = o3d.visualization.Visualizer()
 
@@ -1118,11 +1139,18 @@ def plot_three_color_heatmap(heatmap, xcenter, ycenter, Hcenter, lonmin, lonmax,
     plt.show()
 
 def set_run_prueba_flag(pc_filepath):
+    global progress_bar
     if not pc_filepath:
         messagebox.showwarning("Warning", "Please select a Point Cloud.")
         return
 
-    gridfrompcd(pc_filepath)
+    # Crear y mostrar la barra de progreso
+    progress_bar = create_progress_bar()
+
+    # Actualizar la barra de progreso
+    update_progress_bar(progress_bar, 1)
+
+    gridfrompcd(pc_filepath, progress_bar)
 
 def visualize(pc_filepath, csv_filepath, xml_filepath, show_dose_layer, dose_min_csv, dose_max_csv):
     global altura_extra, point_size, vox_size, high_dose_rgb, medium_dose_rgb, low_dose_rgb, vis, downsample, progress_bar
