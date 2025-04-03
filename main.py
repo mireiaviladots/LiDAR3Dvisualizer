@@ -62,9 +62,6 @@ def mostrar_nube_no_vox(show_dose_layer, pc_filepath, downsample, xml_filepath, 
                         low_dose_rgb, dose_min_csv, low_max, medium_min, medium_max, high_min, altura_extra, vis, show_source, source_location, point_size, progress_bar):
     def run():
         try:
-            # Actualizar la barra de progreso
-            update_progress_bar(progress_bar, 20)
-
             print(f"Show Dose Layer: {show_dose_layer}")
             # Cargar la nube de puntos PCD
             pcd = o3d.io.read_point_cloud(pc_filepath)
@@ -84,6 +81,9 @@ def mostrar_nube_no_vox(show_dose_layer, pc_filepath, downsample, xml_filepath, 
 
             # Obtener coordenadas XYZ
             nube_puntos = np.asarray(pcd.points)
+
+            # Actualizar la barra de progreso
+            update_progress_bar(progress_bar, 20)
 
             # Obtener colores si existen, de lo contrario, usar blanco
             if pcd.has_colors():
@@ -139,6 +139,9 @@ def mostrar_nube_no_vox(show_dose_layer, pc_filepath, downsample, xml_filepath, 
                 puntos_dosis_elevados = puntos_dentro[valid_points]
                 dosis_filtrada = dosis_nube[valid_points]
 
+                # Actualizar la barra de progreso
+                update_progress_bar(progress_bar, 80)
+
                 colores_dosis = get_dose_color(dosis_filtrada, high_dose_rgb, medium_dose_rgb, low_dose_rgb, dose_min_csv, low_max, medium_min, medium_max, high_min)
 
                 puntos_dosis_elevados[:, 2] += altura_extra  # Aumentar Z
@@ -147,13 +150,26 @@ def mostrar_nube_no_vox(show_dose_layer, pc_filepath, downsample, xml_filepath, 
                 pcd.points = o3d.utility.Vector3dVector(geo_points)
                 pcd.colors = o3d.utility.Vector3dVector(rgb)  # Asignar colores
 
+                update_progress_bar(progress_bar, 90)
+
                 # Crear la nueva nube de puntos de dosis elevada
                 pcd_dosis = o3d.geometry.PointCloud()
                 pcd_dosis.points = o3d.utility.Vector3dVector(puntos_dosis_elevados)
                 pcd_dosis.colors = o3d.utility.Vector3dVector(colores_dosis)  # Asignar colores según dosis
 
+            else:
+                update_progress_bar(progress_bar, 30)
+                update_progress_bar(progress_bar, 40)
+                update_progress_bar(progress_bar, 50)
+                update_progress_bar(progress_bar, 60)
+                update_progress_bar(progress_bar, 70)
+                update_progress_bar(progress_bar, 80)
+
             # Actualizar la barra de progreso
-            update_progress_bar(progress_bar, 80)
+            update_progress_bar(progress_bar, 100)
+
+            # Eliminar la barra de progreso
+            progress_bar.grid_forget()
 
             vis = o3d.visualization.Visualizer()
 
@@ -168,9 +184,6 @@ def mostrar_nube_no_vox(show_dose_layer, pc_filepath, downsample, xml_filepath, 
 
             # Calcular tittle bar
             title_bar_height = ctypes.windll.user32.GetSystemMetrics(4)
-
-            # Eliminar la barra de progreso
-            progress_bar.grid_forget()
 
             vis.create_window(window_name='Open3D', width=right_frame_width, height=right_frame_height, left=left_frame_width, top=title_bar_height)
 
@@ -190,9 +203,6 @@ def mostrar_nube_no_vox(show_dose_layer, pc_filepath, downsample, xml_filepath, 
             render_option = vis.get_render_option()
             render_option.point_size = point_size
 
-            # Actualizar la barra de progreso
-            update_progress_bar(progress_bar, 100)
-
             vis.run()
 
         except Exception as e:
@@ -206,6 +216,9 @@ def mostrar_nube_si_vox(show_dose_layer, pc_filepath, xml_filepath, csv_filepath
         print(f"Show Dose Layer: {show_dose_layer}")
         pcd = o3d.io.read_point_cloud(pc_filepath)
         xyz = np.asarray(pcd.points)
+
+        # Actualizar la barra de progreso
+        update_progress_bar(progress_bar, 20)
 
         # Obtener colores si existen, de lo contrario usar blanco
         if pcd.has_colors():
@@ -264,6 +277,9 @@ def mostrar_nube_si_vox(show_dose_layer, pc_filepath, xml_filepath, csv_filepath
         output_file = Path("voxelize.ply")  # Puntos --> .las / Malla --> .obj, .ply
         o3d.io.write_triangle_mesh(str(output_file), vox_mesh)
 
+        # Actualizar la barra de progreso
+        update_progress_bar(progress_bar, 30)
+
         if show_dose_layer:
             utm_coords = np.genfromtxt(csv_filepath, delimiter=',', skip_header=1)
             utm_points = utm_coords[:, :2]  # Sólo coordenadas [easting, northing]
@@ -271,6 +287,9 @@ def mostrar_nube_si_vox(show_dose_layer, pc_filepath, xml_filepath, csv_filepath
 
             # Construir el KD-Tree para los puntos UTM del CSV (BUSQUEDA EFICIENTE)
             tree = cKDTree(utm_points)
+
+            # Actualizar la barra de progreso
+            update_progress_bar(progress_bar, 40)
 
             # Determinar los límites del área del CSV con dosis
             x_min, y_min = np.min(utm_points, axis=0)  # Mínimo de cada columna (lat, long)
@@ -291,6 +310,9 @@ def mostrar_nube_si_vox(show_dose_layer, pc_filepath, xml_filepath, csv_filepath
             # Encontrar el punto más cercano en el CSV para cada punto de la nube LAS (que está dentro)
             distancias, indices_mas_cercanos = tree.query(puntos_dentro[:,
                                                           :2])  # Devuelve distancia entre punto CSV y punto cloud; para cada nube_puntos[i] índice del punto del csv mas cercano
+
+            # Actualizar la barra de progreso
+            update_progress_bar(progress_bar, 60)
 
             # Asignar dosis correspondiente a los puntos dentro del área
             dosis_nube[:] = dosis[indices_mas_cercanos]  # Dosis para cada punto en la nube
@@ -314,6 +336,9 @@ def mostrar_nube_si_vox(show_dose_layer, pc_filepath, xml_filepath, csv_filepath
             voxels_dosis = voxel_grid_dosis.get_voxels()
             vox_mesh_dosis = o3d.geometry.TriangleMesh()
 
+            # Actualizar la barra de progreso
+            update_progress_bar(progress_bar, 80)
+
             cube = o3d.geometry.TriangleMesh.create_box(width=1, height=1, depth=1)
             cube.paint_uniform_color([1, 0, 0])  # Red
             cube.compute_vertex_normals()
@@ -324,6 +349,8 @@ def mostrar_nube_si_vox(show_dose_layer, pc_filepath, xml_filepath, csv_filepath
                 cube.translate(v.grid_index, relative=False)
                 vox_mesh_dosis += cube
 
+            update_progress_bar(progress_bar, 90)
+
             vox_mesh_dosis.translate([0.5, 0.5, 0.5], relative=True)
 
             vox_mesh_dosis.scale(vsize, [0, 0, 0])
@@ -332,6 +359,20 @@ def mostrar_nube_si_vox(show_dose_layer, pc_filepath, xml_filepath, csv_filepath
 
             output_file = Path("voxelize_dosis.ply")  # Puntos --> .las / Malla --> .obj, .ply
             o3d.io.write_triangle_mesh(str(output_file), vox_mesh_dosis)
+
+        else:
+            update_progress_bar(progress_bar, 40)
+            update_progress_bar(progress_bar, 50)
+            update_progress_bar(progress_bar, 60)
+            update_progress_bar(progress_bar, 70)
+            update_progress_bar(progress_bar, 80)
+            update_progress_bar(progress_bar, 90)
+
+        # Actualizar la barra de progreso
+        update_progress_bar(progress_bar, 100)
+
+        # Eliminar la barra de progreso
+        progress_bar.grid_forget()
 
         vis = o3d.visualization.Visualizer()
 
@@ -1151,7 +1192,7 @@ def visualize(pc_filepath, csv_filepath, xml_filepath, show_dose_layer, dose_min
         downsample = None
 
     # Actualizar la barra de progreso
-    update_progress_bar(progress_bar, 20)
+    update_progress_bar(progress_bar, 10)
 
     if use_voxelization:
         mostrar_nube_si_vox(show_dose_layer, pc_filepath, xml_filepath, csv_filepath, high_dose_rgb, medium_dose_rgb, low_dose_rgb, dose_min_csv, low_max,
