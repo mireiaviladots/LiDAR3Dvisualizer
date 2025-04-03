@@ -36,6 +36,7 @@ high_min = None
 high_max = None
 previous_point_value = ""
 previous_voxel_value = ""
+previous_downsample_value = ""
 show_dose_layer = False
 downsample = None
 show_source = False
@@ -138,7 +139,20 @@ def mostrar_nube_no_vox(show_dose_layer, pc_filepath, downsample, xml_filepath, 
                 pcd_dosis.colors = o3d.utility.Vector3dVector(colores_dosis)  # Asignar colores según dosis
 
             vis = o3d.visualization.Visualizer()
-            vis.create_window(window_name='Open3D')
+
+            # Obtener las dimensiones del right_frame
+            right_frame.update_idletasks()
+            right_frame_width = right_frame.winfo_width()
+            right_frame_height = right_frame.winfo_height()
+
+            # Obtener las dimensiones del left_frame
+            left_frame.update_idletasks()
+            left_frame_width = left_frame.winfo_width()
+
+            # Calcular tittle bar
+            title_bar_height = ctypes.windll.user32.GetSystemMetrics(4)
+
+            vis.create_window(window_name='Open3D', width=right_frame_width, height=right_frame_height, left=left_frame_width, top=title_bar_height)
 
             vis.clear_geometries()  # Ahora estamos seguros de que self.vis no es None
             vis.add_geometry(pcd)
@@ -297,7 +311,21 @@ def mostrar_nube_si_vox(show_dose_layer, pc_filepath, xml_filepath, csv_filepath
             o3d.io.write_triangle_mesh(str(output_file), vox_mesh_dosis)
 
         vis = o3d.visualization.Visualizer()
-        vis.create_window(window_name='Open3D')
+
+        # Obtener las dimensiones del right_frame
+        right_frame.update_idletasks()
+        right_frame_width = right_frame.winfo_width()
+        right_frame_height = right_frame.winfo_height()
+
+        # Obtener las dimensiones del left_frame
+        left_frame.update_idletasks()
+        left_frame_width = left_frame.winfo_width()
+
+        # Calcular tittle bar
+        title_bar_height = ctypes.windll.user32.GetSystemMetrics(4)
+
+        vis.create_window(window_name='Open3D', width=right_frame_width, height=right_frame_height,
+                          left=left_frame_width, top=title_bar_height)
 
         vis.clear_geometries()
         vis.add_geometry(vox_mesh)
@@ -385,7 +413,21 @@ def gridfrompcd(pc_filepath):
                 combined_mesh += prism
 
             vis = o3d.visualization.Visualizer()
-            vis.create_window(window_name='Open3D')
+
+            # Obtener las dimensiones del right_frame
+            right_frame.update_idletasks()
+            right_frame_width = right_frame.winfo_width()
+            right_frame_height = right_frame.winfo_height()
+
+            # Obtener las dimensiones del left_frame
+            left_frame.update_idletasks()
+            left_frame_width = left_frame.winfo_width()
+
+            # Calcular tittle bar
+            title_bar_height = ctypes.windll.user32.GetSystemMetrics(4)
+
+            vis.create_window(window_name='Open3D', width=right_frame_width, height=right_frame_height,
+                              left=left_frame_width, top=title_bar_height)
 
             vis.clear_geometries()
             vis.add_geometry(combined_mesh)
@@ -792,12 +834,15 @@ def get_origin_from_xml(xml_filepath):
         return None
 
 def toggle_voxel_size():
-    global previous_point_value, previous_voxel_value
+    global previous_point_value, previous_voxel_value, previous_downsample_value
     if root.voxelizer_var.get():
         previous_point_value = root.point_size_entry.get()
+        previous_downsample_value = root.downsample_entry.get()
         root.vox_size_entry.delete(0, "end")
         root.point_size_entry.delete(0, "end")
+        root.downsample_entry.delete(0, "end")
         root.point_size_entry.configure(state="disabled")
+        root.downsample_entry.configure(state="disabled")
         root.vox_size_entry.configure(state="normal")
         if previous_voxel_value == "":
             root.vox_size_entry.insert(0, 2)
@@ -809,10 +854,13 @@ def toggle_voxel_size():
         root.point_size_entry.delete(0, "end")
         root.vox_size_entry.configure(state="disabled")
         root.point_size_entry.configure(state="normal")
+        root.downsample_entry.configure(state="normal")
         if previous_point_value == "":
             root.point_size_entry.insert(0, 2)
         else:
             root.point_size_entry.insert(0, previous_point_value)
+        if previous_downsample_value != "":
+            root.downsample_entry.insert(0, previous_downsample_value)
 
 def toggle_dose_layer(source_location):
     global show_dose_layer
