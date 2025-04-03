@@ -19,6 +19,7 @@ import utm
 import random
 import ctypes
 import threading
+from tkinter import ttk
 
 source_location = None
 pc_filepath = None
@@ -55,11 +56,15 @@ right_frame_height = False
 screen_width = False
 left_frame_width = False
 title_bar_height = False
+progress_bar = None
 
 def mostrar_nube_no_vox(show_dose_layer, pc_filepath, downsample, xml_filepath, csv_filepath, high_dose_rgb, medium_dose_rgb,
-                        low_dose_rgb, dose_min_csv, low_max, medium_min, medium_max, high_min, altura_extra, vis, show_source, source_location, point_size):
+                        low_dose_rgb, dose_min_csv, low_max, medium_min, medium_max, high_min, altura_extra, vis, show_source, source_location, point_size, progress_bar):
     def run():
         try:
+            # Actualizar la barra de progreso
+            update_progress_bar(progress_bar, 20)
+
             print(f"Show Dose Layer: {show_dose_layer}")
             # Cargar la nube de puntos PCD
             pcd = o3d.io.read_point_cloud(pc_filepath)
@@ -96,8 +101,14 @@ def mostrar_nube_no_vox(show_dose_layer, pc_filepath, downsample, xml_filepath, 
                 utm_points = utm_coords[:, :2]  # Sólo coordenadas [easting, northing]
                 dosis = utm_coords[:, 2]  # Dosis correspondiente
 
+                # Actualizar la barra de progreso
+                update_progress_bar(progress_bar, 30)
+
                 # Construir el KD-Tree para los puntos UTM del CSV (BUSQUEDA EFICIENTE)
                 tree = cKDTree(utm_points)
+
+                # Actualizar la barra de progreso
+                update_progress_bar(progress_bar, 40)
 
                 # Determinar los límites del área del CSV con dosis
                 x_min, y_min = np.min(utm_points, axis=0)  # Mínimo de cada columna (lat, long)
@@ -108,6 +119,9 @@ def mostrar_nube_no_vox(show_dose_layer, pc_filepath, downsample, xml_filepath, 
                     (geo_points[:, 0] >= x_min) & (geo_points[:, 0] <= x_max) &
                     (geo_points[:, 1] >= y_min) & (geo_points[:, 1] <= y_max)
                 )
+
+                # Actualizar la barra de progreso
+                update_progress_bar(progress_bar, 60)
 
                 # Solo los puntos dentro del área
                 puntos_dentro = geo_points[dentro_area]
@@ -138,6 +152,9 @@ def mostrar_nube_no_vox(show_dose_layer, pc_filepath, downsample, xml_filepath, 
                 pcd_dosis.points = o3d.utility.Vector3dVector(puntos_dosis_elevados)
                 pcd_dosis.colors = o3d.utility.Vector3dVector(colores_dosis)  # Asignar colores según dosis
 
+            # Actualizar la barra de progreso
+            update_progress_bar(progress_bar, 80)
+
             vis = o3d.visualization.Visualizer()
 
             # Obtener las dimensiones del right_frame
@@ -151,6 +168,9 @@ def mostrar_nube_no_vox(show_dose_layer, pc_filepath, downsample, xml_filepath, 
 
             # Calcular tittle bar
             title_bar_height = ctypes.windll.user32.GetSystemMetrics(4)
+
+            # Eliminar la barra de progreso
+            progress_bar.grid_forget()
 
             vis.create_window(window_name='Open3D', width=right_frame_width, height=right_frame_height, left=left_frame_width, top=title_bar_height)
 
@@ -170,6 +190,9 @@ def mostrar_nube_no_vox(show_dose_layer, pc_filepath, downsample, xml_filepath, 
             render_option = vis.get_render_option()
             render_option.point_size = point_size
 
+            # Actualizar la barra de progreso
+            update_progress_bar(progress_bar, 100)
+
             vis.run()
 
         except Exception as e:
@@ -178,7 +201,7 @@ def mostrar_nube_no_vox(show_dose_layer, pc_filepath, downsample, xml_filepath, 
     threading.Thread(target=run, daemon=True).start()
 
 def mostrar_nube_si_vox(show_dose_layer, pc_filepath, xml_filepath, csv_filepath, high_dose_rgb, medium_dose_rgb, low_dose_rgb, dose_min_csv, low_max,
-            medium_min, medium_max, high_min, altura_extra, vis):
+            medium_min, medium_max, high_min, altura_extra, vis, progress_bar):
     def run():
         print(f"Show Dose Layer: {show_dose_layer}")
         pcd = o3d.io.read_point_cloud(pc_filepath)
@@ -437,6 +460,22 @@ def gridfrompcd(pc_filepath):
             messagebox.showerror("Error", f"An error occurred: {e}")
 
     threading.Thread(target=run, daemon=True).start()
+
+# Crear la barra de progreso
+def create_progress_bar():
+    progress_bar = ttk.Progressbar(right_frame, orient="horizontal", length=300, mode="determinate", style="TProgressbar")
+    right_frame.grid_rowconfigure(0, weight=1)
+    right_frame.grid_rowconfigure(1, weight=1)
+    right_frame.grid_rowconfigure(2, weight=1)
+    right_frame.grid_columnconfigure(0, weight=1)
+    progress_bar.grid(row=1, column=0, pady=10)
+    return progress_bar
+
+# Función para actualizar la barra de progreso
+def update_progress_bar(progress_bar, value):
+    progress_bar['maximum'] = 100
+    progress_bar['value'] = value
+    root.update_idletasks()
 
 def load_point_cloud():
     global pc_filepath
@@ -1045,7 +1084,7 @@ def set_run_prueba_flag(pc_filepath):
     gridfrompcd(pc_filepath)
 
 def visualize(pc_filepath, csv_filepath, xml_filepath, show_dose_layer, dose_min_csv, dose_max_csv):
-    global altura_extra, point_size, vox_size, high_dose_rgb, medium_dose_rgb, low_dose_rgb, vis, downsample
+    global altura_extra, point_size, vox_size, high_dose_rgb, medium_dose_rgb, low_dose_rgb, vis, downsample, progress_bar
     if not pc_filepath:
         messagebox.showwarning("Warning", "Please select a Point Cloud.")
         return
@@ -1059,6 +1098,12 @@ def visualize(pc_filepath, csv_filepath, xml_filepath, show_dose_layer, dose_min
         return
 
     validate_dose_ranges(show_dose_layer, dose_min_csv, dose_max_csv)
+
+    # Crear y mostrar la barra de progreso
+    progress_bar = create_progress_bar()
+
+    # Actualizar la barra de progreso
+    update_progress_bar(progress_bar, 1)
 
     use_voxelization = root.voxelizer_switch.get() == 1
 
@@ -1105,12 +1150,16 @@ def visualize(pc_filepath, csv_filepath, xml_filepath, show_dose_layer, dose_min
     else:
         downsample = None
 
+    # Actualizar la barra de progreso
+    update_progress_bar(progress_bar, 20)
+
     if use_voxelization:
         mostrar_nube_si_vox(show_dose_layer, pc_filepath, xml_filepath, csv_filepath, high_dose_rgb, medium_dose_rgb, low_dose_rgb, dose_min_csv, low_max,
-            medium_min, medium_max, high_min, altura_extra, vis)
+            medium_min, medium_max, high_min, altura_extra, vis, progress_bar)
     else:
         mostrar_nube_no_vox(show_dose_layer, pc_filepath, downsample, xml_filepath, csv_filepath, high_dose_rgb, medium_dose_rgb,
-            low_dose_rgb, dose_min_csv, low_max, medium_min, medium_max, high_min, altura_extra, vis, show_source, source_location, point_size)
+            low_dose_rgb, dose_min_csv, low_max, medium_min, medium_max, high_min, altura_extra, vis, show_source, source_location, point_size, progress_bar)
+
 
 # Crear la ventana de Tkinter
 root = CTk()
