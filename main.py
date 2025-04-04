@@ -20,6 +20,8 @@ import random
 import ctypes
 import threading
 from tkinter import ttk
+from tkinter import messagebox
+from PIL import Image, ImageTk
 
 source_location = None
 pc_filepath = None
@@ -429,7 +431,7 @@ def mostrar_nube_si_vox(show_dose_layer, pc_filepath, xml_filepath, csv_filepath
 
     threading.Thread(target=run, daemon=True).start()
 
-def gridfrompcd(pc_filepath, progress_bar):
+def gridfrompcd(pc_filepath, progress_bar, csv_filepath):
     def run():
         global vis
         try:
@@ -1203,7 +1205,7 @@ def set_run_prueba_flag(pc_filepath):
     # Actualizar la barra de progreso
     update_progress_bar(progress_bar, 1)
 
-    gridfrompcd(pc_filepath, progress_bar)
+    gridfrompcd(pc_filepath, progress_bar, csv_filepath)
 
 def visualize(pc_filepath, csv_filepath, xml_filepath, show_dose_layer, dose_min_csv, dose_max_csv):
     global altura_extra, point_size, vox_size, high_dose_rgb, medium_dose_rgb, low_dose_rgb, downsample, progress_bar
@@ -1285,6 +1287,7 @@ def visualize(pc_filepath, csv_filepath, xml_filepath, show_dose_layer, dose_min
             low_dose_rgb, dose_min_csv, low_max, medium_min, medium_max, high_min, altura_extra, show_source, source_location, point_size, progress_bar)
 
 
+
 # Crear la ventana de Tkinter
 root = CTk()
 root.title("Visor de Nube de Puntos")
@@ -1295,6 +1298,20 @@ def maximize_window():
     root.state("zoomed")
 
 root.after(0, maximize_window)
+
+def disable_frame():
+    root.attributes('-disabled', True)
+
+def enable_frame():
+    root.attributes('-disabled', False)
+
+disable_frame()
+
+def show_message():
+    messagebox.showinfo("Information", "In this program, each time you want to edit the parameters, the Open3D window must be closed. Click the Accept button to start.")
+    enable_frame()
+
+root.after(1000, show_message)
 
 # Configure the grid layout for the root window
 root.grid_rowconfigure(0, weight=1)
