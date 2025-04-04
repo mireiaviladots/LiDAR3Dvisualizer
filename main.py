@@ -59,8 +59,9 @@ title_bar_height = False
 progress_bar = None
 
 def mostrar_nube_no_vox(show_dose_layer, pc_filepath, downsample, xml_filepath, csv_filepath, high_dose_rgb, medium_dose_rgb,
-                        low_dose_rgb, dose_min_csv, low_max, medium_min, medium_max, high_min, altura_extra, vis, show_source, source_location, point_size, progress_bar):
+                        low_dose_rgb, dose_min_csv, low_max, medium_min, medium_max, high_min, altura_extra, show_source, source_location, point_size, progress_bar):
     def run():
+        global vis
         try:
             print(f"Show Dose Layer: {show_dose_layer}")
             # Cargar la nube de puntos PCD
@@ -203,212 +204,234 @@ def mostrar_nube_no_vox(show_dose_layer, pc_filepath, downsample, xml_filepath, 
             render_option = vis.get_render_option()
             render_option.point_size = point_size
 
-            vis.run()
+            while True:
+                vis.poll_events()
+                vis.update_renderer()
+
+                if not vis.poll_events():
+                    print("Ventana Cerrada")
+                    enable_left_frame()
+                    break
 
         except Exception as e:
             messagebox.showerror("Error", f"An error occurred: {e}")
+            enable_left_frame()
 
     threading.Thread(target=run, daemon=True).start()
 
 def mostrar_nube_si_vox(show_dose_layer, pc_filepath, xml_filepath, csv_filepath, high_dose_rgb, medium_dose_rgb, low_dose_rgb, dose_min_csv, low_max,
-            medium_min, medium_max, high_min, altura_extra, vis, progress_bar):
+            medium_min, medium_max, high_min, altura_extra, progress_bar):
     def run():
-        print(f"Show Dose Layer: {show_dose_layer}")
-        pcd = o3d.io.read_point_cloud(pc_filepath)
-        xyz = np.asarray(pcd.points)
-
-        # Actualizar la barra de progreso
-        update_progress_bar(progress_bar, 20)
-
-        # Obtener colores si existen, de lo contrario usar blanco
-        if pcd.has_colors():
-            rgb = np.asarray(pcd.colors)
-        else:
-            rgb = np.ones_like(xyz)  # Blanco por defecto
-
-        if not show_dose_layer:
-            pcd.points = o3d.utility.Vector3dVector(xyz)
-            pcd.colors = o3d.utility.Vector3dVector(rgb)
-
-        if show_dose_layer:
-            origin = get_origin_from_xml (xml_filepath)
-
-            geo_points = xyz + origin
-
-            pcd.points = o3d.utility.Vector3dVector(geo_points)
-            pcd.colors = o3d.utility.Vector3dVector(rgb)
-
-        # Defining the voxel size
-        vsize = vox_size
-
-        # Creating the voxel grid
-        voxel_grid = o3d.geometry.VoxelGrid.create_from_point_cloud(pcd, voxel_size=vsize)
-
-        # Extracting the bounds
-        bounds = voxel_grid.get_max_bound() - voxel_grid.get_min_bound()
-        # o3d.visualization.draw_geometries([voxel_grid])
-
-        # Generating a single box entity
-        cube = o3d.geometry.TriangleMesh.create_box(width=1, height=1, depth=1)
-        cube.paint_uniform_color([1, 0, 0])  # Red
-        cube.compute_vertex_normals()
-        # o3d.visualization.draw_geometries([cube])
-
-        # Automate and Loop to cerate one voxel Dataset (efficient)
-        voxels = voxel_grid.get_voxels()  # Cada voxel con su grid index (posicion desde el centro, 0) y color, hay que hacer offset y translate
-        vox_mesh = o3d.geometry.TriangleMesh()  # Creamos un mesh para ir colocando cada voxel
-
-        for v in voxels:
-            cube = o3d.geometry.TriangleMesh.create_box(width=1, height=1, depth=1)
-            cube.paint_uniform_color(v.color)
-            cube.translate(v.grid_index, relative=False)
-            vox_mesh += cube
-
-        # To align to the center of a cube of dimension 1
-        vox_mesh.translate([0.5, 0.5, 0.5], relative=True)
-
-        # To scale
-        vox_mesh.scale(vsize, [0, 0, 0])
-
-        # To translate
-        vox_mesh.translate(voxel_grid.origin, relative=True)
-
-        # Export
-        output_file = Path("voxelize.ply")  # Puntos --> .las / Malla --> .obj, .ply
-        o3d.io.write_triangle_mesh(str(output_file), vox_mesh)
-
-        # Actualizar la barra de progreso
-        update_progress_bar(progress_bar, 30)
-
-        if show_dose_layer:
-            utm_coords = np.genfromtxt(csv_filepath, delimiter=',', skip_header=1)
-            utm_points = utm_coords[:, :2]  # Sólo coordenadas [easting, northing]
-            dosis = utm_coords[:, 2]  # Dosis correspondiente
-
-            # Construir el KD-Tree para los puntos UTM del CSV (BUSQUEDA EFICIENTE)
-            tree = cKDTree(utm_points)
+        global vis
+        try:
+            print(f"Show Dose Layer: {show_dose_layer}")
+            pcd = o3d.io.read_point_cloud(pc_filepath)
+            xyz = np.asarray(pcd.points)
 
             # Actualizar la barra de progreso
-            update_progress_bar(progress_bar, 40)
+            update_progress_bar(progress_bar, 20)
 
-            # Determinar los límites del área del CSV con dosis
-            x_min, y_min = np.min(utm_points, axis=0)  # Mínimo de cada columna (lat, long)
-            x_max, y_max = np.max(utm_points, axis=0)  # Máximo de cada columna (lat, long)
+            # Obtener colores si existen, de lo contrario usar blanco
+            if pcd.has_colors():
+                rgb = np.asarray(pcd.colors)
+            else:
+                rgb = np.ones_like(xyz)  # Blanco por defecto
 
-            # Filtrar puntos de la nube dentro del área de dosis
-            dentro_area = (
-                    (geo_points[:, 0] >= x_min) & (geo_points[:, 0] <= x_max) &
-                    (geo_points[:, 1] >= y_min) & (geo_points[:, 1] <= y_max)
-            )
+            if not show_dose_layer:
+                pcd.points = o3d.utility.Vector3dVector(xyz)
+                pcd.colors = o3d.utility.Vector3dVector(rgb)
 
-            # Solo los puntos dentro del área
-            puntos_dentro = geo_points[dentro_area]
+            if show_dose_layer:
+                origin = get_origin_from_xml (xml_filepath)
 
-            # Crea vector de dosis como NaN
-            dosis_nube = np.full(len(puntos_dentro), np.nan)
+                geo_points = xyz + origin
 
-            # Encontrar el punto más cercano en el CSV para cada punto de la nube LAS (que está dentro)
-            distancias, indices_mas_cercanos = tree.query(puntos_dentro[:,
-                                                          :2])  # Devuelve distancia entre punto CSV y punto cloud; para cada nube_puntos[i] índice del punto del csv mas cercano
+                pcd.points = o3d.utility.Vector3dVector(geo_points)
+                pcd.colors = o3d.utility.Vector3dVector(rgb)
 
-            # Actualizar la barra de progreso
-            update_progress_bar(progress_bar, 60)
+            # Defining the voxel size
+            vsize = vox_size
 
-            # Asignar dosis correspondiente a los puntos dentro del área
-            dosis_nube[:] = dosis[indices_mas_cercanos]  # Dosis para cada punto en la nube
+            # Creating the voxel grid
+            voxel_grid = o3d.geometry.VoxelGrid.create_from_point_cloud(pcd, voxel_size=vsize)
 
-            valid_points = ~np.isnan(dosis_nube)
-            puntos_dosis_elevados = puntos_dentro[valid_points]
-            dosis_filtrada = dosis_nube[valid_points]
+            # Extracting the bounds
+            bounds = voxel_grid.get_max_bound() - voxel_grid.get_min_bound()
+            # o3d.visualization.draw_geometries([voxel_grid])
 
-            colores_dosis = get_dose_color(dosis_filtrada, high_dose_rgb, medium_dose_rgb,
-                                                low_dose_rgb, dose_min_csv, low_max,
-                                                medium_min, medium_max, high_min)
-
-            puntos_dosis_elevados[:, 2] += altura_extra  # Aumentar Z
-
-            pcd_dosis = o3d.geometry.PointCloud()
-            pcd_dosis.points = o3d.utility.Vector3dVector(puntos_dosis_elevados)
-            pcd_dosis.colors = o3d.utility.Vector3dVector(colores_dosis)
-
-            voxel_grid_dosis = o3d.geometry.VoxelGrid.create_from_point_cloud(pcd_dosis, voxel_size=vsize)
-
-            voxels_dosis = voxel_grid_dosis.get_voxels()
-            vox_mesh_dosis = o3d.geometry.TriangleMesh()
-
-            # Actualizar la barra de progreso
-            update_progress_bar(progress_bar, 80)
-
+            # Generating a single box entity
             cube = o3d.geometry.TriangleMesh.create_box(width=1, height=1, depth=1)
             cube.paint_uniform_color([1, 0, 0])  # Red
             cube.compute_vertex_normals()
+            # o3d.visualization.draw_geometries([cube])
 
-            for v in voxels_dosis:
+            # Automate and Loop to cerate one voxel Dataset (efficient)
+            voxels = voxel_grid.get_voxels()  # Cada voxel con su grid index (posicion desde el centro, 0) y color, hay que hacer offset y translate
+            vox_mesh = o3d.geometry.TriangleMesh()  # Creamos un mesh para ir colocando cada voxel
+
+            for v in voxels:
                 cube = o3d.geometry.TriangleMesh.create_box(width=1, height=1, depth=1)
                 cube.paint_uniform_color(v.color)
                 cube.translate(v.grid_index, relative=False)
-                vox_mesh_dosis += cube
+                vox_mesh += cube
 
-            update_progress_bar(progress_bar, 90)
+            # To align to the center of a cube of dimension 1
+            vox_mesh.translate([0.5, 0.5, 0.5], relative=True)
 
-            vox_mesh_dosis.translate([0.5, 0.5, 0.5], relative=True)
+            # To scale
+            vox_mesh.scale(vsize, [0, 0, 0])
 
-            vox_mesh_dosis.scale(vsize, [0, 0, 0])
+            # To translate
+            vox_mesh.translate(voxel_grid.origin, relative=True)
 
-            vox_mesh_dosis.translate(voxel_grid_dosis.origin, relative=True)
+            # Export
+            output_file = Path("voxelize.ply")  # Puntos --> .las / Malla --> .obj, .ply
+            o3d.io.write_triangle_mesh(str(output_file), vox_mesh)
 
-            output_file = Path("voxelize_dosis.ply")  # Puntos --> .las / Malla --> .obj, .ply
-            o3d.io.write_triangle_mesh(str(output_file), vox_mesh_dosis)
+            # Actualizar la barra de progreso
+            update_progress_bar(progress_bar, 30)
 
-        else:
-            update_progress_bar(progress_bar, 40)
-            update_progress_bar(progress_bar, 50)
-            update_progress_bar(progress_bar, 60)
-            update_progress_bar(progress_bar, 70)
-            update_progress_bar(progress_bar, 80)
-            update_progress_bar(progress_bar, 90)
+            if show_dose_layer:
+                utm_coords = np.genfromtxt(csv_filepath, delimiter=',', skip_header=1)
+                utm_points = utm_coords[:, :2]  # Sólo coordenadas [easting, northing]
+                dosis = utm_coords[:, 2]  # Dosis correspondiente
 
-        # Actualizar la barra de progreso
-        update_progress_bar(progress_bar, 100)
+                # Construir el KD-Tree para los puntos UTM del CSV (BUSQUEDA EFICIENTE)
+                tree = cKDTree(utm_points)
 
-        # Eliminar la barra de progreso
-        progress_bar.grid_forget()
+                # Actualizar la barra de progreso
+                update_progress_bar(progress_bar, 40)
 
-        vis = o3d.visualization.Visualizer()
+                # Determinar los límites del área del CSV con dosis
+                x_min, y_min = np.min(utm_points, axis=0)  # Mínimo de cada columna (lat, long)
+                x_max, y_max = np.max(utm_points, axis=0)  # Máximo de cada columna (lat, long)
 
-        # Obtener las dimensiones del right_frame
-        right_frame.update_idletasks()
-        right_frame_width = right_frame.winfo_width()
-        right_frame_height = right_frame.winfo_height()
+                # Filtrar puntos de la nube dentro del área de dosis
+                dentro_area = (
+                        (geo_points[:, 0] >= x_min) & (geo_points[:, 0] <= x_max) &
+                        (geo_points[:, 1] >= y_min) & (geo_points[:, 1] <= y_max)
+                )
 
-        # Obtener las dimensiones del left_frame
-        left_frame.update_idletasks()
-        left_frame_width = left_frame.winfo_width()
+                # Solo los puntos dentro del área
+                puntos_dentro = geo_points[dentro_area]
 
-        # Calcular tittle bar
-        title_bar_height = ctypes.windll.user32.GetSystemMetrics(4)
+                # Crea vector de dosis como NaN
+                dosis_nube = np.full(len(puntos_dentro), np.nan)
 
-        vis.create_window(window_name='Open3D', width=right_frame_width, height=right_frame_height,
-                          left=left_frame_width, top=title_bar_height)
+                # Encontrar el punto más cercano en el CSV para cada punto de la nube LAS (que está dentro)
+                distancias, indices_mas_cercanos = tree.query(puntos_dentro[:,
+                                                              :2])  # Devuelve distancia entre punto CSV y punto cloud; para cada nube_puntos[i] índice del punto del csv mas cercano
 
-        vis.clear_geometries()
-        vis.add_geometry(vox_mesh)
-        if show_dose_layer:
-            vis.add_geometry(vox_mesh_dosis)
+                # Actualizar la barra de progreso
+                update_progress_bar(progress_bar, 60)
 
-        if show_dose_layer and show_source and source_location is not None:
-            source_point = [[source_location[0], source_location[1], np.max(puntos_dosis_elevados[:, 2])]]
-            source_pcd = o3d.geometry.PointCloud()
-            source_pcd.points = o3d.utility.Vector3dVector(source_point)
-            source_pcd.paint_uniform_color([0, 0, 0])  # Color negro para el punto de la fuente
-            vis.add_geometry(source_pcd)
+                # Asignar dosis correspondiente a los puntos dentro del área
+                dosis_nube[:] = dosis[indices_mas_cercanos]  # Dosis para cada punto en la nube
 
-        vis.run()
+                valid_points = ~np.isnan(dosis_nube)
+                puntos_dosis_elevados = puntos_dentro[valid_points]
+                dosis_filtrada = dosis_nube[valid_points]
+
+                colores_dosis = get_dose_color(dosis_filtrada, high_dose_rgb, medium_dose_rgb,
+                                                    low_dose_rgb, dose_min_csv, low_max,
+                                                    medium_min, medium_max, high_min)
+
+                puntos_dosis_elevados[:, 2] += altura_extra  # Aumentar Z
+
+                pcd_dosis = o3d.geometry.PointCloud()
+                pcd_dosis.points = o3d.utility.Vector3dVector(puntos_dosis_elevados)
+                pcd_dosis.colors = o3d.utility.Vector3dVector(colores_dosis)
+
+                voxel_grid_dosis = o3d.geometry.VoxelGrid.create_from_point_cloud(pcd_dosis, voxel_size=vsize)
+
+                voxels_dosis = voxel_grid_dosis.get_voxels()
+                vox_mesh_dosis = o3d.geometry.TriangleMesh()
+
+                # Actualizar la barra de progreso
+                update_progress_bar(progress_bar, 80)
+
+                cube = o3d.geometry.TriangleMesh.create_box(width=1, height=1, depth=1)
+                cube.paint_uniform_color([1, 0, 0])  # Red
+                cube.compute_vertex_normals()
+
+                for v in voxels_dosis:
+                    cube = o3d.geometry.TriangleMesh.create_box(width=1, height=1, depth=1)
+                    cube.paint_uniform_color(v.color)
+                    cube.translate(v.grid_index, relative=False)
+                    vox_mesh_dosis += cube
+
+                update_progress_bar(progress_bar, 90)
+
+                vox_mesh_dosis.translate([0.5, 0.5, 0.5], relative=True)
+
+                vox_mesh_dosis.scale(vsize, [0, 0, 0])
+
+                vox_mesh_dosis.translate(voxel_grid_dosis.origin, relative=True)
+
+                output_file = Path("voxelize_dosis.ply")  # Puntos --> .las / Malla --> .obj, .ply
+                o3d.io.write_triangle_mesh(str(output_file), vox_mesh_dosis)
+
+            else:
+                update_progress_bar(progress_bar, 40)
+                update_progress_bar(progress_bar, 50)
+                update_progress_bar(progress_bar, 60)
+                update_progress_bar(progress_bar, 70)
+                update_progress_bar(progress_bar, 80)
+                update_progress_bar(progress_bar, 90)
+
+            # Actualizar la barra de progreso
+            update_progress_bar(progress_bar, 100)
+
+            # Eliminar la barra de progreso
+            progress_bar.grid_forget()
+
+            vis = o3d.visualization.Visualizer()
+
+            # Obtener las dimensiones del right_frame
+            right_frame.update_idletasks()
+            right_frame_width = right_frame.winfo_width()
+            right_frame_height = right_frame.winfo_height()
+
+            # Obtener las dimensiones del left_frame
+            left_frame.update_idletasks()
+            left_frame_width = left_frame.winfo_width()
+
+            # Calcular tittle bar
+            title_bar_height = ctypes.windll.user32.GetSystemMetrics(4)
+
+            vis.create_window(window_name='Open3D', width=right_frame_width, height=right_frame_height,
+                              left=left_frame_width, top=title_bar_height)
+
+            vis.clear_geometries()
+            vis.add_geometry(vox_mesh)
+            if show_dose_layer:
+                vis.add_geometry(vox_mesh_dosis)
+
+            if show_dose_layer and show_source and source_location is not None:
+                source_point = [[source_location[0], source_location[1], np.max(puntos_dosis_elevados[:, 2])]]
+                source_pcd = o3d.geometry.PointCloud()
+                source_pcd.points = o3d.utility.Vector3dVector(source_point)
+                source_pcd.paint_uniform_color([0, 0, 0])  # Color negro para el punto de la fuente
+                vis.add_geometry(source_pcd)
+
+            while True:
+                vis.poll_events()
+                vis.update_renderer()
+
+                if not vis.poll_events():
+                    print("Ventana Cerrada")
+                    enable_left_frame()
+                    break
+
+        except Exception as e:
+            messagebox.showerror("Error", f"An error occurred: {e}")
+            enable_left_frame()
 
     threading.Thread(target=run, daemon=True).start()
 
 def gridfrompcd(pc_filepath, progress_bar):
     def run():
+        global vis
         try:
             # Actualizar la barra de progreso
             update_progress_bar(progress_bar, 10)
@@ -516,12 +539,27 @@ def gridfrompcd(pc_filepath, progress_bar):
 
             vis.clear_geometries()
             vis.add_geometry(combined_mesh)
-            vis.run()
+
+            while True:
+                vis.poll_events()
+                vis.update_renderer()
+
+                if not vis.poll_events():
+                    print("Ventana Cerrada")
+                    enable_left_frame()
+                    break
 
         except Exception as e:
             messagebox.showerror("Error", f"An error occurred: {e}")
+            enable_left_frame()
 
     threading.Thread(target=run, daemon=True).start()
+
+def disable_left_frame():
+    root.attributes('-disabled', True)
+
+def enable_left_frame():
+    root.attributes('-disabled', False)
 
 # Crear la barra de progreso
 def create_progress_bar():
@@ -1037,77 +1075,81 @@ def validate_dose_ranges(show_dose_layer, dose_min_csv, dose_max_csv):
         raise ValueError("Dose ranges are not logical.")
 
 def plot_heatmap(heatmap, xcenter, ycenter, Hcenter, lonmin, lonmax, latmin, latmax):
-    # Ensure the necessary data is available
     if heatmap is None or xcenter is None or ycenter is None or Hcenter is None:
         messagebox.showerror("Error", "Please process the N42 files first.")
         return
 
-    # Visualize the heatmap
-    plt.imshow(
+    disable_left_frame()
+
+    fig, ax = plt.subplots()
+
+    cax = ax.imshow(
         heatmap,
         extent=(lonmin, lonmax, latmin, latmax),
         origin='lower',
         cmap='viridis',
         alpha=0.8
     )
-    plt.colorbar(label='H*(10) rate nSv/h')
-    plt.title('Heatmap H*(10) rate')
-    plt.xlabel('LONGITUDE')
-    plt.ylabel('LATITUDE')
 
-    # Add colored points
-    plt.scatter(
+    fig.colorbar(cax, label='H*(10) rate nSv/h', ax=ax)
+
+    ax.set_title('Heatmap H*(10) rate')
+    ax.set_xlabel('LONGITUDE')
+    ax.set_ylabel('LATITUDE')
+
+    scatter = ax.scatter(
         xcenter, ycenter,
         c=Hcenter, cmap='viridis',
         edgecolor='black', s=50, label='Measurement'
     )
 
-    # Add grid
-    plt.grid(visible=True, color='black', linestyle='--', linewidth=0.5)
+    ax.grid(visible=True, color='black', linestyle='--', linewidth=0.5)
+    ax.legend()
 
-    plt.legend()
+    # Conectar el evento de cierre
+    def on_close(event):
+        enable_left_frame()
+
+    fig.canvas.mpl_connect('close_event', on_close)
+
     plt.show()
 
 def plot_three_color_heatmap(heatmap, xcenter, ycenter, Hcenter, lonmin, lonmax, latmin, latmax):
-    # Ensure the necessary data is available
     if heatmap is None or xcenter is None or ycenter is None or Hcenter is None:
         messagebox.showerror("Error", "Please process the N42 files first.")
         return
 
+    disable_left_frame()  # Desactiva la interfaz al comenzar
+
     if root.dose_layer_switch.get() == 1:
-        # Define the color map and boundaries
         low_dose_color = root.low_dose_cb.get() if root.low_dose_cb.get() else 'green'
         medium_dose_color = root.medium_dose_cb.get() if root.medium_dose_cb.get() else 'yellow'
         high_dose_color = root.high_dose_cb.get() if root.high_dose_cb.get() else 'red'
 
-        # Define the color map and boundaries
         colors = [low_dose_color, medium_dose_color, high_dose_color]
 
         R0 = 0
-
         try:
             R1 = float(root.low_dose_max.get()) if root.low_dose_max.get() else 80
         except ValueError:
-            R1 = 80  # Default value
-
+            R1 = 80
         try:
             R2 = float(root.medium_dose_max.get()) if root.medium_dose_max.get() else 120
         except ValueError:
-            R2 = 120  # Default value
-
+            R2 = 120
     else:
         colors = ['green', 'yellow', 'red']
-        R0 = 0
-        R1 = 80
-        R2 = 120
+        R0, R1, R2 = 0, 80, 120
 
-    R3 = max(Hcenter) * max(Hcenter)  # Assuming HmaxP is calculated similarly
+    R3 = max(Hcenter) * max(Hcenter)
     bounds = [R0, R1, R2, R3]
     cmap = ListedColormap(colors)
     norm = BoundaryNorm(bounds, cmap.N)
 
-    # Visualize the heatmap
-    plt.imshow(
+    # Crear figura para conectar evento de cierre
+    fig, ax = plt.subplots()
+
+    im = ax.imshow(
         heatmap,
         extent=(lonmin, lonmax, latmin, latmax),
         origin='lower',
@@ -1115,27 +1157,36 @@ def plot_three_color_heatmap(heatmap, xcenter, ycenter, Hcenter, lonmin, lonmax,
         norm=norm,
         alpha=0.8
     )
-    plt.colorbar(
+
+    fig.colorbar(
+        im,
         label='H*(10) rate (nSv/h)',
         boundaries=bounds,
-        ticks=[R0, R0 + (R1 - R0) / 2, R1, R1 + (R2 - R1) / 2, R2, R2 + (R3 - R2) / 2, R3]
-        # Intermediate values for the legend
+        ticks=[
+            R0, R0 + (R1 - R0) / 2, R1,
+            R1 + (R2 - R1) / 2, R2,
+            R2 + (R3 - R2) / 2, R3
+        ]
     )
-    plt.title('Heatmap with Three Color Range')
-    plt.xlabel('LONGITUDE')
-    plt.ylabel('LATITUDE')
 
-    # Add colored points
-    plt.scatter(
+    ax.set_title('Heatmap with Three Color Range')
+    ax.set_xlabel('LONGITUDE')
+    ax.set_ylabel('LATITUDE')
+
+    ax.scatter(
         xcenter, ycenter,
         c=Hcenter, cmap=cmap, norm=norm,
         edgecolor='black', s=50, label='Measurement'
     )
 
-    # Add grid
-    plt.grid(visible=True, color='black', linestyle='--', linewidth=0.5)
+    ax.grid(visible=True, color='black', linestyle='--', linewidth=0.5)
+    ax.legend()
 
-    plt.legend()
+    def on_close(event):
+        enable_left_frame()
+
+    fig.canvas.mpl_connect('close_event', on_close)
+
     plt.show()
 
 def set_run_prueba_flag(pc_filepath):
@@ -1143,6 +1194,8 @@ def set_run_prueba_flag(pc_filepath):
     if not pc_filepath:
         messagebox.showwarning("Warning", "Please select a Point Cloud.")
         return
+
+    disable_left_frame()
 
     # Crear y mostrar la barra de progreso
     progress_bar = create_progress_bar()
@@ -1153,7 +1206,7 @@ def set_run_prueba_flag(pc_filepath):
     gridfrompcd(pc_filepath, progress_bar)
 
 def visualize(pc_filepath, csv_filepath, xml_filepath, show_dose_layer, dose_min_csv, dose_max_csv):
-    global altura_extra, point_size, vox_size, high_dose_rgb, medium_dose_rgb, low_dose_rgb, vis, downsample, progress_bar
+    global altura_extra, point_size, vox_size, high_dose_rgb, medium_dose_rgb, low_dose_rgb, downsample, progress_bar
     if not pc_filepath:
         messagebox.showwarning("Warning", "Please select a Point Cloud.")
         return
@@ -1167,6 +1220,8 @@ def visualize(pc_filepath, csv_filepath, xml_filepath, show_dose_layer, dose_min
         return
 
     validate_dose_ranges(show_dose_layer, dose_min_csv, dose_max_csv)
+
+    disable_left_frame()
 
     # Crear y mostrar la barra de progreso
     progress_bar = create_progress_bar()
@@ -1224,10 +1279,10 @@ def visualize(pc_filepath, csv_filepath, xml_filepath, show_dose_layer, dose_min
 
     if use_voxelization:
         mostrar_nube_si_vox(show_dose_layer, pc_filepath, xml_filepath, csv_filepath, high_dose_rgb, medium_dose_rgb, low_dose_rgb, dose_min_csv, low_max,
-            medium_min, medium_max, high_min, altura_extra, vis, progress_bar)
+            medium_min, medium_max, high_min, altura_extra, progress_bar)
     else:
         mostrar_nube_no_vox(show_dose_layer, pc_filepath, downsample, xml_filepath, csv_filepath, high_dose_rgb, medium_dose_rgb,
-            low_dose_rgb, dose_min_csv, low_max, medium_min, medium_max, high_min, altura_extra, vis, show_source, source_location, point_size, progress_bar)
+            low_dose_rgb, dose_min_csv, low_max, medium_min, medium_max, high_min, altura_extra, show_source, source_location, point_size, progress_bar)
 
 
 # Crear la ventana de Tkinter
@@ -1274,8 +1329,8 @@ def toggle_menu():
         root.btn_open_csv.pack_forget()
         root.btn_open_xml.pack_forget()
 
-btn_menu = CTkButton(menu_frame, text="Open ...", command=toggle_menu, fg_color="#3E3E3E")
-btn_menu.pack(pady=(5, 0))
+root.btn_menu = CTkButton(menu_frame, text="Open ...", command=toggle_menu, fg_color="#3E3E3E")
+root.btn_menu.pack(pady=(5, 0))
 
 
 def load_point_cloud_and_toggle():
@@ -1324,26 +1379,26 @@ def toggle_parameters():
         toggle_menu()
 
     if root.parameters_visible:
-        button_parameters.configure(text=" ▲ Parameters")
+        root.button_parameters.configure(text=" ▲ Parameters")
         parameters_frame.pack(pady=(10, 0), fill="x")
-        button_dose_layer.pack_forget()
-        button_dose_layer.pack(fill="x", padx=(0, 0), pady=(10, 0))
-        button_extra_computations.pack_forget()
-        button_extra_computations.pack(fill="x", padx=(0, 0), pady=(10, 0))
+        root.button_dose_layer.pack_forget()
+        root.button_dose_layer.pack(fill="x", padx=(0, 0), pady=(10, 0))
+        root.button_extra_computations.pack_forget()
+        root.button_extra_computations.pack(fill="x", padx=(0, 0), pady=(10, 0))
         root.btn_visualize.pack_forget()
         root.btn_visualize.pack(side="bottom", padx=(0, 0), pady=(10, 25))
 
         if root.dose_layer_visible:
-            button_dose_layer.pack_forget()
-            button_dose_layer.pack(fill="x", padx=(0, 0), pady=(10, 0))
+            root.button_dose_layer.pack_forget()
+            root.button_dose_layer.pack(fill="x", padx=(0, 0), pady=(10, 0))
             dose_layer_frame.pack_forget()
             dose_layer_frame.pack(pady=(5, 0), fill="x")
-            button_extra_computations.pack_forget()
-            button_extra_computations.pack(fill="x", padx=(0, 0), pady=(10, 0))
+            root.button_extra_computations.pack_forget()
+            root.button_extra_computations.pack(fill="x", padx=(0, 0), pady=(10, 0))
             root.btn_visualize.pack_forget()
             root.btn_visualize.pack(side="bottom", padx=(0, 0), pady=(10, 25))
     else:
-        button_parameters.configure(text=" ▼ Parameters")
+        root.button_parameters.configure(text=" ▼ Parameters")
         parameters_frame.pack_forget()
 
     if root.extra_computations_visible:
@@ -1354,9 +1409,9 @@ def toggle_parameters():
 
 
 # Parameters Button
-button_parameters = CTkButton(left_frame, text=" ▼ Parameters", text_color="#F0F0F0", fg_color="#3E3E3E",
+root.button_parameters = CTkButton(left_frame, text=" ▼ Parameters", text_color="#F0F0F0", fg_color="#3E3E3E",
                               anchor="w", corner_radius=0, command=toggle_parameters)
-button_parameters.pack(fill="x", padx=(0, 0), pady=(10, 0))
+root.button_parameters.pack(fill="x", padx=(0, 0), pady=(10, 0))
 
 parameters_frame = CTkFrame(left_frame, fg_color="#2E2E2E", corner_radius=0)
 
@@ -1399,14 +1454,14 @@ def toggle_dose_layer_b():
         toggle_menu()
 
     if root.dose_layer_visible:
-        button_dose_layer.configure(text=" ▲ Dose Layer")
+        root.button_dose_layer.configure(text=" ▲ Dose Layer")
         dose_layer_frame.pack(pady=(5, 0), fill="x")
-        button_extra_computations.pack_forget()
-        button_extra_computations.pack(fill="x", padx=(0, 0), pady=(10, 0))
+        root.button_extra_computations.pack_forget()
+        root.button_extra_computations.pack(fill="x", padx=(0, 0), pady=(10, 0))
         root.btn_visualize.pack_forget()
         root.btn_visualize.pack(side="bottom", padx=(0, 0), pady=(10, 25))
     else:
-        button_dose_layer.configure(text=" ▼ Dose Layer")
+        root.button_dose_layer.configure(text=" ▼ Dose Layer")
         dose_layer_frame.pack_forget()
 
     if root.extra_computations_visible:
@@ -1415,9 +1470,9 @@ def toggle_dose_layer_b():
         root.btn_visualize.pack_forget()
         root.btn_visualize.pack(side="bottom", padx=(0, 0), pady=(10, 25))
 
-button_dose_layer = CTkButton(left_frame, text=" ▼ Dose Layer", text_color="#F0F0F0", fg_color="#3E3E3E",
+root.button_dose_layer = CTkButton(left_frame, text=" ▼ Dose Layer", text_color="#F0F0F0", fg_color="#3E3E3E",
                               anchor="w", corner_radius=0, command=toggle_dose_layer_b)
-button_dose_layer.pack(fill="x", padx=(0, 0), pady=(10, 0))
+root.button_dose_layer.pack(fill="x", padx=(0, 0), pady=(10, 0))
 
 # Dose Layer
 dose_layer_frame = CTkFrame(left_frame, fg_color="#2E2E2E", corner_radius=0)
@@ -1539,21 +1594,21 @@ def toggle_extra_computations():
         toggle_menu()
 
     if root.extra_computations_visible:
-        button_extra_computations.configure(text=" ▲ Extra Computations")
+        root.button_extra_computations.configure(text=" ▲ Extra Computations")
         extra_computations_frame.pack(pady=(10, 0), fill="x")
         root.btn_visualize.pack_forget()
         root.btn_visualize.pack(side="bottom", padx=(0, 0), pady=(10, 25))
     else:
-        button_extra_computations.configure(text=" ▼ Extra Computations")
+        root.button_extra_computations.configure(text=" ▼ Extra Computations")
         extra_computations_frame.pack_forget()
         root.btn_visualize.pack_forget()
         root.btn_visualize.pack(side="bottom", padx=(0, 0), pady=(10, 25))
 
 
-button_extra_computations = CTkButton(left_frame, text=" ▼ Extra Computations", text_color="#F0F0F0",
+root.button_extra_computations = CTkButton(left_frame, text=" ▼ Extra Computations", text_color="#F0F0F0",
                                       fg_color="#3E3E3E",
                                       anchor="w", corner_radius=0, command=toggle_extra_computations)
-button_extra_computations.pack(fill="x", padx=(0, 0), pady=(10, 0))
+root.button_extra_computations.pack(fill="x", padx=(0, 0), pady=(10, 0))
 
 extra_computations_frame = CTkFrame(left_frame, fg_color="#2E2E2E", corner_radius=0)
 
