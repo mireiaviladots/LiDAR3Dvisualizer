@@ -21,7 +21,7 @@ import ctypes
 import threading
 from tkinter import ttk
 from tkinter import messagebox
-from PIL import Image, ImageTk
+import laspy
 
 source_location = None
 pc_filepath = None
@@ -1287,6 +1287,87 @@ def visualize(pc_filepath, csv_filepath, xml_filepath, show_dose_layer, dose_min
             low_dose_rgb, dose_min_csv, low_max, medium_min, medium_max, high_min, altura_extra, show_source, source_location, point_size, progress_bar)
 
 
+def segmentation():
+    fp = filedialog.askopenfilename(filetypes=[("LAS Files", "*.las")])
+    if fp:
+        print("Point Cloud Selected:", fp)
+
+        # Read the LAS file
+        las = laspy.read(fp)
+
+        # Extract points and classifications
+        points = np.vstack((las.x, las.y, las.z)).transpose()
+        classifications = np.array(las.classification)
+        #unique_classifications = np.unique(classifications)
+
+        # Define colors for specific classifications
+        color_map = {
+            0: [0.0, 0.0, 0.0],  # 0 - Created, never classified (Negro)
+            1: [1.0, 1.0, 1.0],  # 1 - Unclassified (White)
+            2: [0.55, 0.27, 0.07],  # 2 - Ground (Marrón)
+            3: [0.0, 1.0, 0.0],  # 3 - Low Vegetation (Verde claro)
+            4: [0.0, 0.6, 0.0],  # 4 - Medium Vegetation (Verde medio)
+            5: [0.0, 0.39, 0.0],  # 5 - High Vegetation (Verde oscuro)
+            6: [1.0, 0.0, 0.0],  # 6 - Building (Rojo)
+            7: [1.0, 1.0, 0.0],  # 7 - Low Point (noise) (Amarillo)
+            9: [0.0, 0.0, 1.0],  # 9 - Water (Azul)
+            10: [1.0, 0.65, 0.0],  # 10 - Rail (Naranja claro)
+            11: [0.5, 0.5, 0.0],  # 11 - Road Surface (Oliva)
+            13: [0.8, 0.8, 0.0],  # 13 - Wire – Guard (Shield) (Amarillo pálido)
+            14: [0.5, 0.5, 0.5],  # 14 - Wire – Conductor (Phase) (Gris)
+            15: [0.8, 0.0, 0.8],  # 15 - Transmission Tower (Violeta)
+            16: [0.0, 1.0, 1.0],  # 16 - Wire-structure Connector (Cian)
+            17: [0.8, 0.5, 0.2],  # 17 - Bridge Deck (Marrón claro)
+            18: [1.0, 0.0, 1.0],  # 18 - High Noise (Magenta)
+        }
+
+        # Create an Open3D PointCloud
+        pcd = o3d.geometry.PointCloud()
+        pcd.points = o3d.utility.Vector3dVector(points)
+
+        colors = np.zeros((points.shape[0], 3))
+        for classification, color in color_map.items():
+            colors[classifications == classification] = color
+
+        pcd.colors = o3d.utility.Vector3dVector(colors)
+
+        # Visualize the point cloud
+        vis = o3d.visualization.Visualizer()
+
+        # Obtener las dimensiones del right_frame
+        right_frame.update_idletasks()
+        right_frame_width = right_frame.winfo_width()
+        right_frame_height = right_frame.winfo_height()
+
+        # Obtener las dimensiones del left_frame
+        left_frame.update_idletasks()
+        left_frame_width = left_frame.winfo_width()
+
+        # Calcular tittle bar
+        title_bar_height = ctypes.windll.user32.GetSystemMetrics(4)
+
+        vis.create_window(window_name='Open3D', width=right_frame_width, height=right_frame_height,
+                          left=left_frame_width, top=title_bar_height)
+
+        vis.clear_geometries()
+        vis.add_geometry(pcd)
+
+        while True:
+            vis.poll_events()
+            vis.update_renderer()
+
+            if not vis.poll_events():
+                print("Ventana Cerrada")
+                enable_left_frame()
+                break
+
+        # Verificar si la nube de puntos tiene atributos
+        if not pcd.has_points():
+            print("La nube de puntos no tiene puntos.")
+            return
+
+    else:
+        print("No file selected.")
 
 # Crear la ventana de Tkinter
 root = CTk()
@@ -1641,6 +1722,10 @@ root.btn_convert_pcd_to_dat = CTkButton(extra_computations_frame, text="3D grid 
                                         text_color="#F0F0F0",
                                         font=("Arial", 12), command=lambda: set_run_prueba_flag(pc_filepath))
 root.btn_convert_pcd_to_dat.pack(fill="x", padx=(80, 80), pady=(5, 0))
+root.segmentation = CTkButton(extra_computations_frame, text="Segmentation", fg_color="#3E3E3E",
+                                        text_color="#F0F0F0",
+                                        font=("Arial", 12), command=segmentation)
+root.segmentation.pack(fill="x", padx=(80, 80), pady=(5, 0))
 
 # Visualize
 root.btn_visualize = CTkButton(left_frame, text="Visualize", text_color="#F0F0F0", fg_color="#1E3A5F",
