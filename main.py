@@ -461,20 +461,27 @@ def gridfrompcd(pc_filepath, progress_bar, csv_filepath):
 
             # Initialize structures for statistics
             z_values = np.full((num_pixels_y, num_pixels_x), np.nan)
-            cell_stats = [[{'z_values': [], 'colors': []} for _ in range(num_pixels_x)] for _ in range(num_pixels_y)]
+            cell_stats = np.empty((num_pixels_y, num_pixels_x), dtype=object)
+            for i in range(num_pixels_y):
+                for j in range(num_pixels_x):
+                    cell_stats[i, j] = {'z_values': [], 'colors': []}
 
             # Actualizar la barra de progreso
             update_progress_bar(progress_bar, 40)
 
-            # Process the point cloud data to fill Z values and colors
-            for point, color in zip(points, colors):
-                x, y, z = point[:3]
-                x_idx = int((x - min_x) // delta_x)
-                y_idx = int((y - min_y) // delta_y)
+            # Asignar puntos a celdas
+            x_idx = ((points[:, 0] - min_x) / delta_x).astype(int)
+            y_idx = ((points[:, 1] - min_y) / delta_y).astype(int)
 
-                if 0 <= x_idx < num_pixels_x and 0 <= y_idx < num_pixels_y:
-                    cell_stats[y_idx][x_idx]['z_values'].append(z)
-                    cell_stats[y_idx][x_idx]['colors'].append(color)
+            valid_mask = (
+                    (x_idx >= 0) & (x_idx < num_pixels_x) &
+                    (y_idx >= 0) & (y_idx < num_pixels_y)
+            )
+
+            for xi, yi, z, color in zip(x_idx[valid_mask], y_idx[valid_mask], points[valid_mask][:, 2],
+                                        colors[valid_mask]):
+                cell_stats[yi, xi]['z_values'].append(z)
+                cell_stats[yi, xi]['colors'].append(color)
 
             # Actualizar la barra de progreso
             update_progress_bar(progress_bar, 60)
@@ -482,13 +489,15 @@ def gridfrompcd(pc_filepath, progress_bar, csv_filepath):
             # Calculate mean Z values and predominant colors for each cell
             for i in range(num_pixels_y):
                 for j in range(num_pixels_x):
-                    z_vals = np.array(cell_stats[i][j]['z_values'])
-                    if len(z_vals) > 0:
+                    z_vals = cell_stats[i][j]['z_values']
+                    if z_vals:
+                        z_vals = np.array(z_vals)
                         z_mean = np.mean(z_vals)
                         z_std = np.std(z_vals)
 
                         # Filtrar valores atípicos por el criterio z_mean + 2*sigma
-                        filtered_z_vals = z_vals[z_vals <= z_mean + 2 * z_std]
+                        mask = z_vals <= z_mean + 2 * z_std
+                        filtered_z_vals = z_vals[mask]
                         z_values[i, j] = np.mean(filtered_z_vals) + 2 * np.std(filtered_z_vals)
                         cell_stats[i][j]['color'] = np.mean(cell_stats[i][j]['colors'], axis=0)
 
