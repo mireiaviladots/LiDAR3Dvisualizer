@@ -454,8 +454,8 @@ def gridfrompcd(pc_filepath, progress_bar, csv_filepath):
             max_x, max_y = np.max(points[:, :2], axis=0)
 
             # Calculate pixel sizes
-            num_pixels_x = 100
-            num_pixels_y = 100
+            num_pixels_x = 1000
+            num_pixels_y = 1000
             delta_x = (max_x - min_x) / num_pixels_x
             delta_y = (max_y - min_y) / num_pixels_y
 
@@ -1301,6 +1301,12 @@ def segmentation():
     if fp:
         print("Point Cloud Selected:", fp)
 
+        # Crear y mostrar la barra de progreso
+        progress_bar = create_progress_bar()
+
+        # Actualizar la barra de progreso
+        update_progress_bar(progress_bar, 1)
+
         # Read the LAS file
         las = laspy.read(fp)
 
@@ -1308,6 +1314,9 @@ def segmentation():
         points = np.vstack((las.x, las.y, las.z)).transpose()
         classifications = np.array(las.classification)
         #unique_classifications = np.unique(classifications)
+
+        # Actualizar la barra de progreso
+        update_progress_bar(progress_bar, 10)
 
         # Define colors for specific classifications
         color_map = {
@@ -1330,15 +1339,34 @@ def segmentation():
             18: [1.0, 0.0, 1.0],  # 18 - High Noise (Magenta)
         }
 
+        # Actualizar la barra de progreso
+        update_progress_bar(progress_bar, 20)
+
         # Create an Open3D PointCloud
         pcd = o3d.geometry.PointCloud()
         pcd.points = o3d.utility.Vector3dVector(points)
 
+        # Actualizar la barra de progreso
+        update_progress_bar(progress_bar, 40)
+
         colors = np.zeros((points.shape[0], 3))
+
+        # Actualizar la barra de progreso
+        update_progress_bar(progress_bar, 60)
+
         for classification, color in color_map.items():
             colors[classifications == classification] = color
 
+        # Actualizar la barra de progreso
+        update_progress_bar(progress_bar, 80)
+
         pcd.colors = o3d.utility.Vector3dVector(colors)
+
+        # Actualizar la barra de progreso
+        update_progress_bar(progress_bar, 100)
+
+        # Eliminar la barra de progreso
+        progress_bar.grid_forget()
 
         # Visualize the point cloud
         vis = o3d.visualization.Visualizer()
