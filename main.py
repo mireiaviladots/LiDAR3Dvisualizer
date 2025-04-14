@@ -1,12 +1,10 @@
 import numpy as np
 import open3d as o3d
 import csv
-from pyproj import Proj
 from scipy.spatial import cKDTree
 from pathlib import Path
 from customtkinter import *
-from tkinter import filedialog, messagebox
-import multiprocessing
+from tkinter import filedialog
 import xml.etree.ElementTree as ET
 import matplotlib.colors as mcolors
 from matplotlib.colors import ListedColormap, BoundaryNorm
@@ -22,6 +20,9 @@ import threading
 from tkinter import ttk
 from tkinter import messagebox
 import laspy
+from scipy.ndimage import gaussian_filter
+from skimage.feature import peak_local_max
+from skimage.segmentation import watershed
 
 source_location = None
 pc_filepath = None
@@ -1405,6 +1406,96 @@ def segmentation():
 
     else:
         print("No file selected.")
+
+def segmentationPlus():
+    fp = filedialog.askopenfilename(filetypes=[("LAS Files", "*.las")])
+    if fp:
+        print("Point Cloud Selected:", fp)
+
+        # Crear y mostrar la barra de progreso
+        progress_bar = create_progress_bar()
+
+        # Actualizar la barra de progreso
+        update_progress_bar(progress_bar, 1)
+
+        # Read the LAS file
+        las = laspy.read(fp)
+
+        # Extract points and classifications
+        points = np.vstack((las.x, las.y, las.z)).transpose()
+        classifications = np.array(las.classification)
+
+        # === Filtrar clasificación 4 (Medium Vegetation) ===
+        medium_veg_points = points[classifications == 4]
+        if medium_veg_points.shape[0] == 0:
+            print("No hay puntos con clasificación 4 en esta nube.")
+            return
+
+        # Crear un Canopy Height Model (CHM) rasterizado
+        resolution = 0.5  # tamaño de celda en metros
+        xmin, ymin = medium_veg_points[:, 0].min(), medium_veg_points[:, 1].min() #Obtiene el área de la nube.
+        xmax, ymax = medium_veg_points[:, 0].max(), medium_veg_points[:, 1].max()
+
+        cols = int(np.ceil((xmax - xmin) / resolution))
+        rows = int(np.ceil((ymax - ymin) / resolution))
+        chm = np.full((rows, cols), -999.0) #Crea la matriz CHM vacía.
+
+        for x, y, z in medium_veg_points:
+            col = int((x - xmin) / resolution)
+            row = int((ymax - y) / resolution)  # Y invertido
+            if 0 <= row < rows and 0 <= col < cols:
+                if z > chm[row, col]:   #Llena el CHM con la altura máxima en cada celda.
+                    chm[row, col] = z
+
+        chm[chm == -999.0] = np.nan  # Celda vacía = NaN
+        chm_smooth = np.nan_to_num(chm)
+        chm_smooth = gaussian_filter(chm_smooth, sigma=1) #Elimina ruido y micro-picos para mejorar la detección.
+
+        # Detectar máximos locales: posibles copas de árboles
+        coordinates = peak_local_max(chm_smooth, min_distance=2, exclude_border=False)
+
+        # Crear marcadores para Watershed
+        markers = np.zeros_like(chm_smooth, dtype=int)
+        for i, (r, c) in enumerate(coordinates, 1): #Cada máximo local recibe un número.
+            markers[r, c] = i
+
+        # Aplicar Watershed sobre CHM invertido
+        elevation = -chm_smooth #Invierte la altura.
+        labels = watershed(elevation, markers, mask=~np.isnan(chm)) #Segmenta el CHM en árboles. Asigna cada celda a un árbol específico.
+
+        num_arboles = len(np.unique(labels)) - 1  # Excluye label 0 (fondo)
+        print(f"Número de árboles detectados: {num_arboles}")
+
+        # Asignar colores únicos a cada árbol
+        unique_labels = np.unique(labels)
+        colors = np.random.rand(len(unique_labels), 3)  # Generar colores aleatorios
+        tree_colors = np.zeros((labels.shape[0], labels.shape[1], 3))
+
+        for label in unique_labels:
+            if label == 0:  # Fondo
+                continue
+            tree_colors[labels == label] = colors[label]
+
+        # Crear una nube de puntos coloreada
+        pcd_points = []
+        pcd_colors = []
+
+        for row in range(rows):
+            for col in range(cols):
+                if not np.isnan(chm[row, col]):
+                    pcd_points.append([xmin + col * resolution, ymax - row * resolution, chm[row, col]])
+                    pcd_colors.append(tree_colors[row, col])
+
+        pcd = o3d.geometry.PointCloud()
+        pcd.points = o3d.utility.Vector3dVector(np.array(pcd_points))
+        pcd.colors = o3d.utility.Vector3dVector(np.array(pcd_colors))
+
+        # Visualizar la nube de puntos
+        vis = o3d.visualization.Visualizer()
+        vis.create_window(window_name="Segmented Trees")
+        vis.add_geometry(pcd)
+        vis.run()
+        vis.destroy_window()
 
 # Crear la ventana de Tkinter
 root = CTk()
