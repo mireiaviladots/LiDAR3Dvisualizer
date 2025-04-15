@@ -23,6 +23,7 @@ import laspy
 from scipy.ndimage import gaussian_filter
 from skimage.feature import peak_local_max
 from skimage.segmentation import watershed
+import scipy.ndimage as ndi
 
 source_location = None
 pc_filepath = None
@@ -1431,8 +1432,17 @@ def segmentationPlus():
             print("No hay puntos con clasificación 4 en esta nube.")
             return
 
+        # === Filtrar por altura mínima ===
+        min_medium_veg_height = np.min(medium_veg_points[:, 2])
+        max_medium_veg_height = np.max(medium_veg_points[:, 2])
+
+        print(f"Altura mínima de la medium vegetation: {min_medium_veg_height}")
+        print(f"Altura max de la medium vegetation: {max_medium_veg_height}")
+
+        medium_veg_points = medium_veg_points[medium_veg_points[:, 2] >= min_medium_veg_height + 2.3]
+
         # Crear un Canopy Height Model (CHM) rasterizado
-        resolution = 0.5  # tamaño de celda en metros
+        resolution = 0.55  # tamaño de celda en metros
         xmin, ymin = medium_veg_points[:, 0].min(), medium_veg_points[:, 1].min() #Obtiene el área de la nube.
         xmax, ymax = medium_veg_points[:, 0].max(), medium_veg_points[:, 1].max()
 
@@ -1449,7 +1459,7 @@ def segmentationPlus():
 
         chm[chm == -999.0] = np.nan  # Celda vacía = NaN
         chm_smooth = np.nan_to_num(chm)
-        chm_smooth = gaussian_filter(chm_smooth, sigma=1) #Elimina ruido y micro-picos para mejorar la detección.
+        chm_smooth = gaussian_filter(chm_smooth, sigma=2) #Elimina ruido y micro-picos para mejorar la detección.
 
         # Detectar máximos locales: posibles copas de árboles
         coordinates = peak_local_max(chm_smooth, min_distance=2, exclude_border=False)
@@ -1463,18 +1473,36 @@ def segmentationPlus():
         elevation = -chm_smooth #Invierte la altura.
         labels = watershed(elevation, markers, mask=~np.isnan(chm)) #Segmenta el CHM en árboles. Asigna cada celda a un árbol específico.
 
-        num_arboles = len(np.unique(labels)) - 1  # Excluye label 0 (fondo)
+        # Conteo de píxeles por árbol
+        label_sizes = ndi.sum(~np.isnan(chm), labels, index=np.arange(1, labels.max() + 1))
+
+        # Define un mínimo de celdas, por ejemplo 20 celdas
+        min_size = 20
+        mask = np.zeros_like(labels, dtype=bool)
+
+        for i, size in enumerate(label_sizes, 1):
+          if size >= min_size:
+                mask |= labels == i
+
+        # Filtrar etiquetas pequeñas
+        labels_clean = labels * mask
+
+        num_arboles = len(np.unique(labels_clean)) - 1  # Restar 1 para no contar el fondo (0)
         print(f"Número de árboles detectados: {num_arboles}")
 
-        # Asignar colores únicos a cada árbol
-        unique_labels = np.unique(labels)
-        colors = np.random.rand(len(unique_labels), 3)  # Generar colores aleatorios
-        tree_colors = np.zeros((labels.shape[0], labels.shape[1], 3))
+        # Filtrar el CHM y las etiquetas usando labels_clean
+        filtered_chm = np.where((labels_clean > 0), chm, np.nan)  # Mantén solo celdas válidas
 
-        for label in unique_labels:
-            if label == 0:  # Fondo
-                continue
-            tree_colors[labels == label] = colors[label]
+        # Get the maximum label value
+        max_label = np.max(labels_clean)
+
+        # Generate random colors for each label, including the background (label 0)
+        colors = np.random.rand(max_label + 1, 3)  # Ensure the size matches the maximum label
+
+        # Assign colors to each tree
+        tree_colors = np.zeros((labels_clean.shape[0], labels_clean.shape[1], 3))
+        for label in range(max_label + 1):
+            tree_colors[labels_clean == label] = colors[label]
 
         # Crear una nube de puntos coloreada
         pcd_points = []
@@ -1483,7 +1511,7 @@ def segmentationPlus():
         for row in range(rows):
             for col in range(cols):
                 if not np.isnan(chm[row, col]):
-                    pcd_points.append([xmin + col * resolution, ymax - row * resolution, chm[row, col]])
+                    pcd_points.append([xmin + col * resolution, ymax - row * resolution, filtered_chm[row, col]])
                     pcd_colors.append(tree_colors[row, col])
 
         pcd = o3d.geometry.PointCloud()
@@ -1852,7 +1880,7 @@ root.btn_convert_pcd_to_dat = CTkButton(extra_computations_frame, text="3D grid 
 root.btn_convert_pcd_to_dat.pack(fill="x", padx=(80, 80), pady=(5, 0))
 root.segmentation = CTkButton(extra_computations_frame, text="Segmentation", fg_color="#3E3E3E",
                                         text_color="#F0F0F0",
-                                        font=("Arial", 12), command=segmentation)
+                                        font=("Arial", 12), command=segmentationPlus)
 root.segmentation.pack(fill="x", padx=(80, 80), pady=(5, 0))
 
 # Visualize
