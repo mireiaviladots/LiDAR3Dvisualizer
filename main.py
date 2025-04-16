@@ -574,6 +574,23 @@ def disable_left_frame():
 def enable_left_frame():
     root.attributes('-disabled', False)
 
+def legend_left_frame():
+    # Debug: Check if left_frame exists and has children
+    if left_frame is None:
+        print("Error: left_frame is not defined.")
+        return
+
+    children = left_frame.winfo_children()
+    if not children:
+        print("No widgets found in left_frame.")
+        return
+
+    # Clear all widgets in the left_frame
+    for widget in children:
+        widget.pack_forget()  # Hide the widget
+
+    print("All widgets in left_frame have been cleared.")
+
 # Crear la barra de progreso
 def create_progress_bar():
     progress_bar = ttk.Progressbar(right_frame, orient="horizontal", length=300, mode="determinate", style="TProgressbar")
@@ -1299,294 +1316,306 @@ def visualize(pc_filepath, csv_filepath, xml_filepath, show_dose_layer, dose_min
 
 
 def segmentation():
-    fp = filedialog.askopenfilename(filetypes=[("LAS Files", "*.las")])
-    if fp:
-        print("Point Cloud Selected:", fp)
+    def run():
+        fp = filedialog.askopenfilename(filetypes=[("LAS Files", "*.las")])
+        if fp:
+            print("Point Cloud Selected:", fp)
 
-        # Crear y mostrar la barra de progreso
-        progress_bar = create_progress_bar()
+            disable_left_frame()
 
-        # Actualizar la barra de progreso
-        update_progress_bar(progress_bar, 1)
+            # Crear y mostrar la barra de progreso
+            progress_bar = create_progress_bar()
 
-        # Read the LAS file
-        las = laspy.read(fp)
+            # Actualizar la barra de progreso
+            update_progress_bar(progress_bar, 1)
 
-        # Extract points and classifications
-        points = np.vstack((las.x, las.y, las.z)).transpose()
-        classifications = np.array(las.classification)
-        #unique_classifications = np.unique(classifications)
+            # Read the LAS file
+            las = laspy.read(fp)
 
-        # Actualizar la barra de progreso
-        update_progress_bar(progress_bar, 20)
+            # Extract points and classifications
+            points = np.vstack((las.x, las.y, las.z)).transpose()
+            classifications = np.array(las.classification)
+            #unique_classifications = np.unique(classifications)
 
-        # Define colors for specific classifications
-        color_map = {
-            0: [0.0, 0.0, 0.0],  # 0 - Created, never classified (Negro)
-            1: [1.0, 1.0, 1.0],  # 1 - Unclassified (White)
-            2: [0.55, 0.27, 0.07],  # 2 - Ground (Marrón)
-            3: [0.0, 1.0, 0.0],  # 3 - Low Vegetation (Verde claro)
-            4: [0.0, 0.6, 0.0],  # 4 - Medium Vegetation (Verde medio)
-            5: [0.0, 0.39, 0.0],  # 5 - High Vegetation (Verde oscuro)
-            6: [1.0, 0.0, 0.0],  # 6 - Building (Rojo)
-            7: [1.0, 1.0, 0.0],  # 7 - Low Point (noise) (Amarillo)
-            9: [0.0, 0.0, 1.0],  # 9 - Water (Azul)
-            10: [1.0, 0.65, 0.0],  # 10 - Rail (Naranja claro)
-            11: [0.5, 0.5, 0.0],  # 11 - Road Surface (Oliva)
-            13: [0.8, 0.8, 0.0],  # 13 - Wire – Guard (Shield) (Amarillo pálido)
-            14: [0.5, 0.5, 0.5],  # 14 - Wire – Conductor (Phase) (Gris)
-            15: [0.8, 0.0, 0.8],  # 15 - Transmission Tower (Violeta)
-            16: [0.0, 1.0, 1.0],  # 16 - Wire-structure Connector (Cian)
-            17: [0.8, 0.5, 0.2],  # 17 - Bridge Deck (Marrón claro)
-            18: [1.0, 0.0, 1.0],  # 18 - High Noise (Magenta)
-        }
+            # Actualizar la barra de progreso
+            update_progress_bar(progress_bar, 20)
 
-        # Actualizar la barra de progreso
-        update_progress_bar(progress_bar, 40)
+            # Define colors for specific classifications
+            color_map = {
+                0: [0.0, 0.0, 0.0],  # 0 - Created, never classified (Negro)
+                1: [1.0, 1.0, 1.0],  # 1 - Unclassified (White)
+                2: [0.55, 0.27, 0.07],  # 2 - Ground (Marrón)
+                3: [0.0, 1.0, 0.0],  # 3 - Low Vegetation (Verde claro)
+                4: [0.0, 0.6, 0.0],  # 4 - Medium Vegetation (Verde medio)
+                5: [0.0, 0.39, 0.0],  # 5 - High Vegetation (Verde oscuro)
+                6: [1.0, 0.0, 0.0],  # 6 - Building (Rojo)
+                7: [1.0, 1.0, 0.0],  # 7 - Low Point (noise) (Amarillo)
+                9: [0.0, 0.0, 1.0],  # 9 - Water (Azul)
+                10: [1.0, 0.65, 0.0],  # 10 - Rail (Naranja claro)
+                11: [0.5, 0.5, 0.0],  # 11 - Road Surface (Oliva)
+                13: [0.8, 0.8, 0.0],  # 13 - Wire – Guard (Shield) (Amarillo pálido)
+                14: [0.5, 0.5, 0.5],  # 14 - Wire – Conductor (Phase) (Gris)
+                15: [0.8, 0.0, 0.8],  # 15 - Transmission Tower (Violeta)
+                16: [0.0, 1.0, 1.0],  # 16 - Wire-structure Connector (Cian)
+                17: [0.8, 0.5, 0.2],  # 17 - Bridge Deck (Marrón claro)
+                18: [1.0, 0.0, 1.0],  # 18 - High Noise (Magenta)
+            }
 
-        # Create an Open3D PointCloud
-        pcd = o3d.geometry.PointCloud()
-        pcd.points = o3d.utility.Vector3dVector(points)
+            # Actualizar la barra de progreso
+            update_progress_bar(progress_bar, 40)
 
-        # Actualizar la barra de progreso
-        update_progress_bar(progress_bar, 50)
+            # Create an Open3D PointCloud
+            pcd = o3d.geometry.PointCloud()
+            pcd.points = o3d.utility.Vector3dVector(points)
 
-        colors = np.zeros((points.shape[0], 3))
+            # Actualizar la barra de progreso
+            update_progress_bar(progress_bar, 50)
 
-        # Actualizar la barra de progreso
-        update_progress_bar(progress_bar, 60)
+            colors = np.zeros((points.shape[0], 3))
 
-        for classification, color in color_map.items():
-            colors[classifications == classification] = color
+            # Actualizar la barra de progreso
+            update_progress_bar(progress_bar, 60)
 
-        # Actualizar la barra de progreso
-        update_progress_bar(progress_bar, 80)
+            for classification, color in color_map.items():
+                colors[classifications == classification] = color
 
-        pcd.colors = o3d.utility.Vector3dVector(colors)
+            # Actualizar la barra de progreso
+            update_progress_bar(progress_bar, 80)
 
-        # Actualizar la barra de progreso
-        update_progress_bar(progress_bar, 100)
+            pcd.colors = o3d.utility.Vector3dVector(colors)
 
-        # Eliminar la barra de progreso
-        progress_bar.grid_forget()
+            # Actualizar la barra de progreso
+            update_progress_bar(progress_bar, 100)
 
-        # Visualize the point cloud
-        vis = o3d.visualization.Visualizer()
+            # Eliminar la barra de progreso
+            progress_bar.grid_forget()
 
-        # Obtener las dimensiones del right_frame
-        right_frame.update_idletasks()
-        right_frame_width = right_frame.winfo_width()
-        right_frame_height = right_frame.winfo_height()
+            legend_left_frame()
 
-        # Obtener las dimensiones del left_frame
-        left_frame.update_idletasks()
-        left_frame_width = left_frame.winfo_width()
+            # Visualize the point cloud
+            vis = o3d.visualization.Visualizer()
 
-        # Calcular tittle bar
-        title_bar_height = ctypes.windll.user32.GetSystemMetrics(4)
+            # Obtener las dimensiones del right_frame
+            right_frame.update_idletasks()
+            right_frame_width = right_frame.winfo_width()
+            right_frame_height = right_frame.winfo_height()
 
-        vis.create_window(window_name='Open3D', width=right_frame_width, height=right_frame_height,
-                          left=left_frame_width, top=title_bar_height)
+            # Obtener las dimensiones del left_frame
+            left_frame.update_idletasks()
+            left_frame_width = left_frame.winfo_width()
 
-        vis.clear_geometries()
-        vis.add_geometry(pcd)
+            # Calcular tittle bar
+            title_bar_height = ctypes.windll.user32.GetSystemMetrics(4)
 
-        while True:
-            vis.poll_events()
-            vis.update_renderer()
+            vis.create_window(window_name='Open3D', width=right_frame_width, height=right_frame_height,
+                              left=left_frame_width, top=title_bar_height)
 
-            if not vis.poll_events():
-                print("Ventana Cerrada")
-                enable_left_frame()
-                break
+            vis.clear_geometries()
+            vis.add_geometry(pcd)
 
-        # Verificar si la nube de puntos tiene atributos
-        if not pcd.has_points():
-            print("La nube de puntos no tiene puntos.")
-            return
+            while True:
+                vis.poll_events()
+                vis.update_renderer()
 
-    else:
-        print("No file selected.")
+                if not vis.poll_events():
+                    print("Ventana Cerrada")
+                    enable_left_frame()
+                    break
+
+            # Verificar si la nube de puntos tiene atributos
+            if not pcd.has_points():
+                print("La nube de puntos no tiene puntos.")
+                return
+
+        else:
+            print("No file selected.")
+
+    threading.Thread(target=run, daemon=True).start()
 
 def segmentationPlus():
-    fp = filedialog.askopenfilename(filetypes=[("LAS Files", "*.las")])
-    if fp:
-        print("Point Cloud Selected:", fp)
+    def run():
+        fp = filedialog.askopenfilename(filetypes=[("LAS Files", "*.las")])
+        if fp:
+            print("Point Cloud Selected:", fp)
 
-        # Crear y mostrar la barra de progreso
-        progress_bar = create_progress_bar()
+            disable_left_frame()
 
-        # Actualizar la barra de progreso
-        update_progress_bar(progress_bar, 1)
+            # Crear y mostrar la barra de progreso
+            progress_bar = create_progress_bar()
 
-        # Read the LAS file
-        las = laspy.read(fp)
+            # Actualizar la barra de progreso
+            update_progress_bar(progress_bar, 1)
 
-        # Extract points and classifications
-        points = np.vstack((las.x, las.y, las.z)).transpose()
-        classifications = np.array(las.classification)
+            # Read the LAS file
+            las = laspy.read(fp)
 
-        # Actualizar la barra de progreso
-        update_progress_bar(progress_bar, 10)
+            # Extract points and classifications
+            points = np.vstack((las.x, las.y, las.z)).transpose()
+            classifications = np.array(las.classification)
 
-        # === Filtrar clasificación 4 (Medium Vegetation) ===
-        medium_veg_points = points[classifications == 4]
-        if medium_veg_points.shape[0] == 0:
-            print("No hay puntos con clasificación 4 en esta nube.")
-            return
+            # Actualizar la barra de progreso
+            update_progress_bar(progress_bar, 10)
 
-        # === Filtrar por altura mínima ===
-        min_medium_veg_height = np.min(medium_veg_points[:, 2])
-        max_medium_veg_height = np.max(medium_veg_points[:, 2])
+            # === Filtrar clasificación 4 (Medium Vegetation) ===
+            medium_veg_points = points[classifications == 4]
+            if medium_veg_points.shape[0] == 0:
+                print("No hay puntos con clasificación 4 en esta nube.")
+                return
 
-        print(f"Altura mínima de la medium vegetation: {min_medium_veg_height}")
-        print(f"Altura max de la medium vegetation: {max_medium_veg_height}")
+            # === Filtrar por altura mínima ===
+            min_medium_veg_height = np.min(medium_veg_points[:, 2])
+            max_medium_veg_height = np.max(medium_veg_points[:, 2])
 
-        medium_veg_points = medium_veg_points[medium_veg_points[:, 2] >= min_medium_veg_height + 2.3]
+            print(f"Altura mínima de la medium vegetation: {min_medium_veg_height}")
+            print(f"Altura max de la medium vegetation: {max_medium_veg_height}")
 
-        # Actualizar la barra de progreso
-        update_progress_bar(progress_bar, 20)
+            medium_veg_points = medium_veg_points[medium_veg_points[:, 2] >= min_medium_veg_height + 2.3]
 
-        # Crear un Canopy Height Model (CHM) rasterizado
-        resolution = 0.55  # tamaño de celda en metros
-        xmin, ymin = medium_veg_points[:, 0].min(), medium_veg_points[:, 1].min() #Obtiene el área de la nube.
-        xmax, ymax = medium_veg_points[:, 0].max(), medium_veg_points[:, 1].max()
+            # Actualizar la barra de progreso
+            update_progress_bar(progress_bar, 20)
 
-        # Actualizar la barra de progreso
-        update_progress_bar(progress_bar, 30)
+            # Crear un Canopy Height Model (CHM) rasterizado
+            resolution = 0.55  # tamaño de celda en metros
+            xmin, ymin = medium_veg_points[:, 0].min(), medium_veg_points[:, 1].min() #Obtiene el área de la nube.
+            xmax, ymax = medium_veg_points[:, 0].max(), medium_veg_points[:, 1].max()
 
-        cols = int(np.ceil((xmax - xmin) / resolution))
-        rows = int(np.ceil((ymax - ymin) / resolution))
-        chm = np.full((rows, cols), -999.0) #Crea la matriz CHM vacía.
+            # Actualizar la barra de progreso
+            update_progress_bar(progress_bar, 30)
 
-        for x, y, z in medium_veg_points:
-            col = int((x - xmin) / resolution)
-            row = int((ymax - y) / resolution)  # Y invertido
-            if 0 <= row < rows and 0 <= col < cols:
-                if z > chm[row, col]:   #Llena el CHM con la altura máxima en cada celda.
-                    chm[row, col] = z
+            cols = int(np.ceil((xmax - xmin) / resolution))
+            rows = int(np.ceil((ymax - ymin) / resolution))
+            chm = np.full((rows, cols), -999.0) #Crea la matriz CHM vacía.
 
-        # Actualizar la barra de progreso
-        update_progress_bar(progress_bar, 40)
+            for x, y, z in medium_veg_points:
+                col = int((x - xmin) / resolution)
+                row = int((ymax - y) / resolution)  # Y invertido
+                if 0 <= row < rows and 0 <= col < cols:
+                    if z > chm[row, col]:   #Llena el CHM con la altura máxima en cada celda.
+                        chm[row, col] = z
 
-        chm[chm == -999.0] = np.nan  # Celda vacía = NaN
-        chm_smooth = np.nan_to_num(chm)
-        chm_smooth = gaussian_filter(chm_smooth, sigma=2) #Elimina ruido y micro-picos para mejorar la detección.
+            # Actualizar la barra de progreso
+            update_progress_bar(progress_bar, 40)
 
-        # Detectar máximos locales: posibles copas de árboles
-        coordinates = peak_local_max(chm_smooth, min_distance=2, exclude_border=False)
+            chm[chm == -999.0] = np.nan  # Celda vacía = NaN
+            chm_smooth = np.nan_to_num(chm)
+            chm_smooth = gaussian_filter(chm_smooth, sigma=2) #Elimina ruido y micro-picos para mejorar la detección.
 
-        # Actualizar la barra de progreso
-        update_progress_bar(progress_bar, 50)
+            # Detectar máximos locales: posibles copas de árboles
+            coordinates = peak_local_max(chm_smooth, min_distance=2, exclude_border=False)
 
-        # Crear marcadores para Watershed
-        markers = np.zeros_like(chm_smooth, dtype=int)
-        for i, (r, c) in enumerate(coordinates, 1): #Cada máximo local recibe un número.
-            markers[r, c] = i
+            # Actualizar la barra de progreso
+            update_progress_bar(progress_bar, 50)
 
-        # Actualizar la barra de progreso
-        update_progress_bar(progress_bar, 60)
+            # Crear marcadores para Watershed
+            markers = np.zeros_like(chm_smooth, dtype=int)
+            for i, (r, c) in enumerate(coordinates, 1): #Cada máximo local recibe un número.
+                markers[r, c] = i
 
-        # Aplicar Watershed sobre CHM invertido
-        elevation = -chm_smooth #Invierte la altura.
-        labels = watershed(elevation, markers, mask=~np.isnan(chm)) #Segmenta el CHM en árboles. Asigna cada celda a un árbol específico.
+            # Actualizar la barra de progreso
+            update_progress_bar(progress_bar, 60)
 
-        # Conteo de píxeles por árbol
-        label_sizes = ndi.sum(~np.isnan(chm), labels, index=np.arange(1, labels.max() + 1))
+            # Aplicar Watershed sobre CHM invertido
+            elevation = -chm_smooth #Invierte la altura.
+            labels = watershed(elevation, markers, mask=~np.isnan(chm)) #Segmenta el CHM en árboles. Asigna cada celda a un árbol específico.
 
-        # Define un mínimo de celdas, por ejemplo 20 celdas
-        min_size = 20
-        mask = np.zeros_like(labels, dtype=bool)
+            # Conteo de píxeles por árbol
+            label_sizes = ndi.sum(~np.isnan(chm), labels, index=np.arange(1, labels.max() + 1))
 
-        # Actualizar la barra de progreso
-        update_progress_bar(progress_bar, 70)
+            # Define un mínimo de celdas, por ejemplo 20 celdas
+            min_size = 20
+            mask = np.zeros_like(labels, dtype=bool)
 
-        for i, size in enumerate(label_sizes, 1):
-          if size >= min_size:
-                mask |= labels == i
+            # Actualizar la barra de progreso
+            update_progress_bar(progress_bar, 70)
 
-        # Filtrar etiquetas pequeñas
-        labels_clean = labels * mask
+            for i, size in enumerate(label_sizes, 1):
+              if size >= min_size:
+                    mask |= labels == i
 
-        num_arboles = len(np.unique(labels_clean)) - 1  # Restar 1 para no contar el fondo (0)
-        print(f"Número de árboles detectados: {num_arboles}")
+            # Filtrar etiquetas pequeñas
+            labels_clean = labels * mask
 
-        # Filtrar el CHM y las etiquetas usando labels_clean
-        filtered_chm = np.where((labels_clean > 0), chm, np.nan)  # Mantén solo celdas válidas
+            num_arboles = len(np.unique(labels_clean)) - 1  # Restar 1 para no contar el fondo (0)
+            print(f"Número de árboles detectados: {num_arboles}")
 
-        # Actualizar la barra de progreso
-        update_progress_bar(progress_bar, 80)
+            # Filtrar el CHM y las etiquetas usando labels_clean
+            filtered_chm = np.where((labels_clean > 0), chm, np.nan)  # Mantén solo celdas válidas
 
-        # Get the maximum label value
-        max_label = np.max(labels_clean)
+            # Actualizar la barra de progreso
+            update_progress_bar(progress_bar, 80)
 
-        # Generate random colors for each label, including the background (label 0)
-        colors = np.random.rand(max_label + 1, 3)  # Ensure the size matches the maximum label
+            # Get the maximum label value
+            max_label = np.max(labels_clean)
 
-        # Assign colors to each tree
-        tree_colors = np.zeros((labels_clean.shape[0], labels_clean.shape[1], 3))
-        for label in range(max_label + 1):
-            tree_colors[labels_clean == label] = colors[label]
+            # Generate random colors for each label, including the background (label 0)
+            colors = np.random.rand(max_label + 1, 3)  # Ensure the size matches the maximum label
 
-        # Actualizar la barra de progreso
-        update_progress_bar(progress_bar, 90)
+            # Assign colors to each tree
+            tree_colors = np.zeros((labels_clean.shape[0], labels_clean.shape[1], 3))
+            for label in range(max_label + 1):
+                tree_colors[labels_clean == label] = colors[label]
 
-        # Crear una nube de puntos coloreada
-        pcd_points = []
-        pcd_colors = []
+            # Actualizar la barra de progreso
+            update_progress_bar(progress_bar, 90)
 
-        for row in range(rows):
-            for col in range(cols):
-                if not np.isnan(chm[row, col]):
-                    pcd_points.append([xmin + col * resolution, ymax - row * resolution, filtered_chm[row, col]])
-                    pcd_colors.append(tree_colors[row, col])
+            # Crear una nube de puntos coloreada
+            pcd_points = []
+            pcd_colors = []
 
-        pcd = o3d.geometry.PointCloud()
-        pcd.points = o3d.utility.Vector3dVector(np.array(pcd_points))
-        pcd.colors = o3d.utility.Vector3dVector(np.array(pcd_colors))
+            for row in range(rows):
+                for col in range(cols):
+                    if not np.isnan(chm[row, col]):
+                        pcd_points.append([xmin + col * resolution, ymax - row * resolution, filtered_chm[row, col]])
+                        pcd_colors.append(tree_colors[row, col])
 
-        # Actualizar la barra de progreso
-        update_progress_bar(progress_bar, 100)
+            pcd = o3d.geometry.PointCloud()
+            pcd.points = o3d.utility.Vector3dVector(np.array(pcd_points))
+            pcd.colors = o3d.utility.Vector3dVector(np.array(pcd_colors))
 
-        # Eliminar la barra de progreso
-        progress_bar.grid_forget()
+            # Actualizar la barra de progreso
+            update_progress_bar(progress_bar, 100)
 
-        # Visualizar la nube de puntos
-        vis = o3d.visualization.Visualizer()
+            # Eliminar la barra de progreso
+            progress_bar.grid_forget()
 
-        # Obtener las dimensiones del right_frame
-        right_frame.update_idletasks()
-        right_frame_width = right_frame.winfo_width()
-        right_frame_height = right_frame.winfo_height()
+            # Visualizar la nube de puntos
+            vis = o3d.visualization.Visualizer()
 
-        # Obtener las dimensiones del left_frame
-        left_frame.update_idletasks()
-        left_frame_width = left_frame.winfo_width()
+            # Obtener las dimensiones del right_frame
+            right_frame.update_idletasks()
+            right_frame_width = right_frame.winfo_width()
+            right_frame_height = right_frame.winfo_height()
 
-        # Calcular tittle bar
-        title_bar_height = ctypes.windll.user32.GetSystemMetrics(4)
+            # Obtener las dimensiones del left_frame
+            left_frame.update_idletasks()
+            left_frame_width = left_frame.winfo_width()
 
-        vis.create_window(window_name='Open3D', width=right_frame_width, height=right_frame_height,
-                          left=left_frame_width, top=title_bar_height)
-        vis.clear_geometries()
-        vis.add_geometry(pcd)
+            # Calcular tittle bar
+            title_bar_height = ctypes.windll.user32.GetSystemMetrics(4)
 
-        while True:
-            vis.poll_events()
-            vis.update_renderer()
+            vis.create_window(window_name='Open3D', width=right_frame_width, height=right_frame_height,
+                              left=left_frame_width, top=title_bar_height)
+            vis.clear_geometries()
+            vis.add_geometry(pcd)
 
-            if not vis.poll_events():
-                print("Ventana Cerrada")
-                enable_left_frame()
-                break
+            while True:
+                vis.poll_events()
+                vis.update_renderer()
 
-        # Verificar si la nube de puntos tiene atributos
-        if not pcd.has_points():
-            print("La nube de puntos no tiene puntos.")
-            return
+                if not vis.poll_events():
+                    print("Ventana Cerrada")
+                    enable_left_frame()
+                    break
 
-    else:
-        print("No file selected.")
+            # Verificar si la nube de puntos tiene atributos
+            if not pcd.has_points():
+                print("La nube de puntos no tiene puntos.")
+                return
+
+        else:
+            print("No file selected.")
+
+    threading.Thread(target=run, daemon=True).start()
 
 # Crear la ventana de Tkinter
 root = CTk()
