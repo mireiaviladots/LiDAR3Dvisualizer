@@ -61,6 +61,9 @@ screen_width = False
 left_frame_width = False
 title_bar_height = False
 progress_bar = None
+original_left_frame_widgets = []
+legend_frame = None
+legend_canvas = None
 
 def mostrar_nube_no_vox(show_dose_layer, pc_filepath, downsample, xml_filepath, csv_filepath, high_dose_rgb, medium_dose_rgb,
                         low_dose_rgb, dose_min_csv, low_max, medium_min, medium_max, high_min, altura_extra, show_source, source_location, point_size, progress_bar):
@@ -575,21 +578,53 @@ def enable_left_frame():
     root.attributes('-disabled', False)
 
 def legend_left_frame():
-    # Debug: Check if left_frame exists and has children
-    if left_frame is None:
-        print("Error: left_frame is not defined.")
-        return
+    global legend_frame, legend_canvas
 
-    children = left_frame.winfo_children()
-    if not children:
-        print("No widgets found in left_frame.")
-        return
+    # Crear el Canvas dentro del left_frame
+    legend_canvas = CTkCanvas(left_frame, bg="#2E2E2E", highlightthickness=0, width=left_frame.winfo_width(), height=left_frame.winfo_height())
+    legend_canvas.place(x=0, y=0)
+    legend_canvas.create_rectangle(0, 0, left_frame.winfo_width(), left_frame.winfo_height(), fill="#1E1E1E", outline="")
 
-    # Clear all widgets in the left_frame
-    for widget in children:
-        widget.pack_forget()  # Hide the widget
+    # Crear el frame con el mismo tamaño que el left_frame
+    legend_frame = CTkFrame(left_frame, fg_color="#1E1E1E", corner_radius=0, width=left_frame.winfo_width(), height=left_frame.winfo_height())
+    legend_frame.place(x=0, y=0)
 
-    print("All widgets in left_frame have been cleared.")
+    # Mapa de colores y etiquetas
+    color_map = {
+        0: ([0.0, 0.0, 0.0], "Created, never classified"),
+        1: ([1.0, 1.0, 1.0], "Unclassified"),
+        2: ([0.55, 0.27, 0.07], "Ground"),
+        3: ([0.0, 1.0, 0.0], "Low Vegetation"),
+        4: ([0.0, 0.6, 0.0], "Medium Vegetation"),
+        5: ([0.0, 0.39, 0.0], "High Vegetation"),
+        6: ([1.0, 0.0, 0.0], "Building"),
+        7: ([1.0, 1.0, 0.0], "Low Point (noise)"),
+        9: ([0.0, 0.0, 1.0], "Water"),
+        10: ([1.0, 0.65, 0.0], "Rail"),
+        11: ([0.5, 0.5, 0.0], "Road Surface"),
+        13: ([0.8, 0.8, 0.0], "Wire – Guard (Shield)"),
+        14: ([0.5, 0.5, 0.5], "Wire – Conductor (Phase)"),
+        15: ([0.8, 0.0, 0.8], "Transmission Tower"),
+        16: ([0.0, 1.0, 1.0], "Wire-structure Connector"),
+        17: ([0.8, 0.5, 0.2], "Bridge Deck"),
+        18: ([1.0, 0.0, 1.0], "High Noise"),
+    }
+
+    # Crear los elementos de la leyenda
+    for idx, (color, label) in enumerate(color_map.values()):
+        # Convertir RGB a formato hexadecimal
+        hex_color = "#{:02x}{:02x}{:02x}".format(
+            int(color[0] * 255), int(color[1] * 255), int(color[2] * 255)
+        )
+
+        # Crear un canvas para el círculo
+        canvas = CTkCanvas(legend_frame, width=20, height=20, bg="#1E1E1E", highlightthickness=0)
+        canvas.create_oval(2, 2, 18, 18, fill=hex_color, outline=hex_color)
+        canvas.grid(row=idx, column=0, padx=(10, 5), pady=5)
+
+        # Crear un label para el texto
+        label_widget = CTkLabel(legend_frame, text=label, text_color="#F0F0F0", font=("Arial", 12))
+        label_widget.grid(row=idx, column=1, sticky="w", padx=(5, 10), pady=5)
 
 # Crear la barra de progreso
 def create_progress_bar():
@@ -1419,6 +1454,13 @@ def segmentation():
 
                 if not vis.poll_events():
                     print("Ventana Cerrada")
+                    #Elimina el legend
+                    if 'legend_frame' in globals() and legend_frame.winfo_exists():
+                        legend_frame.place_forget()
+
+                    if 'legend_canvas' in globals() and legend_canvas.winfo_exists():
+                        legend_canvas.place_forget()
+
                     enable_left_frame()
                     break
 
