@@ -1318,7 +1318,7 @@ def segmentation():
         #unique_classifications = np.unique(classifications)
 
         # Actualizar la barra de progreso
-        update_progress_bar(progress_bar, 10)
+        update_progress_bar(progress_bar, 20)
 
         # Define colors for specific classifications
         color_map = {
@@ -1342,14 +1342,14 @@ def segmentation():
         }
 
         # Actualizar la barra de progreso
-        update_progress_bar(progress_bar, 20)
+        update_progress_bar(progress_bar, 40)
 
         # Create an Open3D PointCloud
         pcd = o3d.geometry.PointCloud()
         pcd.points = o3d.utility.Vector3dVector(points)
 
         # Actualizar la barra de progreso
-        update_progress_bar(progress_bar, 40)
+        update_progress_bar(progress_bar, 50)
 
         colors = np.zeros((points.shape[0], 3))
 
@@ -1426,6 +1426,9 @@ def segmentationPlus():
         points = np.vstack((las.x, las.y, las.z)).transpose()
         classifications = np.array(las.classification)
 
+        # Actualizar la barra de progreso
+        update_progress_bar(progress_bar, 10)
+
         # === Filtrar clasificación 4 (Medium Vegetation) ===
         medium_veg_points = points[classifications == 4]
         if medium_veg_points.shape[0] == 0:
@@ -1441,10 +1444,16 @@ def segmentationPlus():
 
         medium_veg_points = medium_veg_points[medium_veg_points[:, 2] >= min_medium_veg_height + 2.3]
 
+        # Actualizar la barra de progreso
+        update_progress_bar(progress_bar, 20)
+
         # Crear un Canopy Height Model (CHM) rasterizado
         resolution = 0.55  # tamaño de celda en metros
         xmin, ymin = medium_veg_points[:, 0].min(), medium_veg_points[:, 1].min() #Obtiene el área de la nube.
         xmax, ymax = medium_veg_points[:, 0].max(), medium_veg_points[:, 1].max()
+
+        # Actualizar la barra de progreso
+        update_progress_bar(progress_bar, 30)
 
         cols = int(np.ceil((xmax - xmin) / resolution))
         rows = int(np.ceil((ymax - ymin) / resolution))
@@ -1457,6 +1466,9 @@ def segmentationPlus():
                 if z > chm[row, col]:   #Llena el CHM con la altura máxima en cada celda.
                     chm[row, col] = z
 
+        # Actualizar la barra de progreso
+        update_progress_bar(progress_bar, 40)
+
         chm[chm == -999.0] = np.nan  # Celda vacía = NaN
         chm_smooth = np.nan_to_num(chm)
         chm_smooth = gaussian_filter(chm_smooth, sigma=2) #Elimina ruido y micro-picos para mejorar la detección.
@@ -1464,10 +1476,16 @@ def segmentationPlus():
         # Detectar máximos locales: posibles copas de árboles
         coordinates = peak_local_max(chm_smooth, min_distance=2, exclude_border=False)
 
+        # Actualizar la barra de progreso
+        update_progress_bar(progress_bar, 50)
+
         # Crear marcadores para Watershed
         markers = np.zeros_like(chm_smooth, dtype=int)
         for i, (r, c) in enumerate(coordinates, 1): #Cada máximo local recibe un número.
             markers[r, c] = i
+
+        # Actualizar la barra de progreso
+        update_progress_bar(progress_bar, 60)
 
         # Aplicar Watershed sobre CHM invertido
         elevation = -chm_smooth #Invierte la altura.
@@ -1479,6 +1497,9 @@ def segmentationPlus():
         # Define un mínimo de celdas, por ejemplo 20 celdas
         min_size = 20
         mask = np.zeros_like(labels, dtype=bool)
+
+        # Actualizar la barra de progreso
+        update_progress_bar(progress_bar, 70)
 
         for i, size in enumerate(label_sizes, 1):
           if size >= min_size:
@@ -1493,6 +1514,9 @@ def segmentationPlus():
         # Filtrar el CHM y las etiquetas usando labels_clean
         filtered_chm = np.where((labels_clean > 0), chm, np.nan)  # Mantén solo celdas válidas
 
+        # Actualizar la barra de progreso
+        update_progress_bar(progress_bar, 80)
+
         # Get the maximum label value
         max_label = np.max(labels_clean)
 
@@ -1503,6 +1527,9 @@ def segmentationPlus():
         tree_colors = np.zeros((labels_clean.shape[0], labels_clean.shape[1], 3))
         for label in range(max_label + 1):
             tree_colors[labels_clean == label] = colors[label]
+
+        # Actualizar la barra de progreso
+        update_progress_bar(progress_bar, 90)
 
         # Crear una nube de puntos coloreada
         pcd_points = []
@@ -1518,12 +1545,48 @@ def segmentationPlus():
         pcd.points = o3d.utility.Vector3dVector(np.array(pcd_points))
         pcd.colors = o3d.utility.Vector3dVector(np.array(pcd_colors))
 
+        # Actualizar la barra de progreso
+        update_progress_bar(progress_bar, 100)
+
+        # Eliminar la barra de progreso
+        progress_bar.grid_forget()
+
         # Visualizar la nube de puntos
         vis = o3d.visualization.Visualizer()
-        vis.create_window(window_name="Segmented Trees")
+
+        # Obtener las dimensiones del right_frame
+        right_frame.update_idletasks()
+        right_frame_width = right_frame.winfo_width()
+        right_frame_height = right_frame.winfo_height()
+
+        # Obtener las dimensiones del left_frame
+        left_frame.update_idletasks()
+        left_frame_width = left_frame.winfo_width()
+
+        # Calcular tittle bar
+        title_bar_height = ctypes.windll.user32.GetSystemMetrics(4)
+
+        vis.create_window(window_name='Open3D', width=right_frame_width, height=right_frame_height,
+                          left=left_frame_width, top=title_bar_height)
+        vis.clear_geometries()
         vis.add_geometry(pcd)
-        vis.run()
-        vis.destroy_window()
+
+        while True:
+            vis.poll_events()
+            vis.update_renderer()
+
+            if not vis.poll_events():
+                print("Ventana Cerrada")
+                enable_left_frame()
+                break
+
+        # Verificar si la nube de puntos tiene atributos
+        if not pcd.has_points():
+            print("La nube de puntos no tiene puntos.")
+            return
+
+    else:
+        print("No file selected.")
 
 # Crear la ventana de Tkinter
 root = CTk()
@@ -1878,10 +1941,15 @@ root.btn_convert_pcd_to_dat = CTkButton(extra_computations_frame, text="3D grid 
                                         text_color="#F0F0F0",
                                         font=("Arial", 12), command=lambda: set_run_prueba_flag(pc_filepath))
 root.btn_convert_pcd_to_dat.pack(fill="x", padx=(80, 80), pady=(5, 0))
-root.segmentation = CTkButton(extra_computations_frame, text="Segmentation", fg_color="#3E3E3E",
-                                        text_color="#F0F0F0",
-                                        font=("Arial", 12), command=segmentationPlus)
-root.segmentation.pack(fill="x", padx=(80, 80), pady=(5, 0))
+
+segmentation_frame = CTkFrame(extra_computations_frame, fg_color="#2E2E2E", corner_radius=0)
+segmentation_frame.pack(fill="x", padx=(80, 80), pady=(5, 0))
+root.segmentation = CTkButton(segmentation_frame, text="Segmentation", fg_color="#3E3E3E",
+                              text_color="#F0F0F0", font=("Arial", 12), width=105, command=segmentation)
+root.segmentation.pack(side="left", padx=(0, 2.5))
+root.segmentation_with_trees = CTkButton(segmentation_frame, text="Segmentation\nwith\ntrees", fg_color="#3E3E3E",
+                                         text_color="#F0F0F0", font=("Arial", 12), command=segmentationPlus)
+root.segmentation_with_trees.pack(side="left", padx=(2.5, 0))
 
 # Visualize
 root.btn_visualize = CTkButton(left_frame, text="Visualize", text_color="#F0F0F0", fg_color="#1E3A5F",
