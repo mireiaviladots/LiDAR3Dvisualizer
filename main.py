@@ -1495,14 +1495,50 @@ def segmentationPlus():
             points = np.vstack((las.x, las.y, las.z)).transpose()
             classifications = np.array(las.classification)
 
+            # Define colors for specific classifications
+            color_map = {
+                0: [0.0, 0.0, 0.0],  # 0 - Created, never classified (Negro)
+                1: [1.0, 1.0, 1.0],  # 1 - Unclassified (White)
+                2: [0.55, 0.27, 0.07],  # 2 - Ground (Marrón)
+                3: [0.0, 1.0, 0.0],  # 3 - Low Vegetation (Verde claro)
+                4: [0.0, 0.6, 0.0],  # 4 - Medium Vegetation (Verde medio)
+                5: [0.0, 0.39, 0.0],  # 5 - High Vegetation (Verde oscuro)
+                6: [1.0, 0.0, 0.0],  # 6 - Building (Rojo)
+                7: [1.0, 1.0, 0.0],  # 7 - Low Point (noise) (Amarillo)
+                9: [0.0, 0.0, 1.0],  # 9 - Water (Azul)
+                10: [1.0, 0.65, 0.0],  # 10 - Rail (Naranja claro)
+                11: [0.5, 0.5, 0.0],  # 11 - Road Surface (Oliva)
+                13: [0.8, 0.8, 0.0],  # 13 - Wire – Guard (Shield) (Amarillo pálido)
+                14: [0.5, 0.5, 0.5],  # 14 - Wire – Conductor (Phase) (Gris)
+                15: [0.8, 0.0, 0.8],  # 15 - Transmission Tower (Violeta)
+                16: [0.0, 1.0, 1.0],  # 16 - Wire-structure Connector (Cian)
+                17: [0.8, 0.5, 0.2],  # 17 - Bridge Deck (Marrón claro)
+                18: [1.0, 0.0, 1.0],  # 18 - High Noise (Magenta)
+            }
+
             # Actualizar la barra de progreso
             update_progress_bar(progress_bar, 10)
+
+            pcd = o3d.geometry.PointCloud()
+            pcd.points = o3d.utility.Vector3dVector(points)
+
+            colors = np.zeros((points.shape[0], 3))
+            for classification, color in color_map.items():
+                colors[classifications == classification] = color
+
+            # Actualizar la barra de progreso
+            update_progress_bar(progress_bar, 15)
+
+            pcd.colors = o3d.utility.Vector3dVector(colors)
 
             # === Filtrar clasificación 4 (Medium Vegetation) ===
             medium_veg_points = points[classifications == 4]
             if medium_veg_points.shape[0] == 0:
                 print("No hay puntos con clasificación 4 en esta nube.")
                 return
+
+            # Actualizar la barra de progreso
+            update_progress_bar(progress_bar, 20)
 
             # === Filtrar por altura mínima ===
             min_medium_veg_height = np.min(medium_veg_points[:, 2])
@@ -1514,7 +1550,7 @@ def segmentationPlus():
             medium_veg_points = medium_veg_points[medium_veg_points[:, 2] >= min_medium_veg_height + 2.3]
 
             # Actualizar la barra de progreso
-            update_progress_bar(progress_bar, 20)
+            update_progress_bar(progress_bar, 25)
 
             # Crear un Canopy Height Model (CHM) rasterizado
             resolution = 0.55  # tamaño de celda en metros
@@ -1610,15 +1646,18 @@ def segmentationPlus():
                         pcd_points.append([xmin + col * resolution, ymax - row * resolution, filtered_chm[row, col]])
                         pcd_colors.append(tree_colors[row, col])
 
-            pcd = o3d.geometry.PointCloud()
-            pcd.points = o3d.utility.Vector3dVector(np.array(pcd_points))
-            pcd.colors = o3d.utility.Vector3dVector(np.array(pcd_colors))
+            pcd_tree = o3d.geometry.PointCloud()
+            pcd_tree.points = o3d.utility.Vector3dVector(np.array(pcd_points))
+            pcd_tree.translate([0, 0, 5], relative=True)
+            pcd_tree.colors = o3d.utility.Vector3dVector(np.array(pcd_colors))
 
             # Actualizar la barra de progreso
             update_progress_bar(progress_bar, 100)
 
             # Eliminar la barra de progreso
             progress_bar.grid_forget()
+
+            legend_left_frame()
 
             # Visualizar la nube de puntos
             vis = o3d.visualization.Visualizer()
@@ -1639,6 +1678,7 @@ def segmentationPlus():
                               left=left_frame_width, top=title_bar_height)
             vis.clear_geometries()
             vis.add_geometry(pcd)
+            vis.add_geometry(pcd_tree)
 
             while True:
                 vis.poll_events()
@@ -1646,6 +1686,12 @@ def segmentationPlus():
 
                 if not vis.poll_events():
                     print("Ventana Cerrada")
+                    # Elimina el legend
+                    if 'legend_frame' in globals() and legend_frame.winfo_exists():
+                        legend_frame.place_forget()
+
+                    if 'legend_canvas' in globals() and legend_canvas.winfo_exists():
+                        legend_canvas.place_forget()
                     enable_left_frame()
                     break
 
@@ -2018,7 +2064,7 @@ segmentation_frame.pack(fill="x", padx=(80, 80), pady=(5, 0))
 root.segmentation = CTkButton(segmentation_frame, text="Segmentation", fg_color="#3E3E3E",
                               text_color="#F0F0F0", font=("Arial", 12), width=105, command=segmentation)
 root.segmentation.pack(side="left", padx=(0, 2.5))
-root.segmentation_with_trees = CTkButton(segmentation_frame, text="Segmentation\nwith\ntrees", fg_color="#3E3E3E",
+root.segmentation_with_trees = CTkButton(segmentation_frame, text="Segmentation\nwith trees", fg_color="#3E3E3E",
                                          text_color="#F0F0F0", font=("Arial", 12), command=segmentationPlus)
 root.segmentation_with_trees.pack(side="left", padx=(2.5, 0))
 
