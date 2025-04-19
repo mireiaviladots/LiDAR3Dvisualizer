@@ -24,6 +24,7 @@ from scipy.ndimage import gaussian_filter
 from skimage.feature import peak_local_max
 from skimage.segmentation import watershed
 import scipy.ndimage as ndi
+from scipy.spatial import ConvexHull
 
 source_location = None
 pc_filepath = None
@@ -1622,34 +1623,44 @@ def segmentationPlus():
             # Actualizar la barra de progreso
             update_progress_bar(progress_bar, 80)
 
-            # Get the maximum label value
-            max_label = np.max(labels_clean)
+            # Create a mapping from CHM grid to the original point cloud
+            rows, cols = filtered_chm.shape
+            x_indices = ((medium_veg_points[:, 0] - xmin) / resolution).astype(int)
+            y_indices = ((ymax - medium_veg_points[:, 1]) / resolution).astype(int)
 
-            # Generate random colors for each label, including the background (label 0)
-            colors = np.random.rand(max_label + 1, 3)  # Ensure the size matches the maximum label
+            # Ensure indices are within bounds
+            valid_mask = (x_indices >= 0) & (x_indices < cols) & (y_indices >= 0) & (y_indices < rows)
+            x_indices = x_indices[valid_mask]
+            y_indices = y_indices[valid_mask]
+            medium_veg_points = medium_veg_points[valid_mask]
 
-            # Assign colors to each tree
-            tree_colors = np.zeros((labels_clean.shape[0], labels_clean.shape[1], 3))
-            for label in range(max_label + 1):
-                tree_colors[labels_clean == label] = colors[label]
+            # Map labels_clean to the original points
+            point_labels = labels_clean[y_indices, x_indices]
 
-            # Actualizar la barra de progreso
-            update_progress_bar(progress_bar, 90)
+            # Create convex hulls for each tree
+            line_sets = []
+            for label in np.unique(labels_clean):
+                if label == 0:  # Ignore background
+                    continue
 
-            # Crear una nube de puntos coloreada
-            pcd_points = []
-            pcd_colors = []
+                # Extract points for the current label
+                tree_points = medium_veg_points[point_labels == label]
 
-            for row in range(rows):
-                for col in range(cols):
-                    if not np.isnan(chm[row, col]):
-                        pcd_points.append([xmin + col * resolution, ymax - row * resolution, filtered_chm[row, col]])
-                        pcd_colors.append(tree_colors[row, col])
+                if tree_points.shape[0] < 3:  # At least 3 points are needed for a convex hull
+                    continue
 
-            pcd_tree = o3d.geometry.PointCloud()
-            pcd_tree.points = o3d.utility.Vector3dVector(np.array(pcd_points))
-            pcd_tree.translate([0, 0, 5], relative=True)
-            pcd_tree.colors = o3d.utility.Vector3dVector(np.array(pcd_colors))
+                # Compute the convex hull
+                hull = ConvexHull(tree_points[:, :2])  # Use only X and Y for 2D convex hull
+
+                # Create lines for the convex hull
+                lines = [[hull.vertices[i], hull.vertices[(i + 1) % len(hull.vertices)]] for i in
+                         range(len(hull.vertices))]
+                line_set = o3d.geometry.LineSet(
+                    points=o3d.utility.Vector3dVector(tree_points),
+                    lines=o3d.utility.Vector2iVector(lines),
+                )
+                line_set.paint_uniform_color([0, 0, 0])  # Black color for the lines
+                line_sets.append(line_set)
 
             # Actualizar la barra de progreso
             update_progress_bar(progress_bar, 100)
@@ -1678,7 +1689,9 @@ def segmentationPlus():
                               left=left_frame_width, top=title_bar_height)
             vis.clear_geometries()
             vis.add_geometry(pcd)
-            vis.add_geometry(pcd_tree)
+            for line_set in line_sets:
+                line_set.translate([0, 0, 10], relative=True)
+                vis.add_geometry(line_set)
 
             while True:
                 vis.poll_events()
