@@ -1623,44 +1623,38 @@ def segmentationPlus():
             # Actualizar la barra de progreso
             update_progress_bar(progress_bar, 80)
 
-            # Create a mapping from CHM grid to the original point cloud
-            rows, cols = filtered_chm.shape
-            x_indices = ((medium_veg_points[:, 0] - xmin) / resolution).astype(int)
-            y_indices = ((ymax - medium_veg_points[:, 1]) / resolution).astype(int)
+            # Diccionario para almacenar los puntos asociados a cada árbol
+            tree_points = {}
 
-            # Ensure indices are within bounds
-            valid_mask = (x_indices >= 0) & (x_indices < cols) & (y_indices >= 0) & (y_indices < rows)
-            x_indices = x_indices[valid_mask]
-            y_indices = y_indices[valid_mask]
-            medium_veg_points = medium_veg_points[valid_mask]
+            # Iterar sobre cada punto en medium_veg_points
+            for x, y, z in medium_veg_points:
+                # Calcular la posición del punto en la matriz del CHM
+                col = int((x - xmin) / resolution)
+                row = int((ymax - y) / resolution)  # Y invertido
 
-            # Map labels_clean to the original points
-            point_labels = labels_clean[y_indices, x_indices]
+                # Verificar si la posición está dentro de los límites de la matriz
+                if 0 <= row < labels_clean.shape[0] and 0 <= col < labels_clean.shape[1]:
+                    label = labels_clean[row, col]  # Obtener la etiqueta del árbol en esa posición
+                    if label > 0:  # Si la etiqueta es válida (mayor que 0)
+                        if label not in tree_points:
+                            tree_points[label] = []  # Crear una lista para el árbol si no existe
+                        tree_points[label].append((x, y, z))  # Añadir el punto a la lista del árbol
 
-            # Create convex hulls for each tree
-            line_sets = []
-            for label in np.unique(labels_clean):
-                if label == 0:  # Ignore background
-                    continue
+            # Convertir las listas de puntos a arrays de NumPy
+            tree_points = {label: np.array(points) for label, points in tree_points.items()}
 
-                # Extract points for the current label
-                tree_points = medium_veg_points[point_labels == label]
+            # Actualizar la barra de progreso
+            update_progress_bar(progress_bar, 90)
 
-                if tree_points.shape[0] < 3:  # At least 3 points are needed for a convex hull
-                    continue
+            # Diccionario para almacenar los puntos convexos por label
+            convex_hulls = {label: np.array(points) for label, points in tree_points.items() if len(points) >= 3}
 
-                # Compute the convex hull
-                hull = ConvexHull(tree_points[:, :2])  # Use only X and Y for 2D convex hull
-
-                # Create lines for the convex hull
-                lines = [[hull.vertices[i], hull.vertices[(i + 1) % len(hull.vertices)]] for i in
-                         range(len(hull.vertices))]
-                line_set = o3d.geometry.LineSet(
-                    points=o3d.utility.Vector3dVector(tree_points),
-                    lines=o3d.utility.Vector2iVector(lines),
-                )
-                line_set.paint_uniform_color([0, 0, 0])  # Black color for the lines
-                line_sets.append(line_set)
+            # Calcular el Convex Hull para cada conjunto de puntos
+            for label, points in tree_points.items():
+                if len(points) >= 3:  # ConvexHull requiere al menos 3 puntos
+                    points[:, 2] += 5  # Incrementar en 5 todas las coordenadas Z
+                    hull = ConvexHull(points[:, :2])  # Calcular el Convex Hull
+                    convex_hulls[label] = points[hull.vertices]  # Guardar los puntos convexos como un array de NumPy
 
             # Actualizar la barra de progreso
             update_progress_bar(progress_bar, 100)
@@ -1687,11 +1681,31 @@ def segmentationPlus():
 
             vis.create_window(window_name='Open3D', width=right_frame_width, height=right_frame_height,
                               left=left_frame_width, top=title_bar_height)
-            vis.clear_geometries()
-            vis.add_geometry(pcd)
-            for line_set in line_sets:
-                line_set.translate([0, 0, 10], relative=True)
+
+            # Iterate through convex_hulls and create PointClouds
+            for label, points in convex_hulls.items():
+                # Create a LineSet for the convex hull
+                lines = []
+                num_points = points.shape[0]
+
+                # Create edges by connecting consecutive points and closing the loop
+                for i in range(num_points):
+                    lines.append([i, (i + 1) % num_points])  # Connect current point to the next, wrap around at the end
+
+                # Create the LineSet
+                line_set = o3d.geometry.LineSet()
+                line_set.points = o3d.utility.Vector3dVector(points)
+                line_set.lines = o3d.utility.Vector2iVector(lines)
+
+                # Assign black color to the lines
+                black_color = [[0, 0, 0] for _ in lines]  # RGB: [0, 0, 0]
+                line_set.colors = o3d.utility.Vector3dVector(black_color)
+
+                # Add the LineSet to the visualizer
                 vis.add_geometry(line_set)
+
+            #vis.clear_geometries()
+            vis.add_geometry(pcd)
 
             while True:
                 vis.poll_events()
