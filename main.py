@@ -1623,38 +1623,36 @@ def segmentationPlus():
             # Actualizar la barra de progreso
             update_progress_bar(progress_bar, 80)
 
-            # Diccionario para almacenar los puntos asociados a cada árbol
-            tree_points = {}
+            # Get the maximum label value
+            max_label = np.max(labels_clean)
 
-            # Iterar sobre cada punto en medium_veg_points
-            for x, y, z in medium_veg_points:
-                # Calcular la posición del punto en la matriz del CHM
-                col = int((x - xmin) / resolution)
-                row = int((ymax - y) / resolution)  # Y invertido
+            # Generate random colors for each label, including the background (label 0)
+            colors = np.random.rand(max_label + 1, 3)  # Ensure the size matches the maximum label
 
-                # Verificar si la posición está dentro de los límites de la matriz
-                if 0 <= row < labels_clean.shape[0] and 0 <= col < labels_clean.shape[1]:
-                    label = labels_clean[row, col]  # Obtener la etiqueta del árbol en esa posición
-                    if label > 0:  # Si la etiqueta es válida (mayor que 0)
-                        if label not in tree_points:
-                            tree_points[label] = []  # Crear una lista para el árbol si no existe
-                        tree_points[label].append((x, y, z))  # Añadir el punto a la lista del árbol
-
-            # Convertir las listas de puntos a arrays de NumPy
-            tree_points = {label: np.array(points) for label, points in tree_points.items()}
+            # Assign colors to each tree
+            tree_colors = np.zeros((labels_clean.shape[0], labels_clean.shape[1], 3))
+            for label in range(max_label + 1):
+                tree_colors[labels_clean == label] = colors[label]
 
             # Actualizar la barra de progreso
             update_progress_bar(progress_bar, 90)
 
-            # Diccionario para almacenar los puntos convexos por label
-            convex_hulls = {label: np.array(points) for label, points in tree_points.items() if len(points) >= 3}
+            # Crear una nube de puntos coloreada
+            pcd_points = []
+            pcd_colors = []
 
-            # Calcular el Convex Hull para cada conjunto de puntos
-            for label, points in tree_points.items():
-                if len(points) >= 3:  # ConvexHull requiere al menos 3 puntos
-                    #points[:, 2] += 1  # Incrementar en 5 todas las coordenadas Z
-                    hull = ConvexHull(points[:, :2])  # Calcular el Convex Hull
-                    convex_hulls[label] = points[hull.vertices]  # Guardar los puntos convexos como un array de NumPy
+            for row in range(rows):
+                for col in range(cols):
+                    if not np.isnan(chm[row, col]):
+                        pcd_points.append([xmin + col * resolution, ymax - row * resolution, filtered_chm[row, col]])
+                        pcd_colors.append(tree_colors[row, col])
+
+            pcd_points = np.array(pcd_points)
+            pcd_points[:,2] = pcd_points[:,2] + 1
+
+            pcd_tree = o3d.geometry.PointCloud()
+            pcd_tree.points = o3d.utility.Vector3dVector(np.array(pcd_points))
+            pcd_tree.colors = o3d.utility.Vector3dVector(np.array(pcd_colors))
 
             # Actualizar la barra de progreso
             update_progress_bar(progress_bar, 100)
@@ -1681,25 +1679,9 @@ def segmentationPlus():
 
             vis.create_window(window_name='Open3D', width=right_frame_width, height=right_frame_height,
                               left=left_frame_width, top=title_bar_height)
-
-            # Iterate through convex_hulls and create PointClouds
-            for label, points in convex_hulls.items():
-                # Create a PointCloud for the convex hull
-                hull_pcd = o3d.geometry.PointCloud()
-
-                points[:, 2] += 1
-
-                hull_pcd.points = o3d.utility.Vector3dVector(points)
-
-                # Assign black color to all points
-                black_color = np.zeros((points.shape[0], 3))  # RGB: [0, 0, 0]
-                hull_pcd.colors = o3d.utility.Vector3dVector(black_color)
-
-                # Add the PointCloud to the visualizer
-                vis.add_geometry(hull_pcd)
-
-            #vis.clear_geometries()
+            vis.clear_geometries()
             vis.add_geometry(pcd)
+            vis.add_geometry(pcd_tree)
 
             while True:
                 vis.poll_events()
