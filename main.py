@@ -1652,7 +1652,7 @@ def segmentationPlus():
             # Calcular el Convex Hull para cada conjunto de puntos
             for label, points in tree_points.items():
                 if len(points) >= 3:  # ConvexHull requiere al menos 3 puntos
-                    points[:, 2] += 5  # Incrementar en 5 todas las coordenadas Z
+                    #points[:, 2] += 1  # Incrementar en 5 todas las coordenadas Z
                     hull = ConvexHull(points[:, :2])  # Calcular el Convex Hull
                     convex_hulls[label] = points[hull.vertices]  # Guardar los puntos convexos como un array de NumPy
 
@@ -1684,25 +1684,19 @@ def segmentationPlus():
 
             # Iterate through convex_hulls and create PointClouds
             for label, points in convex_hulls.items():
-                # Create a LineSet for the convex hull
-                lines = []
-                num_points = points.shape[0]
+                # Create a PointCloud for the convex hull
+                hull_pcd = o3d.geometry.PointCloud()
 
-                # Create edges by connecting consecutive points and closing the loop
-                for i in range(num_points):
-                    lines.append([i, (i + 1) % num_points])  # Connect current point to the next, wrap around at the end
+                points[:, 2] += 1
 
-                # Create the LineSet
-                line_set = o3d.geometry.LineSet()
-                line_set.points = o3d.utility.Vector3dVector(points)
-                line_set.lines = o3d.utility.Vector2iVector(lines)
+                hull_pcd.points = o3d.utility.Vector3dVector(points)
 
-                # Assign black color to the lines
-                black_color = [[0, 0, 0] for _ in lines]  # RGB: [0, 0, 0]
-                line_set.colors = o3d.utility.Vector3dVector(black_color)
+                # Assign black color to all points
+                black_color = np.zeros((points.shape[0], 3))  # RGB: [0, 0, 0]
+                hull_pcd.colors = o3d.utility.Vector3dVector(black_color)
 
-                # Add the LineSet to the visualizer
-                vis.add_geometry(line_set)
+                # Add the PointCloud to the visualizer
+                vis.add_geometry(hull_pcd)
 
             #vis.clear_geometries()
             vis.add_geometry(pcd)
