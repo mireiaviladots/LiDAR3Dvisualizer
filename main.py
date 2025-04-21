@@ -578,19 +578,26 @@ def disable_left_frame():
 def enable_left_frame():
     root.attributes('-disabled', False)
 
+
 def legend_left_frame(counts=None):
     global legend_frame, legend_canvas
 
-    # Crear el Canvas dentro del left_frame
-    legend_canvas = CTkCanvas(left_frame, bg="#2E2E2E", highlightthickness=0, width=left_frame.winfo_width(), height=left_frame.winfo_height())
-    legend_canvas.place(x=0, y=0)
-    legend_canvas.create_rectangle(0, 0, left_frame.winfo_width(), left_frame.winfo_height(), fill="#1E1E1E", outline="")
+    left_frame.update_idletasks()
+    width = left_frame.winfo_width()
+    height = left_frame.winfo_height()
 
-    # Crear el frame con el mismo tamaño que el left_frame
-    legend_frame = CTkFrame(left_frame, fg_color="#1E1E1E", corner_radius=0, width=left_frame.winfo_width(), height=left_frame.winfo_height())
+    # Lienzo de fondo
+    legend_canvas = CTkCanvas(left_frame, bg="#2E2E2E", highlightthickness=0, width=width, height=height)
+    legend_canvas.place(x=0, y=0)
+    legend_canvas.create_rectangle(0, 0, width, height, fill="#2E2E2E", outline="")
+
+    # Frame de la leyenda
+    legend_frame = CTkFrame(left_frame, fg_color="#2E2E2E", corner_radius=0, width=width, height=height, border_width=10, border_color="#2E2E2E")
     legend_frame.place(x=0, y=0)
 
-    # Mapa de colores y etiquetas
+    for widget in legend_frame.winfo_children():
+        widget.destroy()
+
     color_map = {
         0: ([0.0, 0.0, 0.0], "Created, never classified"),
         1: ([1.0, 1.0, 1.0], "Unclassified"),
@@ -611,25 +618,23 @@ def legend_left_frame(counts=None):
         18: ([1.0, 0.0, 1.0], "High Noise"),
     }
 
-    for idx, (key, (color, label)) in enumerate(color_map.items()):
+    for key, (color, label) in color_map.items():
         hex_color = "#{:02x}{:02x}{:02x}".format(
             int(color[0] * 255), int(color[1] * 255), int(color[2] * 255)
         )
 
-        canvas = CTkCanvas(legend_frame, width=20, height=20, bg="#1E1E1E", highlightthickness=0)
-        canvas.create_oval(2, 2, 18, 18, fill=hex_color, outline=hex_color)
-        canvas.grid(row=idx, column=0, padx=(10, 5), pady=5)
+        item_frame = CTkFrame(legend_frame, fg_color="#2E2E2E")
+        item_frame.pack(anchor="w", padx=10, pady=3)
 
-        # Usar .get() para poner 0 si no existe
+        circle = CTkCanvas(item_frame, width=20, height=20, bg="#2E2E2E", highlightthickness=0)
+        circle.create_oval(2, 2, 18, 18, fill=hex_color, outline=hex_color)
+        circle.pack(side="left")
+
         count = counts.get(key, 0) if counts else 0
+        label_text = f"{label} ({count})"
+        text_label = CTkLabel(item_frame, text=label_text, text_color="#F0F0F0", font=("Arial", 12))
+        text_label.pack(side="left", padx=8)
 
-        # Label del texto principal
-        label_widget = CTkLabel(legend_frame, text=label, text_color="#F0F0F0", font=("Arial", 12))
-        label_widget.grid(row=idx, column=1, sticky="w", padx=(5, 2), pady=5)
-
-        # Label del número, color más grisáceo
-        number_label = CTkLabel(legend_frame, text=f"   ({count})", text_color="#B0B0B0", font=("Arial", 12))
-        number_label.grid(row=idx, column=2, sticky="w", padx=(2, 10), pady=5)
 
 # Crear la barra de progreso
 def create_progress_bar():
