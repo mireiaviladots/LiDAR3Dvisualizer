@@ -24,7 +24,7 @@ from scipy.ndimage import gaussian_filter
 from skimage.feature import peak_local_max
 from skimage.segmentation import watershed
 import scipy.ndimage as ndi
-from scipy.spatial import ConvexHull
+from collections import Counter
 
 source_location = None
 pc_filepath = None
@@ -578,7 +578,7 @@ def disable_left_frame():
 def enable_left_frame():
     root.attributes('-disabled', False)
 
-def legend_left_frame():
+def legend_left_frame(counts=None):
     global legend_frame, legend_canvas
 
     # Crear el Canvas dentro del left_frame
@@ -611,21 +611,25 @@ def legend_left_frame():
         18: ([1.0, 0.0, 1.0], "High Noise"),
     }
 
-    # Crear los elementos de la leyenda
-    for idx, (color, label) in enumerate(color_map.values()):
-        # Convertir RGB a formato hexadecimal
+    for idx, (key, (color, label)) in enumerate(color_map.items()):
         hex_color = "#{:02x}{:02x}{:02x}".format(
             int(color[0] * 255), int(color[1] * 255), int(color[2] * 255)
         )
 
-        # Crear un canvas para el círculo
         canvas = CTkCanvas(legend_frame, width=20, height=20, bg="#1E1E1E", highlightthickness=0)
         canvas.create_oval(2, 2, 18, 18, fill=hex_color, outline=hex_color)
         canvas.grid(row=idx, column=0, padx=(10, 5), pady=5)
 
-        # Crear un label para el texto
+        # Usar .get() para poner 0 si no existe
+        count = counts.get(key, 0) if counts else 0
+
+        # Label del texto principal
         label_widget = CTkLabel(legend_frame, text=label, text_color="#F0F0F0", font=("Arial", 12))
-        label_widget.grid(row=idx, column=1, sticky="w", padx=(5, 10), pady=5)
+        label_widget.grid(row=idx, column=1, sticky="w", padx=(5, 2), pady=5)
+
+        # Label del número, color más grisáceo
+        number_label = CTkLabel(legend_frame, text=f"   ({count})", text_color="#B0B0B0", font=("Arial", 12))
+        number_label.grid(row=idx, column=2, sticky="w", padx=(2, 10), pady=5)
 
 # Crear la barra de progreso
 def create_progress_bar():
@@ -1371,7 +1375,12 @@ def segmentation():
             # Extract points and classifications
             points = np.vstack((las.x, las.y, las.z)).transpose()
             classifications = np.array(las.classification)
-            #unique_classifications = np.unique(classifications)
+
+            # Actualizar la barra de progreso
+            update_progress_bar(progress_bar, 10)
+
+            # Conteo de cada clasificación
+            counts = dict(Counter(classifications))
 
             # Actualizar la barra de progreso
             update_progress_bar(progress_bar, 20)
@@ -1426,7 +1435,7 @@ def segmentation():
             # Eliminar la barra de progreso
             progress_bar.grid_forget()
 
-            legend_left_frame()
+            legend_left_frame(counts)
 
             # Visualize the point cloud
             vis = o3d.visualization.Visualizer()
