@@ -578,7 +578,6 @@ def disable_left_frame():
 def enable_left_frame():
     root.attributes('-disabled', False)
 
-
 def legend_left_frame(counts=None):
     global legend_frame, legend_canvas
 
@@ -631,9 +630,15 @@ def legend_left_frame(counts=None):
         circle.pack(side="left")
 
         count = counts.get(key, 0) if counts else 0
-        label_text = f"{label} ({count})"
+
+        label_text = label
+        count_text = f"({count})"
+
         text_label = CTkLabel(item_frame, text=label_text, text_color="#F0F0F0", font=("Arial", 12))
-        text_label.pack(side="left", padx=8)
+        text_label.pack(side="left", padx=(8, 2))
+
+        count_label = CTkLabel(item_frame, text=count_text, text_color="#A0A0A0", font=("Arial", 12))
+        count_label.pack(side="left")
 
 
 # Crear la barra de progreso
