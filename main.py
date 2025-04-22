@@ -1515,6 +1515,12 @@ def segmentationPlus():
             points = np.vstack((las.x, las.y, las.z)).transpose()
             classifications = np.array(las.classification)
 
+            # Actualizar la barra de progreso
+            update_progress_bar(progress_bar, 10)
+
+            # Conteo de cada clasificación
+            counts = dict(Counter(classifications))
+
             # Define colors for specific classifications
             color_map = {
                 0: [0.0, 0.0, 0.0],  # 0 - Created, never classified (Negro)
@@ -1679,7 +1685,7 @@ def segmentationPlus():
             # Eliminar la barra de progreso
             progress_bar.grid_forget()
 
-            legend_left_frame()
+            legend_left_frame(counts)
 
             # Visualizar la nube de puntos
             vis = o3d.visualization.Visualizer()
