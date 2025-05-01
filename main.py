@@ -640,7 +640,6 @@ def legend_left_frame(counts=None):
         count_label = CTkLabel(item_frame, text=count_text, text_color="#A0A0A0", font=("Arial", 12))
         count_label.pack(side="left")
 
-
 # Crear la barra de progreso
 def create_progress_bar():
     progress_bar = ttk.Progressbar(right_frame, orient="horizontal", length=300, mode="determinate", style="TProgressbar")
@@ -1525,21 +1524,21 @@ def segmentationPlus():
             color_map = {
                 0: [0.0, 0.0, 0.0],  # 0 - Created, never classified (Negro)
                 1: [1.0, 1.0, 1.0],  # 1 - Unclassified (White)
-                2: [0.55, 0.27, 0.07],  # 2 - Ground (Marrón)
-                3: [0.0, 1.0, 0.0],  # 3 - Low Vegetation (Verde claro)
-                4: [0.0, 0.6, 0.0],  # 4 - Medium Vegetation (Verde medio)
-                5: [0.0, 0.39, 0.0],  # 5 - High Vegetation (Verde oscuro)
-                6: [1.0, 0.0, 0.0],  # 6 - Building (Rojo)
-                7: [1.0, 1.0, 0.0],  # 7 - Low Point (noise) (Amarillo)
-                9: [0.0, 0.0, 1.0],  # 9 - Water (Azul)
-                10: [1.0, 0.65, 0.0],  # 10 - Rail (Naranja claro)
-                11: [0.5, 0.5, 0.0],  # 11 - Road Surface (Oliva)
-                13: [0.8, 0.8, 0.0],  # 13 - Wire – Guard (Shield) (Amarillo pálido)
-                14: [0.5, 0.5, 0.5],  # 14 - Wire – Conductor (Phase) (Gris)
-                15: [0.8, 0.0, 0.8],  # 15 - Transmission Tower (Violeta)
-                16: [0.0, 1.0, 1.0],  # 16 - Wire-structure Connector (Cian)
-                17: [0.8, 0.5, 0.2],  # 17 - Bridge Deck (Marrón claro)
-                18: [1.0, 0.0, 1.0],  # 18 - High Noise (Magenta)
+                2: [0.2, 0.2, 0.2],  # 2 - Ground (Gris oscuro)
+                3: [0.25, 0.25, 0.25],  # 3 - Low Vegetation (Gris medio-oscuro)
+                4: [0.3, 0.3, 0.3],  # 4 - Medium Vegetation (Gris medio)
+                5: [0.35, 0.35, 0.35],  # 5 - High Vegetation (Gris claro)
+                6: [0.4, 0.4, 0.4],  # 6 - Building (Gris más claro)
+                7: [0.45, 0.45, 0.45],  # 7 - Low Point (noise) (Gris claro)
+                9: [0.5, 0.5, 0.5],  # 9 - Water (Gris muy claro)
+                10: [0.55, 0.55, 0.55],  # 10 - Rail (Gris pálido)
+                11: [0.60, 0.60, 0.60],  # 11 - Road Surface (Gris casi blanco)
+                13: [0.65, 0.65, 0.65],  # 13 - Wire – Guard (Shield) (Gris muy pálido)
+                14: [0.70, 0.70, 0.70],  # 14 - Wire – Conductor (Phase) (Gris tenue)
+                15: [0.75, 0.75, 0.75],  # 15 - Transmission Tower (Gris tenue más claro)
+                16: [0.80, 0.80, 0.80],  # 16 - Wire-structure Connector (Gris casi blanco)
+                17: [0.85, 0.85, 0.85],  # 17 - Bridge Deck (Gris muy tenue)
+                18: [0.90, 0.90, 0.90],  # 18 - High Noise
             }
 
             # Actualizar la barra de progreso
@@ -1673,7 +1672,7 @@ def segmentationPlus():
                         pcd_colors.append(tree_colors[row, col])
 
             pcd_points = np.array(pcd_points)
-            pcd_points[:,2] = pcd_points[:,2] + 1
+            pcd_points[:,2] = pcd_points[:,2] + 3
 
             pcd_tree = o3d.geometry.PointCloud()
             pcd_tree.points = o3d.utility.Vector3dVector(np.array(pcd_points))
@@ -1685,7 +1684,7 @@ def segmentationPlus():
             # Eliminar la barra de progreso
             progress_bar.grid_forget()
 
-            legend_left_frame(counts)
+            messagebox.showinfo("Segmentation Complete", f"Number of detected trees: {num_arboles}")
 
             # Visualizar la nube de puntos
             vis = o3d.visualization.Visualizer()
@@ -1702,8 +1701,8 @@ def segmentationPlus():
             # Calcular tittle bar
             title_bar_height = ctypes.windll.user32.GetSystemMetrics(4)
 
-            vis.create_window(window_name='Open3D', width=right_frame_width, height=right_frame_height,
-                              left=left_frame_width, top=title_bar_height)
+            vis.create_window(window_name='Open3D', width=right_frame_width+left_frame_width, height=right_frame_height,
+                              left=0, top=title_bar_height)
             vis.clear_geometries()
             vis.add_geometry(pcd)
             vis.add_geometry(pcd_tree)
@@ -1714,12 +1713,6 @@ def segmentationPlus():
 
                 if not vis.poll_events():
                     print("Ventana Cerrada")
-                    # Elimina el legend
-                    if 'legend_frame' in globals() and legend_frame.winfo_exists():
-                        legend_frame.place_forget()
-
-                    if 'legend_canvas' in globals() and legend_canvas.winfo_exists():
-                        legend_canvas.place_forget()
                     enable_left_frame()
                     break
 
