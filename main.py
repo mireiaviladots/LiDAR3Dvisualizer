@@ -1618,7 +1618,7 @@ def segmentationPlus():
             update_progress_bar(progress_bar, 60)
 
             # Aplicar Watershed sobre CHM invertido
-            elevation = -chm_smooth #Invierte la altura.
+            elevation = -chm_smooth #Invierte la altura (Watershed trabaja buscando valles)
             labels = watershed(elevation, markers, mask=~np.isnan(chm)) #Segmenta el CHM en árboles. Asigna cada celda a un árbol específico.
 
             # Conteo de píxeles por árbol
@@ -1638,7 +1638,7 @@ def segmentationPlus():
             # Filtrar etiquetas pequeñas
             labels_clean = labels * mask
 
-            num_arboles = len(np.unique(labels_clean)) - 1  # Restar 1 para no contar el fondo (0)
+            num_arboles = len(np.unique(labels_clean)) - 1  # Restar 1 para no contar el fondo
             print(f"Número de árboles detectados: {num_arboles}")
 
             # Filtrar el CHM y las etiquetas usando labels_clean
