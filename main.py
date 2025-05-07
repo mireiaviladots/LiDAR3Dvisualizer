@@ -25,6 +25,7 @@ from skimage.feature import peak_local_max
 from skimage.segmentation import watershed
 import scipy.ndimage as ndi
 from collections import Counter
+import json
 
 source_location = None
 pc_filepath = None
@@ -1394,26 +1395,18 @@ def segmentation():
             # Actualizar la barra de progreso
             update_progress_bar(progress_bar, 20)
 
-            # Define colors for specific classifications
-            color_map = {
-                0: [0.0, 0.0, 0.0],  # 0 - Created, never classified (Negro)
-                1: [1.0, 1.0, 1.0],  # 1 - Unclassified (White)
-                2: [0.55, 0.27, 0.07],  # 2 - Ground (Marrón)
-                3: [0.0, 1.0, 0.0],  # 3 - Low Vegetation (Verde claro)
-                4: [0.0, 0.6, 0.0],  # 4 - Medium Vegetation (Verde medio)
-                5: [0.0, 0.39, 0.0],  # 5 - High Vegetation (Verde oscuro)
-                6: [1.0, 0.0, 0.0],  # 6 - Building (Rojo)
-                7: [1.0, 1.0, 0.0],  # 7 - Low Point (noise) (Amarillo)
-                9: [0.0, 0.0, 1.0],  # 9 - Water (Azul)
-                10: [1.0, 0.65, 0.0],  # 10 - Rail (Naranja claro)
-                11: [0.5, 0.5, 0.0],  # 11 - Road Surface (Oliva)
-                13: [0.8, 0.8, 0.0],  # 13 - Wire – Guard (Shield) (Amarillo pálido)
-                14: [0.5, 0.5, 0.5],  # 14 - Wire – Conductor (Phase) (Gris)
-                15: [0.8, 0.0, 0.8],  # 15 - Transmission Tower (Violeta)
-                16: [0.0, 1.0, 1.0],  # 16 - Wire-structure Connector (Cian)
-                17: [0.8, 0.5, 0.2],  # 17 - Bridge Deck (Marrón claro)
-                18: [1.0, 0.0, 1.0],  # 18 - High Noise (Magenta)
-            }
+            # Cargar el mapa de colores desde JSON
+            with open("classification_colors_s.json", "r") as f:
+                color_map = json.load(f)["classifications"]
+
+            # Convertir claves a int y valores a np.array
+            color_map = {int(k): np.array(v) for k, v in color_map.items()}
+
+            unique_classes = np.unique(classifications)
+            for cls in unique_classes:
+                if cls not in color_map:
+                    color_map[cls] = np.random.rand(3)
+                    print(f"Clase adicional detectada: {cls}, color asignado: {color_map[cls]}")
 
             # Actualizar la barra de progreso
             update_progress_bar(progress_bar, 40)
@@ -1515,31 +1508,23 @@ def segmentationPlus():
             classifications = np.array(las.classification)
 
             # Actualizar la barra de progreso
-            update_progress_bar(progress_bar, 10)
+            update_progress_bar(progress_bar, 5)
 
             # Conteo de cada clasificación
             counts = dict(Counter(classifications))
 
-            # Define colors for specific classifications
-            color_map = {
-                0: [0.0, 0.0, 0.0],  # 0 - Created, never classified (Negro)
-                1: [1.0, 1.0, 1.0],  # 1 - Unclassified (White)
-                2: [0.2, 0.2, 0.2],  # 2 - Ground (Gris oscuro)
-                3: [0.25, 0.25, 0.25],  # 3 - Low Vegetation (Gris medio-oscuro)
-                4: [0.3, 0.3, 0.3],  # 4 - Medium Vegetation (Gris medio)
-                5: [0.35, 0.35, 0.35],  # 5 - High Vegetation (Gris claro)
-                6: [0.4, 0.4, 0.4],  # 6 - Building (Gris más claro)
-                7: [0.45, 0.45, 0.45],  # 7 - Low Point (noise) (Gris claro)
-                9: [0.5, 0.5, 0.5],  # 9 - Water (Gris muy claro)
-                10: [0.55, 0.55, 0.55],  # 10 - Rail (Gris pálido)
-                11: [0.60, 0.60, 0.60],  # 11 - Road Surface (Gris casi blanco)
-                13: [0.65, 0.65, 0.65],  # 13 - Wire – Guard (Shield) (Gris muy pálido)
-                14: [0.70, 0.70, 0.70],  # 14 - Wire – Conductor (Phase) (Gris tenue)
-                15: [0.75, 0.75, 0.75],  # 15 - Transmission Tower (Gris tenue más claro)
-                16: [0.80, 0.80, 0.80],  # 16 - Wire-structure Connector (Gris casi blanco)
-                17: [0.85, 0.85, 0.85],  # 17 - Bridge Deck (Gris muy tenue)
-                18: [0.90, 0.90, 0.90],  # 18 - High Noise
-            }
+            # Cargar el mapa de colores desde JSON
+            with open("classification_colors_s+.json", "r") as f:
+                color_map = json.load(f)["classifications"]
+
+            # Convertir claves a int y valores a np.array
+            color_map = {int(k): np.array(v) for k, v in color_map.items()}
+
+            unique_classes = np.unique(classifications)
+            for cls in unique_classes:
+                if cls not in color_map:
+                    color_map[cls] = np.random.rand(3)
+                    print(f"Clase adicional detectada: {cls}, color asignado: {color_map[cls]}")
 
             # Actualizar la barra de progreso
             update_progress_bar(progress_bar, 10)
