@@ -579,7 +579,7 @@ def disable_left_frame():
 def enable_left_frame():
     root.attributes('-disabled', False)
 
-def legend_left_frame(counts=None):
+def legend_left_frame(counts=None, color_map=None):
     global legend_frame, legend_canvas
 
     left_frame.update_idletasks()
@@ -598,30 +598,46 @@ def legend_left_frame(counts=None):
     for widget in legend_frame.winfo_children():
         widget.destroy()
 
-    color_map = {
-        0: ([0.0, 0.0, 0.0], "Created, never classified"),
-        1: ([1.0, 1.0, 1.0], "Unclassified"),
-        2: ([0.55, 0.27, 0.07], "Ground"),
-        3: ([0.0, 1.0, 0.0], "Low Vegetation"),
-        4: ([0.0, 0.6, 0.0], "Medium Vegetation"),
-        5: ([0.0, 0.39, 0.0], "High Vegetation"),
-        6: ([1.0, 0.0, 0.0], "Building"),
-        7: ([1.0, 1.0, 0.0], "Low Point (noise)"),
-        9: ([0.0, 0.0, 1.0], "Water"),
-        10: ([1.0, 0.65, 0.0], "Rail"),
-        11: ([0.5, 0.5, 0.0], "Road Surface"),
-        13: ([0.8, 0.8, 0.0], "Wire – Guard (Shield)"),
-        14: ([0.5, 0.5, 0.5], "Wire – Conductor (Phase)"),
-        15: ([0.8, 0.0, 0.8], "Transmission Tower"),
-        16: ([0.0, 1.0, 1.0], "Wire-structure Connector"),
-        17: ([0.8, 0.5, 0.2], "Bridge Deck"),
-        18: ([1.0, 0.0, 1.0], "High Noise"),
+    # Si no se pasa color_map, cargar desde JSON
+    if color_map is None:
+        try:
+            with open("classification_colors_s.json", "r") as f:
+                color_map_raw = json.load(f)["classifications"]
+                # Convertir claves a int y colores a lista de floats
+                color_map = {int(k): v for k, v in color_map_raw.items()}
+        except Exception as e:
+            print("Error cargando clasificación desde JSON:", e)
+            color_map = {}
+
+    # Descripciones por clase LAS
+    class_labels = {
+        0: "Created, never classified",
+        1: "Unclassified",
+        2: "Ground",
+        3: "Low Vegetation",
+        4: "Medium Vegetation",
+        5: "High Vegetation",
+        6: "Building",
+        7: "Low Point (noise)",
+        9: "Water",
+        10: "Rail",
+        11: "Road Surface",
+        13: "Wire – Guard (Shield)",
+        14: "Wire – Conductor (Phase)",
+        15: "Transmission Tower",
+        16: "Wire-structure Connector",
+        17: "Bridge Deck",
+        18: "High Noise"
     }
 
-    for key, (color, label) in color_map.items():
+    # Crear leyenda con los colores y etiquetas
+    for class_id, rgb in color_map.items():
         hex_color = "#{:02x}{:02x}{:02x}".format(
-            int(color[0] * 255), int(color[1] * 255), int(color[2] * 255)
+            int(rgb[0] * 255), int(rgb[1] * 255), int(rgb[2] * 255)
         )
+
+        label = class_labels.get(class_id, f"Customized Class ({class_id})")
+        count = counts.get(class_id, 0) if counts else 0
 
         item_frame = CTkFrame(legend_frame, fg_color="#2E2E2E")
         item_frame.pack(anchor="w", padx=10, pady=3)
@@ -630,15 +646,10 @@ def legend_left_frame(counts=None):
         circle.create_oval(2, 2, 18, 18, fill=hex_color, outline=hex_color)
         circle.pack(side="left")
 
-        count = counts.get(key, 0) if counts else 0
-
-        label_text = label
-        count_text = f"({count})"
-
-        text_label = CTkLabel(item_frame, text=label_text, text_color="#F0F0F0", font=("Arial", 12))
+        text_label = CTkLabel(item_frame, text=label, text_color="#F0F0F0", font=("Arial", 12))
         text_label.pack(side="left", padx=(8, 2))
 
-        count_label = CTkLabel(item_frame, text=count_text, text_color="#A0A0A0", font=("Arial", 12))
+        count_label = CTkLabel(item_frame, text=f"({count})", text_color="#A0A0A0", font=("Arial", 12))
         count_label.pack(side="left")
 
 # Crear la barra de progreso
@@ -1437,7 +1448,7 @@ def segmentation():
             # Eliminar la barra de progreso
             progress_bar.grid_forget()
 
-            legend_left_frame(counts)
+            legend_left_frame(counts, color_map)
 
             # Visualize the point cloud
             vis = o3d.visualization.Visualizer()
@@ -1523,7 +1534,8 @@ def segmentationPlus():
             unique_classes = np.unique(classifications)
             for cls in unique_classes:
                 if cls not in color_map:
-                    color_map[cls] = np.random.rand(3)
+                    gray = np.random.uniform(0.3, 0.8)
+                    color_map[cls] = [gray, gray, gray]
                     print(f"Clase adicional detectada: {cls}, color asignado: {color_map[cls]}")
 
             # Actualizar la barra de progreso
