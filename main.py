@@ -1635,6 +1635,28 @@ def segmentationPlus():
             # Filtrar etiquetas pequeñas
             labels_clean = labels * mask
 
+            # Crear una nueva columna `classificationtree`
+            classificationtree = np.zeros(len(points), dtype=int)
+            for i, (x, y, z) in enumerate(points):
+                col = int((x - xmin) / resolution)
+                row = int((ymax - y) / resolution)
+                if 0 <= row < labels_clean.shape[0] and 0 <= col < labels_clean.shape[1]:
+                    tree_id = labels_clean[row, col]
+                    classificationtree[i] = tree_id
+
+            # Agregar la nueva columna al archivo LAS
+            las.add_extra_dim(
+                laspy.ExtraBytesParams(name="classificationtree", type=np.int32)
+            )
+            las["classificationtree"] = classificationtree
+
+            # Contar las ocurrencias de cada clasificación
+            classifications = np.array(las.classificationtree)
+            counts = Counter(classifications)
+            print("Clasificación de puntos en el archivo LAS:")
+            for classification, count in counts.items():
+                print(f"Categoría {classification}: {count} puntos")
+
             num_arboles = len(np.unique(labels_clean)) - 1  # Restar 1 para no contar el fondo
             print(f"Número de árboles detectados: {num_arboles}")
 
