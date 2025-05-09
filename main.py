@@ -66,6 +66,7 @@ progress_bar = None
 original_left_frame_widgets = []
 legend_frame = None
 legend_canvas = None
+las_object = None
 
 def mostrar_nube_no_vox(show_dose_layer, pc_filepath, downsample, xml_filepath, csv_filepath, high_dose_rgb, medium_dose_rgb,
                         low_dose_rgb, dose_min_csv, low_max, medium_min, medium_max, high_min, altura_extra, show_source, source_location, point_size, progress_bar):
@@ -438,7 +439,7 @@ def mostrar_nube_si_vox(show_dose_layer, pc_filepath, xml_filepath, csv_filepath
 
     threading.Thread(target=run, daemon=True).start()
 
-def gridfrompcd(pc_filepath, progress_bar, csv_filepath):
+def gridfrompcd(pc_filepath, progress_bar, las_object):
     def run():
         global vis
         try:
@@ -446,15 +447,40 @@ def gridfrompcd(pc_filepath, progress_bar, csv_filepath):
             update_progress_bar(progress_bar, 10)
 
             print("Run prueba")
-            # Load the PCD file
-            pcd = o3d.io.read_point_cloud(pc_filepath)
+
+            # Load the LAS file
+            las = las_object
+            las_points = np.vstack((las.x, las.y, las.z)).T
+            if hasattr(las, "red"):
+                colors = np.vstack((las.red, las.green, las.blue)).T
+                # Normalizar si vienen en 16-bit
+                if colors.max() > 1.0:
+                    colors = colors / 65535.0
+            else:
+                colors = np.zeros_like(las_points)
+            classifications = las.classification
+            classificationtree = las['classificationtree']
+
+            # Get unique classifications
+            unique_classifications = np.unique(classifications)
+            unique_classificationtree = np.unique(classificationtree)
+
+            # Print the unique classifications
+            print("Unique classifications:", unique_classifications)
+            print("Unique classificationtree values:", unique_classificationtree)
+
+            # Actualizar la barra de progreso
+            update_progress_bar(progress_bar, 20)
+
+            pcd = o3d.geometry.PointCloud()
+            pcd.points = o3d.utility.Vector3dVector(las_points)
+            pcd.colors = o3d.utility.Vector3dVector(colors)
 
             # Extract point data
             points = np.asarray(pcd.points)
             colors = np.asarray(pcd.colors) if pcd.has_colors() else np.zeros_like(points)
 
-            # Actualizar la barra de progreso
-            update_progress_bar(progress_bar, 20)
+            update_progress_bar(progress_bar, 30)
 
             # Determine the bounds of the data
             min_x, min_y = np.min(points[:, :2], axis=0)
@@ -471,7 +497,7 @@ def gridfrompcd(pc_filepath, progress_bar, csv_filepath):
             cell_stats = np.empty((num_pixels_y, num_pixels_x), dtype=object)
             for i in range(num_pixels_y):
                 for j in range(num_pixels_x):
-                    cell_stats[i, j] = {'z_values': [], 'colors': []}
+                    cell_stats[i, j] = {'z_values': [], 'colors': [], 'classes': [], 'tree_classes': []}
 
             # Actualizar la barra de progreso
             update_progress_bar(progress_bar, 40)
@@ -489,6 +515,22 @@ def gridfrompcd(pc_filepath, progress_bar, csv_filepath):
                                         colors[valid_mask]):
                 cell_stats[yi, xi]['z_values'].append(z)
                 cell_stats[yi, xi]['colors'].append(color)
+
+            # Asignar puntos del LAS a celdas
+            x_idx_las = ((las_points[:, 0] - min_x) / delta_x).astype(int)
+            y_idx_las = ((las_points[:, 1] - min_y) / delta_y).astype(int)
+            valid_mask_las = (
+                (x_idx_las >= 0) & (x_idx_las < num_pixels_x) &
+                (y_idx_las >= 0) & (y_idx_las < num_pixels_y)
+            )
+            for xi, yi, cls, cls_tree in zip(
+                    x_idx_las[valid_mask_las],
+                    y_idx_las[valid_mask_las],
+                    classifications[valid_mask_las],
+                    classificationtree[valid_mask_las]
+            ):
+                cell_stats[yi, xi]['classes'].append(cls)
+                cell_stats[yi, xi]['tree_classes'].append(cls_tree)
 
             # Actualizar la barra de progreso
             update_progress_bar(progress_bar, 60)
@@ -525,6 +567,27 @@ def gridfrompcd(pc_filepath, progress_bar, csv_filepath):
                             prism = o3d.geometry.TriangleMesh.create_box(width=delta_x, height=delta_y, depth=height)
                             prism.translate((min_x + j * delta_x, min_y + i * delta_y, z_min))
                             prism.paint_uniform_color(cell_stats[i][j]['color'])
+
+                            # Obtener clase mayoritaria
+                            classes = cell_stats[i][j]['classes']
+                            tree_classes = cell_stats[i][j]['tree_classes']
+
+                            if classes:
+                                majority_class = Counter(classes).most_common(1)[0][0]
+                            else:
+                                majority_class = None
+
+                            if tree_classes:
+                                majority_tree_class = Counter(tree_classes).most_common(1)[0][0]
+                            else:
+                                majority_tree_class = None
+
+                            # Guardar
+                            cell_stats[i][j]['majority_class'] = majority_class
+                            cell_stats[i][j]['majority_tree_class'] = majority_tree_class
+                            if majority_tree_class != 0:
+                                print(f"Celda ({i},{j}) → Clase: {majority_class}, Árbol: {majority_tree_class}")
+
                             prisms.append(prism)
 
             # Combine all prisms into a single mesh
@@ -1280,7 +1343,7 @@ def plot_three_color_heatmap(heatmap, xcenter, ycenter, Hcenter, lonmin, lonmax,
 
     plt.show()
 
-def set_run_prueba_flag(pc_filepath):
+def set_run_prueba_flag(pc_filepath, las_object):
     global progress_bar
     if not pc_filepath:
         messagebox.showwarning("Warning", "Please select a Point Cloud.")
@@ -1294,7 +1357,7 @@ def set_run_prueba_flag(pc_filepath):
     # Actualizar la barra de progreso
     update_progress_bar(progress_bar, 1)
 
-    gridfrompcd(pc_filepath, progress_bar, csv_filepath)
+    gridfrompcd(pc_filepath, progress_bar, las_object)
 
 def visualize(pc_filepath, csv_filepath, xml_filepath, show_dose_layer, dose_min_csv, dose_max_csv):
     global altura_extra, point_size, vox_size, high_dose_rgb, medium_dose_rgb, low_dose_rgb, downsample, progress_bar
@@ -1500,6 +1563,7 @@ def segmentation():
 def segmentationPlus():
     def run():
         fp = filedialog.askopenfilename(filetypes=[("LAS Files", "*.las")])
+        global las_object
         if fp:
             print("Point Cloud Selected:", fp)
 
@@ -1642,7 +1706,8 @@ def segmentationPlus():
                 row = int((ymax - y) / resolution)
                 if 0 <= row < labels_clean.shape[0] and 0 <= col < labels_clean.shape[1]:
                     tree_id = labels_clean[row, col]
-                    classificationtree[i] = tree_id
+                    if tree_id > 0:
+                        classificationtree[i] = tree_id
 
             # Agregar la nueva columna al archivo LAS
             las.add_extra_dim(
@@ -1650,12 +1715,17 @@ def segmentationPlus():
             )
             las["classificationtree"] = classificationtree
 
+            las_object = las
+
             # Contar las ocurrencias de cada clasificación
             classifications = np.array(las.classificationtree)
             counts = Counter(classifications)
             print("Clasificación de puntos en el archivo LAS:")
             for classification, count in counts.items():
                 print(f"Categoría {classification}: {count} puntos")
+
+            unique_classificationtree = np.unique(classificationtree)
+            print("Unique classifications 1:", unique_classificationtree)
 
             num_arboles = len(np.unique(labels_clean)) - 1  # Restar 1 para no contar el fondo
             print(f"Número de árboles detectados: {num_arboles}")
@@ -2096,7 +2166,7 @@ root.btn_three_colors = CTkButton(extra_computations_frame, text="Heatmap with T
 root.btn_three_colors.pack(fill="x", padx=(80, 80), pady=(5, 0))
 root.btn_convert_pcd_to_dat = CTkButton(extra_computations_frame, text="3D grid from PCD", fg_color="#3E3E3E",
                                         text_color="#F0F0F0",
-                                        font=("Arial", 12), command=lambda: set_run_prueba_flag(pc_filepath))
+                                        font=("Arial", 12), command=lambda: set_run_prueba_flag(pc_filepath, las_object))
 root.btn_convert_pcd_to_dat.pack(fill="x", padx=(80, 80), pady=(5, 0))
 
 segmentation_frame = CTkFrame(extra_computations_frame, fg_color="#2E2E2E", corner_radius=0)
