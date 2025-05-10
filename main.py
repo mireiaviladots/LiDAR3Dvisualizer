@@ -67,6 +67,7 @@ original_left_frame_widgets = []
 legend_frame = None
 legend_canvas = None
 las_object = None
+panel_canvas = None
 
 def mostrar_nube_no_vox(show_dose_layer, pc_filepath, downsample, xml_filepath, csv_filepath, high_dose_rgb, medium_dose_rgb,
                         low_dose_rgb, dose_min_csv, low_max, medium_min, medium_max, high_min, altura_extra, show_source, source_location, point_size, progress_bar):
@@ -439,7 +440,7 @@ def mostrar_nube_si_vox(show_dose_layer, pc_filepath, xml_filepath, csv_filepath
 
     threading.Thread(target=run, daemon=True).start()
 
-def gridfrompcd(pc_filepath, progress_bar, las_object):
+def gridfrompcd(progress_bar, las_object):
     def run():
         global vis
         try:
@@ -447,6 +448,8 @@ def gridfrompcd(pc_filepath, progress_bar, las_object):
             update_progress_bar(progress_bar, 10)
 
             print("Run prueba")
+
+            panel_left_frame()
 
             # Load the LAS file
             las = las_object
@@ -627,6 +630,11 @@ def gridfrompcd(pc_filepath, progress_bar, las_object):
 
                 if not vis.poll_events():
                     print("Ventana Cerrada")
+
+                    # Elimina el legend
+                    if 'panel_canvas' in globals() and panel_canvas.winfo_exists():
+                        panel_canvas.place_forget()
+
                     enable_left_frame()
                     break
 
@@ -714,6 +722,29 @@ def legend_left_frame(counts=None, color_map=None):
 
         count_label = CTkLabel(item_frame, text=f"({count})", text_color="#A0A0A0", font=("Arial", 12))
         count_label.pack(side="left")
+
+def panel_left_frame ():
+    global panel_canvas
+
+    left_frame.update_idletasks()
+    width = left_frame.winfo_width()
+    height = left_frame.winfo_height()
+
+    # Lienzo de fondo
+    panel_canvas = CTkCanvas(left_frame, bg="#2E2E2E", highlightthickness=0, width=width, height=height)
+    panel_canvas.place(x=0, y=0)
+    panel_canvas.create_rectangle(0, 0, width, height, fill="#2E2E2E", outline="")
+
+    # Frame
+
+
+
+    #scatter = ax.scatter(
+        #xcenter, ycenter,
+        #c=Hcenter, cmap='viridis',
+        #edgecolor='black', s=50, label='Measurement'
+    #)
+
 
 # Crear la barra de progreso
 def create_progress_bar():
@@ -1343,11 +1374,8 @@ def plot_three_color_heatmap(heatmap, xcenter, ycenter, Hcenter, lonmin, lonmax,
 
     plt.show()
 
-def set_run_prueba_flag(pc_filepath, las_object):
+def set_run_prueba_flag(las_object):
     global progress_bar
-    if not pc_filepath:
-        messagebox.showwarning("Warning", "Please select a Point Cloud.")
-        return
 
     disable_left_frame()
 
@@ -1357,7 +1385,7 @@ def set_run_prueba_flag(pc_filepath, las_object):
     # Actualizar la barra de progreso
     update_progress_bar(progress_bar, 1)
 
-    gridfrompcd(pc_filepath, progress_bar, las_object)
+    gridfrompcd(progress_bar, las_object)
 
 def visualize(pc_filepath, csv_filepath, xml_filepath, show_dose_layer, dose_min_csv, dose_max_csv):
     global altura_extra, point_size, vox_size, high_dose_rgb, medium_dose_rgb, low_dose_rgb, downsample, progress_bar
@@ -2166,7 +2194,7 @@ root.btn_three_colors = CTkButton(extra_computations_frame, text="Heatmap with T
 root.btn_three_colors.pack(fill="x", padx=(80, 80), pady=(5, 0))
 root.btn_convert_pcd_to_dat = CTkButton(extra_computations_frame, text="3D grid from PCD", fg_color="#3E3E3E",
                                         text_color="#F0F0F0",
-                                        font=("Arial", 12), command=lambda: set_run_prueba_flag(pc_filepath, las_object))
+                                        font=("Arial", 12), command=lambda: set_run_prueba_flag(las_object))
 root.btn_convert_pcd_to_dat.pack(fill="x", padx=(80, 80), pady=(5, 0))
 
 segmentation_frame = CTkFrame(extra_computations_frame, fg_color="#2E2E2E", corner_radius=0)
