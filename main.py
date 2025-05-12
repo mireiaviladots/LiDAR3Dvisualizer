@@ -730,7 +730,6 @@ def legend_left_frame(counts=None, color_map=None):
         count_label.pack(side="left")
 
 def panel_left_frame (xcenter, ycenter, las_object):
-    #def run():
         global panel_canvas, panel_frame, botones, progress_bar, posiciones
 
         # Crear y mostrar la barra de progreso
@@ -764,6 +763,26 @@ def panel_left_frame (xcenter, ycenter, las_object):
         panel_frame = CTkFrame(master=panel_canvas, width=300, height=300, fg_color="white", corner_radius=10)
         panel_canvas.create_window(width // 2, height//2 - 100, window=panel_frame)
 
+        # Latitude Frame
+        latitude_frame = CTkFrame(panel_canvas, fg_color="#2E2E2E")
+        latitude_frame.place(relx=0.5, rely=0.65, anchor="n")  # Ajusta la posición según sea necesario
+        label_latitude = CTkLabel(latitude_frame, text="Latitude:", text_color="white", font=("Arial", 12))
+        label_latitude.pack(side="left", padx=(0, 5))
+        entry_latitude = CTkEntry(latitude_frame, width=50, font=("Arial", 12))
+        entry_latitude.pack(side="left")
+
+        # Longitude Frame
+        longitude_frame = CTkFrame(panel_canvas, fg_color="#2E2E2E")
+        longitude_frame.place(relx=0.5, rely=0.70, anchor="n")  # Ajusta la posición según sea necesario
+        label_longitude = CTkLabel(longitude_frame, text="Longitude:", text_color="white", font=("Arial", 12))
+        label_longitude.pack(side="left", padx=(0, 5))
+        entry_longitude = CTkEntry(longitude_frame, width=50, font=("Arial", 12))
+        entry_longitude.pack(side="left")
+
+        visualize_btn = CTkButton(panel_canvas, text="Visualize", text_color="#F0F0F0", fg_color="#1E3A5F",
+          hover_color="#2E4A7F", corner_radius=0, border_color="#D3D3D3", border_width=2, command=lambda: gridfrompcd(progress_bar, las_object, xcenter, ycenter))
+        visualize_btn.place(relx=0.5, rely=0.80, anchor="n")
+
         # Normalizar coordenadas
         x_array = np.array(xcenter)
         y_array = np.array(ycenter)
@@ -786,10 +805,6 @@ def panel_left_frame (xcenter, ycenter, las_object):
                             command=lambda b=i: toggle_color(botones[b]))
             btn.place(x=x, y=y, anchor="center")
             botones.append(btn)
-
-            # gridfrompcd(progress_bar, las_object, xcenter, ycenter)
-
-    #threading.Thread(target=run, daemon=True).start()
 
 def toggle_color(boton):
     # Alternar entre azul y rosa
