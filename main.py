@@ -69,8 +69,10 @@ legend_canvas = None
 las_object = None
 panel_canvas = None
 panel_frame = None
-botones = None
+height_frame = None
+longitude_frame = None
 posiciones = None
+set = False
 
 def mostrar_nube_no_vox(show_dose_layer, pc_filepath, downsample, xml_filepath, csv_filepath, high_dose_rgb, medium_dose_rgb,
                         low_dose_rgb, dose_min_csv, low_max, medium_min, medium_max, high_min, altura_extra, show_source, source_location, point_size, progress_bar):
@@ -632,14 +634,7 @@ def gridfrompcd(progress_bar, las_object, xcenter, ycenter):
                 if not vis.poll_events():
                     print("Ventana Cerrada")
 
-                    if 'panel_canvas' in globals() and panel_canvas.winfo_exists():
-                        panel_canvas.place_forget()
-
-                    if 'panel_frame' in globals() and panel_frame.winfo_exists():
-                        panel_frame.place_forget()
-
-                    if 'botones' in globals() and botones.winfo_exists():
-                        botones.place_forget()
+                    btn_return()
 
                     enable_left_frame()
                     break
@@ -730,7 +725,7 @@ def legend_left_frame(counts=None, color_map=None):
         count_label.pack(side="left")
 
 def panel_left_frame (xcenter, ycenter, las_object):
-        global panel_canvas, panel_frame, botones, progress_bar, posiciones
+        global panel_canvas, panel_frame, height_frame, longitude_frame, progress_bar, posiciones
 
         # Crear y mostrar la barra de progreso
         #progress_bar = create_progress_bar()
@@ -783,6 +778,10 @@ def panel_left_frame (xcenter, ycenter, las_object):
           hover_color="#2E4A7F", corner_radius=0, border_color="#D3D3D3", border_width=2, command=lambda: gridfrompcd(progress_bar, las_object, xcenter, ycenter))
         visualize_btn.place(relx=0.5, rely=0.80, anchor="n")
 
+        return_btn = CTkButton(panel_canvas, text="Return", text_color="#F0F0F0", fg_color="#1E3A5F",
+                                  hover_color="#2E4A7F", corner_radius=0, border_color="#D3D3D3", border_width=2, command=btn_return)
+        return_btn.place(relx=0.5, rely=0.85, anchor="n")
+
         # Normalizar coordenadas
         x_array = np.array(xcenter)
         y_array = np.array(ycenter)
@@ -806,12 +805,27 @@ def panel_left_frame (xcenter, ycenter, las_object):
             btn.place(x=x, y=y, anchor="center")
             botones.append(btn)
 
+def btn_return():
+    if 'panel_canvas' in globals() and panel_canvas.winfo_exists():
+        panel_canvas.place_forget()
+
+    if 'panel_frame' in globals() and panel_frame.winfo_exists():
+        panel_frame.place_forget()
+
+    if 'height_frame' in globals() and height_frame.winfo_exists():
+        height_frame.place_forget()
+
+    if 'longitude_frame' in globals() and longitude_frame.winfo_exists():
+        longitude_frame.place_forget()
+
+
 def toggle_color(boton):
     # Alternar entre azul y rosa
     if boton.cget("fg_color") == "blue":
         boton.configure(fg_color="pink", hover_color="#ff69b4")
     else:
         boton.configure(fg_color="blue", hover_color="darkblue")
+
 
 # Crear la barra de progreso
 def create_progress_bar():
@@ -849,6 +863,10 @@ def load_xml_metadata():
 def process_n42_files():
     global dose_min_csv, dose_max_csv, csv_filepath, heatmap, xcenter, ycenter, Hcenter, lonmin, lonmax, latmin, latmax
     fp = filedialog.askdirectory(title="Select Folder with .n42 Files")
+
+    if not fp:
+        return
+
     pathN42 = fp
     pathN42mod = os.path.join(fp)
 
@@ -1443,17 +1461,23 @@ def plot_three_color_heatmap(heatmap, xcenter, ycenter, Hcenter, lonmin, lonmax,
 
 def set_run_prueba_flag(xcenter, ycenter):
     # Check if xcenter or ycenter is None or empty
-    global las_object
+    global las_object, set
 
     if xcenter is None or len(xcenter) == 0 or ycenter is None or len(ycenter) == 0:
         messagebox.showerror("Error", "Please process the N42 files first.")
         return
 
-    las_object = filedialog.askopenfilename(filetypes=[("LAS Files", "*.las")])
+    if las_object is None:
+        set = False
+        segmentationPlus(set)
 
-    #disable_left_frame()
+    else:
+        panel_left_frame(xcenter, ycenter, las_object)
 
-    panel_left_frame(xcenter, ycenter, las_object)
+def set_trees():
+    global set
+    set = True
+    segmentationPlus(set)
 
 def visualize(pc_filepath, csv_filepath, xml_filepath, show_dose_layer, dose_min_csv, dose_max_csv):
     global altura_extra, point_size, vox_size, high_dose_rgb, medium_dose_rgb, low_dose_rgb, downsample, progress_bar
@@ -1656,10 +1680,11 @@ def segmentation():
 
     threading.Thread(target=run, daemon=True).start()
 
-def segmentationPlus():
+def segmentationPlus(set):
     def run():
-        fp = filedialog.askopenfilename(filetypes=[("LAS Files", "*.las")])
         global las_object
+
+        fp = filedialog.askopenfilename(filetypes=[("LAS Files", "*.las")])
         if fp:
             print("Point Cloud Selected:", fp)
 
@@ -1684,8 +1709,10 @@ def segmentationPlus():
             # Conteo de cada clasificación
             counts = dict(Counter(classifications))
 
-            # Cargar el mapa de colores desde JSON
-            with open("classification_colors_s+.json", "r") as f:
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            json_path = os.path.join(script_dir, "classification_colors_sp.json")
+
+            with open(json_path, "r") as f:
                 color_map = json.load(f)["classifications"]
 
             # Convertir claves a int y valores a np.array
@@ -1813,98 +1840,106 @@ def segmentationPlus():
 
             las_object = las
 
-            # Contar las ocurrencias de cada clasificación
-            classifications = np.array(las.classificationtree)
-            counts = Counter(classifications)
-            print("Clasificación de puntos en el archivo LAS:")
-            for classification, count in counts.items():
-                print(f"Categoría {classification}: {count} puntos")
+            if set == False:
+                update_progress_bar(progress_bar, 100)
+                progress_bar.grid_forget()
+                enable_left_frame()
+                panel_left_frame(xcenter, ycenter, las_object)
 
-            unique_classificationtree = np.unique(classificationtree)
-            print("Unique classifications 1:", unique_classificationtree)
+            if set == True:
 
-            num_arboles = len(np.unique(labels_clean)) - 1  # Restar 1 para no contar el fondo
-            print(f"Número de árboles detectados: {num_arboles}")
+                # Contar las ocurrencias de cada clasificación
+                classifications = np.array(las.classificationtree)
+                counts = Counter(classifications)
+                print("Clasificación de puntos en el archivo LAS:")
+                for classification, count in counts.items():
+                    print(f"Categoría {classification}: {count} puntos")
 
-            # Filtrar el CHM y las etiquetas usando labels_clean
-            filtered_chm = np.where((labels_clean > 0), chm, np.nan)  # Mantén solo celdas válidas
+                unique_classificationtree = np.unique(classificationtree)
+                print("Unique classifications 1:", unique_classificationtree)
 
-            # Actualizar la barra de progreso
-            update_progress_bar(progress_bar, 80)
+                num_arboles = len(np.unique(labels_clean)) - 1  # Restar 1 para no contar el fondo
+                print(f"Número de árboles detectados: {num_arboles}")
 
-            # Get the maximum label value
-            max_label = np.max(labels_clean)
+                # Filtrar el CHM y las etiquetas usando labels_clean
+                filtered_chm = np.where((labels_clean > 0), chm, np.nan)  # Mantén solo celdas válidas
 
-            # Generate random colors for each label, including the background (label 0)
-            colors = np.random.rand(max_label + 1, 3)  # Ensure the size matches the maximum label
+                # Actualizar la barra de progreso
+                update_progress_bar(progress_bar, 80)
 
-            # Assign colors to each tree
-            tree_colors = np.zeros((labels_clean.shape[0], labels_clean.shape[1], 3))
-            for label in range(max_label + 1):
-                tree_colors[labels_clean == label] = colors[label]
+                # Get the maximum label value
+                max_label = np.max(labels_clean)
 
-            # Actualizar la barra de progreso
-            update_progress_bar(progress_bar, 90)
+                # Generate random colors for each label, including the background (label 0)
+                colors = np.random.rand(max_label + 1, 3)  # Ensure the size matches the maximum label
 
-            # Crear una nube de puntos coloreada
-            pcd_points = []
-            pcd_colors = []
+                # Assign colors to each tree
+                tree_colors = np.zeros((labels_clean.shape[0], labels_clean.shape[1], 3))
+                for label in range(max_label + 1):
+                    tree_colors[labels_clean == label] = colors[label]
 
-            for row in range(rows):
-                for col in range(cols):
-                    if not np.isnan(chm[row, col]):
-                        pcd_points.append([xmin + col * resolution, ymax - row * resolution, filtered_chm[row, col]])
-                        pcd_colors.append(tree_colors[row, col])
+                # Actualizar la barra de progreso
+                update_progress_bar(progress_bar, 90)
 
-            pcd_points = np.array(pcd_points)
-            pcd_points[:,2] = pcd_points[:,2] + 3
+                # Crear una nube de puntos coloreada
+                pcd_points = []
+                pcd_colors = []
 
-            pcd_tree = o3d.geometry.PointCloud()
-            pcd_tree.points = o3d.utility.Vector3dVector(np.array(pcd_points))
-            pcd_tree.colors = o3d.utility.Vector3dVector(np.array(pcd_colors))
+                for row in range(rows):
+                    for col in range(cols):
+                        if not np.isnan(chm[row, col]):
+                            pcd_points.append([xmin + col * resolution, ymax - row * resolution, filtered_chm[row, col]])
+                            pcd_colors.append(tree_colors[row, col])
 
-            # Actualizar la barra de progreso
-            update_progress_bar(progress_bar, 100)
+                pcd_points = np.array(pcd_points)
+                pcd_points[:,2] = pcd_points[:,2] + 3
 
-            # Eliminar la barra de progreso
-            progress_bar.grid_forget()
+                pcd_tree = o3d.geometry.PointCloud()
+                pcd_tree.points = o3d.utility.Vector3dVector(np.array(pcd_points))
+                pcd_tree.colors = o3d.utility.Vector3dVector(np.array(pcd_colors))
 
-            messagebox.showinfo("Segmentation Complete", f"Number of detected trees: {num_arboles}")
+                # Actualizar la barra de progreso
+                update_progress_bar(progress_bar, 100)
 
-            # Visualizar la nube de puntos
-            vis = o3d.visualization.Visualizer()
+                # Eliminar la barra de progreso
+                progress_bar.grid_forget()
 
-            # Obtener las dimensiones del right_frame
-            right_frame.update_idletasks()
-            right_frame_width = right_frame.winfo_width()
-            right_frame_height = right_frame.winfo_height()
+                messagebox.showinfo("Segmentation Complete", f"Number of detected trees: {num_arboles}")
 
-            # Obtener las dimensiones del left_frame
-            left_frame.update_idletasks()
-            left_frame_width = left_frame.winfo_width()
+                # Visualizar la nube de puntos
+                vis = o3d.visualization.Visualizer()
 
-            # Calcular tittle bar
-            title_bar_height = ctypes.windll.user32.GetSystemMetrics(4)
+                # Obtener las dimensiones del right_frame
+                right_frame.update_idletasks()
+                right_frame_width = right_frame.winfo_width()
+                right_frame_height = right_frame.winfo_height()
 
-            vis.create_window(window_name='Open3D', width=right_frame_width+left_frame_width, height=right_frame_height,
-                              left=0, top=title_bar_height)
-            vis.clear_geometries()
-            vis.add_geometry(pcd)
-            vis.add_geometry(pcd_tree)
+                # Obtener las dimensiones del left_frame
+                left_frame.update_idletasks()
+                left_frame_width = left_frame.winfo_width()
 
-            while True:
-                vis.poll_events()
-                vis.update_renderer()
+                # Calcular tittle bar
+                title_bar_height = ctypes.windll.user32.GetSystemMetrics(4)
 
-                if not vis.poll_events():
-                    print("Ventana Cerrada")
-                    enable_left_frame()
-                    break
+                vis.create_window(window_name='Open3D', width=right_frame_width+left_frame_width, height=right_frame_height,
+                                  left=0, top=title_bar_height)
+                vis.clear_geometries()
+                vis.add_geometry(pcd)
+                vis.add_geometry(pcd_tree)
 
-            # Verificar si la nube de puntos tiene atributos
-            if not pcd.has_points():
-                print("La nube de puntos no tiene puntos.")
-                return
+                while True:
+                    vis.poll_events()
+                    vis.update_renderer()
+
+                    if not vis.poll_events():
+                        print("Ventana Cerrada")
+                        enable_left_frame()
+                        break
+
+                # Verificar si la nube de puntos tiene atributos
+                if not pcd.has_points():
+                    print("La nube de puntos no tiene puntos.")
+                    return
 
         else:
             print("No file selected.")
@@ -2271,7 +2306,7 @@ root.segmentation = CTkButton(segmentation_frame, text="Segmentation", fg_color=
                               text_color="#F0F0F0", font=("Arial", 12), width=105, command=segmentation)
 root.segmentation.pack(side="left", padx=(0, 2.5))
 root.segmentation_with_trees = CTkButton(segmentation_frame, text="Segmentation\nwith trees", fg_color="#3E3E3E",
-                                         text_color="#F0F0F0", font=("Arial", 12), command=segmentationPlus)
+                                         text_color="#F0F0F0", font=("Arial", 12), command=set_trees)
 root.segmentation_with_trees.pack(side="left", padx=(2.5, 0))
 
 # Visualize
