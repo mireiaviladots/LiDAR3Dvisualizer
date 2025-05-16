@@ -451,17 +451,10 @@ def gridfrompcd(las_object, xcenter, ycenter, entry_height):
         global vis
         try:
             try:
-                z = float(entry_height.get())  # Validar aquí
+                z_entry = float(entry_height.get())  # Validar aquí
             except ValueError:
                 messagebox.showerror("Error", "Por favor, introduce una altura válida.")
                 return
-
-                # Añadir la altura a cada punto seleccionado
-            posiciones_con_altura = [(x, y, z) for (x, y) in selected_positions]
-
-            print("Posiciones seleccionadas con altura:")
-            for pos in posiciones_con_altura:
-                print(pos)
 
             progress_bar = create_progress_bar()
 
@@ -549,6 +542,9 @@ def gridfrompcd(las_object, xcenter, ycenter, entry_height):
                 (x_idx_las >= 0) & (x_idx_las < num_pixels_x) &
                 (y_idx_las >= 0) & (y_idx_las < num_pixels_y)
             )
+
+            update_progress_bar(progress_bar, 55)
+
             for xi, yi, cls, cls_tree in zip(
                     x_idx_las[valid_mask_las],
                     y_idx_las[valid_mask_las],
@@ -621,6 +617,32 @@ def gridfrompcd(las_object, xcenter, ycenter, entry_height):
             for prism in prisms:
                 combined_mesh += prism
 
+            update_progress_bar(progress_bar, 90)
+
+            #Añadir altura posiciones dron
+            posiciones_con_altura = []
+            for (x, y) in selected_positions:
+                # Convertir (x, y) a índice de celda
+                col = int((x - min_x) / delta_x)
+                row = int((y - min_y) / delta_y)
+
+                # Verificar si el índice es válido
+                if 0 <= col < num_pixels_x and 0 <= row < num_pixels_y:
+                    cell_z_vals = cell_stats[row][col]['z_values']
+                    if cell_z_vals:
+                        altitud_nivel_mar = np.mean(cell_z_vals)
+                        print(f"Altitud nivel mar: {altitud_nivel_mar}, Z introducida: {z_entry}")
+                        z_dron = altitud_nivel_mar + z_entry
+                        posiciones_con_altura.append((x, y, z_dron))
+                    else:
+                        print(f"No hay datos de elevación en la celda para ({x}, {y})")
+                else:
+                    print(f"Punto fuera de límites: ({x}, {y})")
+
+            print("Posiciones seleccionadas con altura:")
+            for pos in posiciones_con_altura:
+                print(pos)
+
             # Actualizar la barra de progreso
             update_progress_bar(progress_bar, 100)
 
@@ -646,6 +668,12 @@ def gridfrompcd(las_object, xcenter, ycenter, entry_height):
 
             vis.clear_geometries()
             vis.add_geometry(combined_mesh)
+
+            if posiciones_con_altura:
+                puntos_negros = o3d.geometry.PointCloud()
+                puntos_negros.points = o3d.utility.Vector3dVector(posiciones_con_altura)
+                puntos_negros.paint_uniform_color([0, 0, 0])  # negro
+                vis.add_geometry(puntos_negros)
 
             while True:
                 vis.poll_events()
