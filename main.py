@@ -73,6 +73,7 @@ height_frame = None
 longitude_frame = None
 posiciones = None
 set = False
+selected_positions = None
 
 def mostrar_nube_no_vox(show_dose_layer, pc_filepath, downsample, xml_filepath, csv_filepath, high_dose_rgb, medium_dose_rgb,
                         low_dose_rgb, dose_min_csv, low_max, medium_min, medium_max, high_min, altura_extra, show_source, source_location, point_size, progress_bar):
@@ -445,10 +446,27 @@ def mostrar_nube_si_vox(show_dose_layer, pc_filepath, xml_filepath, csv_filepath
 
     threading.Thread(target=run, daemon=True).start()
 
-def gridfrompcd(progress_bar, las_object, xcenter, ycenter):
+def gridfrompcd(las_object, xcenter, ycenter, entry_height):
     def run():
         global vis
         try:
+            try:
+                z = float(entry_height.get())  # Validar aquí
+            except ValueError:
+                messagebox.showerror("Error", "Por favor, introduce una altura válida.")
+                return
+
+                # Añadir la altura a cada punto seleccionado
+            posiciones_con_altura = [(x, y, z) for (x, y) in selected_positions]
+
+            print("Posiciones seleccionadas con altura:")
+            for pos in posiciones_con_altura:
+                print(pos)
+
+            progress_bar = create_progress_bar()
+
+            disable_left_frame()
+
             # Actualizar la barra de progreso
             update_progress_bar(progress_bar, 10)
 
@@ -521,6 +539,8 @@ def gridfrompcd(progress_bar, las_object, xcenter, ycenter):
                                         colors[valid_mask]):
                 cell_stats[yi, xi]['z_values'].append(z)
                 cell_stats[yi, xi]['colors'].append(color)
+
+            update_progress_bar(progress_bar, 50)
 
             # Asignar puntos del LAS a celdas
             x_idx_las = ((las_points[:, 0] - min_x) / delta_x).astype(int)
@@ -634,8 +654,6 @@ def gridfrompcd(progress_bar, las_object, xcenter, ycenter):
                 if not vis.poll_events():
                     print("Ventana Cerrada")
 
-                    btn_return()
-
                     enable_left_frame()
                     break
 
@@ -725,7 +743,7 @@ def legend_left_frame(counts=None, color_map=None):
         count_label.pack(side="left")
 
 def panel_left_frame (xcenter, ycenter, las_object):
-        global panel_canvas, panel_frame, height_frame, longitude_frame, progress_bar, posiciones
+        global panel_canvas, panel_frame, height_frame, longitude_frame, progress_bar, posiciones, selected_positions
 
         # Crear y mostrar la barra de progreso
         #progress_bar = create_progress_bar()
@@ -735,6 +753,7 @@ def panel_left_frame (xcenter, ycenter, las_object):
 
         botones = []
         posiciones = []
+        selected_positions = []
 
         left_frame.update_idletasks()
         width = left_frame.winfo_width()
@@ -775,7 +794,7 @@ def panel_left_frame (xcenter, ycenter, las_object):
         entry_longitude.pack(side="left")
 
         visualize_btn = CTkButton(panel_canvas, text="Visualize", text_color="#F0F0F0", fg_color="#1E3A5F",
-          hover_color="#2E4A7F", corner_radius=0, border_color="#D3D3D3", border_width=2, command=lambda: gridfrompcd(progress_bar, las_object, xcenter, ycenter))
+          hover_color="#2E4A7F", corner_radius=0, border_color="#D3D3D3", border_width=2, command=lambda: gridfrompcd(las_object, xcenter, ycenter, entry_height))
         visualize_btn.place(relx=0.5, rely=0.80, anchor="n")
 
         return_btn = CTkButton(panel_canvas, text="Return", text_color="#F0F0F0", fg_color="#1E3A5F",
@@ -801,7 +820,7 @@ def panel_left_frame (xcenter, ycenter, las_object):
 
             btn = CTkButton(panel_frame, text="", width=6, height=6,
                             fg_color="blue", hover_color="darkblue", corner_radius=3,
-                            command=lambda b=i: toggle_color(botones[b]))
+                            command=lambda b=i: toggle_color(botones[b], b))
             btn.place(x=x, y=y, anchor="center")
             botones.append(btn)
 
@@ -818,14 +837,22 @@ def btn_return():
     if 'longitude_frame' in globals() and longitude_frame.winfo_exists():
         longitude_frame.place_forget()
 
-
-def toggle_color(boton):
+def toggle_color(boton, index):
     # Alternar entre azul y rosa
+    global selected_positions, posiciones
+
+    x, y = posiciones[index]
+
     if boton.cget("fg_color") == "blue":
         boton.configure(fg_color="pink", hover_color="#ff69b4")
+        selected_positions.append((x, y))  # Guardamos sin altura aún
+        print(f"Seleccionado: ({x}, {y})")
+
     else:
         boton.configure(fg_color="blue", hover_color="darkblue")
-
+        # Eliminar si ya estaba seleccionado
+        selected_positions = [pos for pos in selected_positions if pos != (x, y)]
+        print(f"Eliminado: ({x}, {y})")
 
 # Crear la barra de progreso
 def create_progress_bar():
