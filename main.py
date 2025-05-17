@@ -27,6 +27,7 @@ import scipy.ndimage as ndi
 from collections import Counter
 import json
 from pyproj import Proj, transform
+from shapely.geometry import LineString, box
 
 source_location = None
 pc_filepath = None
@@ -702,6 +703,48 @@ def gridfrompcd(las_object, xcenter, ycenter, entry_height, entry_latitude, entr
                               left=left_frame_width, top=title_bar_height)
 
             vis.clear_geometries()
+
+            if posiciones_con_altura and posiciones_latlonh:
+                # Junta todos los puntos: los seleccionados + el punto lat/lon (este será el último)
+                puntos_linea = posiciones_con_altura + posiciones_latlonh
+
+                # Crea un índice de línea para cada punto → conecta a la última posición (lat/lon)
+                line_indices = [[i, len(puntos_linea) - 1] for i in range(len(posiciones_con_altura))]
+
+                for idx, (start_point, _) in enumerate(zip(posiciones_con_altura, line_indices)):
+                    end_point = posiciones_latlonh[0]  # Solo hay un punto final
+
+                    line = LineString([start_point[:2], end_point[:2]])
+                    clases_cruzadas = []
+
+                    for i in range(num_pixels_y):
+                        for j in range(num_pixels_x):
+                            # Coordenadas de la celda
+                            x0 = min_x + j * delta_x
+                            y0 = min_y + i * delta_y
+                            x1 = x0 + delta_x
+                            y1 = y0 + delta_y
+
+                            celda = box(x0, y0, x1, y1)
+
+                            if line.intersects(celda):
+                                tree_class = cell_stats[i][j].get('majority_tree_class')
+                                if tree_class and tree_class != 0:
+                                    clases_cruzadas.append(tree_class)
+
+                    print(f"Línea desde punto {idx + 1} cruza clases de árbol: {clases_cruzadas}")
+
+                # Crea las líneas con Open3D
+                lines = o3d.geometry.LineSet()
+                lines.points = o3d.utility.Vector3dVector(puntos_linea)
+                lines.lines = o3d.utility.Vector2iVector(line_indices)
+
+                # Color rosa para todas las líneas
+                lines.colors = o3d.utility.Vector3dVector([[0, 0, 0]] * len(line_indices))
+
+                # Añade al visor
+                vis.add_geometry(lines)
+
             vis.add_geometry(combined_mesh)
 
             if posiciones_con_altura:
@@ -715,24 +758,6 @@ def gridfrompcd(las_object, xcenter, ycenter, entry_height, entry_latitude, entr
                 puntos_rosas.points = o3d.utility.Vector3dVector(posiciones_latlonh)
                 puntos_rosas.paint_uniform_color([1.0, 0, 1.0])  # rosa
                 vis.add_geometry(puntos_rosas)
-
-            if posiciones_con_altura and posiciones_latlonh:
-                # Junta todos los puntos: los seleccionados + el punto lat/lon (este será el último)
-                puntos_linea = posiciones_con_altura + posiciones_latlonh
-
-                # Crea un índice de línea para cada punto → conecta a la última posición (lat/lon)
-                line_indices = [[i, len(puntos_linea) - 1] for i in range(len(posiciones_con_altura))]
-
-                # Crea las líneas con Open3D
-                lines = o3d.geometry.LineSet()
-                lines.points = o3d.utility.Vector3dVector(puntos_linea)
-                lines.lines = o3d.utility.Vector2iVector(line_indices)
-
-                # Color rosa para todas las líneas
-                lines.colors = o3d.utility.Vector3dVector([[0, 0, 0]] * len(line_indices))
-
-                # Añade al visor
-                vis.add_geometry(lines)
 
             while True:
                 vis.poll_events()
