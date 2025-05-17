@@ -26,6 +26,7 @@ from skimage.segmentation import watershed
 import scipy.ndimage as ndi
 from collections import Counter
 import json
+from pyproj import Proj, transform
 
 source_location = None
 pc_filepath = None
@@ -446,24 +447,37 @@ def mostrar_nube_si_vox(show_dose_layer, pc_filepath, xml_filepath, csv_filepath
 
     threading.Thread(target=run, daemon=True).start()
 
-def gridfrompcd(las_object, xcenter, ycenter, entry_height):
+def gridfrompcd(las_object, xcenter, ycenter, entry_height, entry_latitude, entry_longitude):
     def run():
         global vis
         try:
+            if not selected_positions:
+                messagebox.showwarning("Warning", "Please select at least one point before continuing.")
+                return
+
             try:
-                z_entry = float(entry_height.get())  # Validar aquí
-            except ValueError:
-                messagebox.showerror("Error", "Por favor, introduce una altura válida.")
+                z_entry = float(entry_height.get())
+            except (ValueError, AttributeError):
+                messagebox.showerror("Error", "Please enter a valid height in meters.")
+                return
+
+            try:
+                lat = float(entry_latitude.get())
+                lon = float(entry_longitude.get())
+            except (ValueError, AttributeError):
+                messagebox.showerror("Error", "Please enter valid latitude and longitude coordinates.")
                 return
 
             progress_bar = create_progress_bar()
 
             disable_left_frame()
 
+            # Convert lat/lon to UTM 31N
+            utm_x, utm_y = latlon_a_utm31(lat, lon)
+            print(f"UTM coordinates: X={utm_x}, Y={utm_y}")
+
             # Actualizar la barra de progreso
             update_progress_bar(progress_bar, 10)
-
-            print("Run prueba")
 
             # Load the LAS file
             las = las_object
@@ -643,6 +657,27 @@ def gridfrompcd(las_object, xcenter, ycenter, entry_height):
             for pos in posiciones_con_altura:
                 print(pos)
 
+            #Añadir altura lat,lon
+            posiciones_latlonh = []
+
+            col = int((utm_x - min_x) / delta_x)
+            row = int((utm_y - min_y) / delta_y)
+
+            # Verificar si el índice es válido
+            if 0 <= col < num_pixels_x and 0 <= row < num_pixels_y:
+                cell_z_vals = cell_stats[row][col]['z_values']
+                if cell_z_vals:
+                    altitud_nivel_mar = np.mean(cell_z_vals)
+                    posiciones_latlonh.append((utm_x, utm_y, altitud_nivel_mar))
+                else:
+                    print(f"No hay datos de elevación en la celda para ({utm_x}, {utm_y})")
+            else:
+                print(f"Punto fuera de límites: ({utm_x}, {utm_y})")
+
+            print("Posicion introducida lat,lon:")
+            for pos in posiciones_latlonh:
+                print(pos)
+
             # Actualizar la barra de progreso
             update_progress_bar(progress_bar, 100)
 
@@ -674,6 +709,30 @@ def gridfrompcd(las_object, xcenter, ycenter, entry_height):
                 puntos_negros.points = o3d.utility.Vector3dVector(posiciones_con_altura)
                 puntos_negros.paint_uniform_color([0, 0, 0])  # negro
                 vis.add_geometry(puntos_negros)
+
+            if posiciones_latlonh:
+                puntos_rosas = o3d.geometry.PointCloud()
+                puntos_rosas.points = o3d.utility.Vector3dVector(posiciones_latlonh)
+                puntos_rosas.paint_uniform_color([1.0, 0, 1.0])  # rosa
+                vis.add_geometry(puntos_rosas)
+
+            if posiciones_con_altura and posiciones_latlonh:
+                # Junta todos los puntos: los seleccionados + el punto lat/lon (este será el último)
+                puntos_linea = posiciones_con_altura + posiciones_latlonh
+
+                # Crea un índice de línea para cada punto → conecta a la última posición (lat/lon)
+                line_indices = [[i, len(puntos_linea) - 1] for i in range(len(posiciones_con_altura))]
+
+                # Crea las líneas con Open3D
+                lines = o3d.geometry.LineSet()
+                lines.points = o3d.utility.Vector3dVector(puntos_linea)
+                lines.lines = o3d.utility.Vector2iVector(line_indices)
+
+                # Color rosa para todas las líneas
+                lines.colors = o3d.utility.Vector3dVector([[0, 0, 0]] * len(line_indices))
+
+                # Añade al visor
+                vis.add_geometry(lines)
 
             while True:
                 vis.poll_events()
@@ -822,7 +881,7 @@ def panel_left_frame (xcenter, ycenter, las_object):
         entry_longitude.pack(side="left")
 
         visualize_btn = CTkButton(panel_canvas, text="Visualize", text_color="#F0F0F0", fg_color="#1E3A5F",
-          hover_color="#2E4A7F", corner_radius=0, border_color="#D3D3D3", border_width=2, command=lambda: gridfrompcd(las_object, xcenter, ycenter, entry_height))
+          hover_color="#2E4A7F", corner_radius=0, border_color="#D3D3D3", border_width=2, command=lambda: gridfrompcd(las_object, xcenter, ycenter, entry_height, entry_latitude, entry_longitude))
         visualize_btn.place(relx=0.5, rely=0.80, anchor="n")
 
         return_btn = CTkButton(panel_canvas, text="Return", text_color="#F0F0F0", fg_color="#1E3A5F",
@@ -881,6 +940,15 @@ def toggle_color(boton, index):
         # Eliminar si ya estaba seleccionado
         selected_positions = [pos for pos in selected_positions if pos != (x, y)]
         print(f"Eliminado: ({x}, {y})")
+
+def latlon_a_utm31(lat, lon):
+    # Define projections
+    wgs84 = Proj(proj='latlong', datum='WGS84')
+    utm31 = Proj(proj='utm', zone=31, datum='WGS84', units='m')
+
+    # Transform coordinates
+    x, y = transform(wgs84, utm31, lon, lat)
+    return x, y
 
 # Crear la barra de progreso
 def create_progress_bar():
