@@ -462,12 +462,35 @@ def gridfrompcd(las_object, xcenter, ycenter, entry_height, entry_latitude, entr
                 messagebox.showerror("Error", "Please enter a valid height in meters.")
                 return
 
+            if z_entry <= 0:
+                messagebox.showerror("Error", "Please enter a positive height value.")
+                return
+            else:
+                entry_height.configure(state='disabled')
+
             try:
                 lat = float(entry_latitude.get())
+            except (ValueError, AttributeError):
+                messagebox.showerror("Error", "Latitude must be a number between -90 and 90.")
+                return
+
+            if not -90 <= lat <= 90:
+                messagebox.showerror("Error", "Latitude must be between -90 and 90.")
+                return
+            else:
+                entry_latitude.configure(state='disabled')
+
+            try:
                 lon = float(entry_longitude.get())
             except (ValueError, AttributeError):
-                messagebox.showerror("Error", "Please enter valid latitude and longitude coordinates.")
+                messagebox.showerror("Error", "Longitude must be a number between -180 and 180.")
                 return
+
+            if not -180 <= lon <= 180:
+                messagebox.showerror("Error", "Longitude must be between -180 and 180.")
+                return
+            else:
+                entry_longitude.configure(state='disabled')
 
             progress_bar = create_progress_bar()
 
@@ -588,7 +611,7 @@ def gridfrompcd(las_object, xcenter, ycenter, entry_height, entry_latitude, entr
                         cell_stats[i][j]['color'] = np.mean(cell_stats[i][j]['colors'], axis=0)
 
             # Actualizar la barra de progreso
-            update_progress_bar(progress_bar, 80)
+            update_progress_bar(progress_bar, 70)
 
             # Create a list to hold all the prisms
             prisms = []
@@ -627,12 +650,14 @@ def gridfrompcd(las_object, xcenter, ycenter, entry_height, entry_latitude, entr
 
                             prisms.append(prism)
 
+            update_progress_bar(progress_bar, 75)
+
             # Combine all prisms into a single mesh
             combined_mesh = o3d.geometry.TriangleMesh()
             for prism in prisms:
                 combined_mesh += prism
 
-            update_progress_bar(progress_bar, 90)
+            update_progress_bar(progress_bar, 80)
 
             #Añadir altura posiciones dron
             posiciones_con_altura = []
@@ -653,6 +678,8 @@ def gridfrompcd(las_object, xcenter, ycenter, entry_height, entry_latitude, entr
                         print(f"No hay datos de elevación en la celda para ({x}, {y})")
                 else:
                     print(f"Punto fuera de límites: ({x}, {y})")
+
+            update_progress_bar(progress_bar, 85)
 
             print("Posiciones seleccionadas con altura:")
             for pos in posiciones_con_altura:
@@ -675,11 +702,65 @@ def gridfrompcd(las_object, xcenter, ycenter, entry_height, entry_latitude, entr
             else:
                 print(f"Punto fuera de límites: ({utm_x}, {utm_y})")
 
+            update_progress_bar(progress_bar, 90)
+
             print("Posicion introducida lat,lon:")
             for pos in posiciones_latlonh:
                 print(pos)
 
+            def generar_color_aleatorio_no_rosa():
+                while True:
+                    color = [random.random(), random.random(), random.random()]
+                    if not (abs(color[0] - 1.0) < 0.1 and abs(color[1] - 0.0) < 0.1 and abs(
+                            color[2] - 1.0) < 0.1):  # evitar rosa
+                        return color
+
+            colores_puntos = []
+            for _ in posiciones_con_altura:
+                color = generar_color_aleatorio_no_rosa()
+                colores_puntos.append(color)
+
             # Actualizar la barra de progreso
+            update_progress_bar(progress_bar, 95)
+
+           # resumen_puntos = []
+
+            if posiciones_con_altura and posiciones_latlonh:
+                # Junta todos los puntos: los seleccionados + el punto lat/lon (este será el último)
+                puntos_linea = posiciones_con_altura + posiciones_latlonh
+
+                # Crea un índice de línea para cada punto → conecta a la última posición (lat/lon)
+                line_indices = [[i, len(puntos_linea) - 1] for i in range(len(posiciones_con_altura))]
+
+                for idx, (start_point, _) in enumerate(zip(posiciones_con_altura, line_indices)):
+                    end_point = posiciones_latlonh[0]  # Solo hay un punto final
+
+                    linea = LineString([start_point[:2], end_point[:2]])
+                    clases_cruzadas = []
+
+                    for i in range(num_pixels_y):
+                        for j in range(num_pixels_x):
+                            # Coordenadas de la celda
+                            x0 = min_x + j * delta_x
+                            y0 = min_y + i * delta_y
+                            x1 = x0 + delta_x
+                            y1 = y0 + delta_y
+
+                            celda = box(x0, y0, x1, y1)
+
+                            if linea.intersects(celda):
+                                tree_class = cell_stats[i][j].get('majority_tree_class')
+                                if tree_class and tree_class != 0:
+                                    clases_cruzadas.append(tree_class)
+
+                    #resumen_puntos.append({
+                        #"indice": idx + 1,
+                        #"color": colores_puntos[idx],
+                        #"num_arboles": len(set(clases_cruzadas))
+                    #})
+
+                    print(f"Línea desde punto {idx + 1} cruza clases de árbol: {clases_cruzadas}")
+
             update_progress_bar(progress_bar, 100)
 
             # Eliminar la barra de progreso
@@ -704,35 +785,14 @@ def gridfrompcd(las_object, xcenter, ycenter, entry_height, entry_latitude, entr
 
             vis.clear_geometries()
 
+            vis.add_geometry(combined_mesh)
+
             if posiciones_con_altura and posiciones_latlonh:
                 # Junta todos los puntos: los seleccionados + el punto lat/lon (este será el último)
                 puntos_linea = posiciones_con_altura + posiciones_latlonh
 
                 # Crea un índice de línea para cada punto → conecta a la última posición (lat/lon)
                 line_indices = [[i, len(puntos_linea) - 1] for i in range(len(posiciones_con_altura))]
-
-                for idx, (start_point, _) in enumerate(zip(posiciones_con_altura, line_indices)):
-                    end_point = posiciones_latlonh[0]  # Solo hay un punto final
-
-                    line = LineString([start_point[:2], end_point[:2]])
-                    clases_cruzadas = []
-
-                    for i in range(num_pixels_y):
-                        for j in range(num_pixels_x):
-                            # Coordenadas de la celda
-                            x0 = min_x + j * delta_x
-                            y0 = min_y + i * delta_y
-                            x1 = x0 + delta_x
-                            y1 = y0 + delta_y
-
-                            celda = box(x0, y0, x1, y1)
-
-                            if line.intersects(celda):
-                                tree_class = cell_stats[i][j].get('majority_tree_class')
-                                if tree_class and tree_class != 0:
-                                    clases_cruzadas.append(tree_class)
-
-                    print(f"Línea desde punto {idx + 1} cruza clases de árbol: {clases_cruzadas}")
 
                 # Crea las líneas con Open3D
                 lines = o3d.geometry.LineSet()
@@ -745,13 +805,12 @@ def gridfrompcd(las_object, xcenter, ycenter, entry_height, entry_latitude, entr
                 # Añade al visor
                 vis.add_geometry(lines)
 
-            vis.add_geometry(combined_mesh)
-
-            if posiciones_con_altura:
-                puntos_negros = o3d.geometry.PointCloud()
-                puntos_negros.points = o3d.utility.Vector3dVector(posiciones_con_altura)
-                puntos_negros.paint_uniform_color([0, 0, 0])  # negro
-                vis.add_geometry(puntos_negros)
+            # Crear nubes de punto individuales para cada punto y agregar
+            for punto, color in zip(posiciones_con_altura, colores_puntos):
+                pc = o3d.geometry.PointCloud()
+                pc.points = o3d.utility.Vector3dVector([punto])
+                pc.paint_uniform_color(color)
+                vis.add_geometry(pc)
 
             if posiciones_latlonh:
                 puntos_rosas = o3d.geometry.PointCloud()
@@ -909,8 +968,8 @@ def panel_left_frame (xcenter, ycenter, las_object):
           hover_color="#2E4A7F", corner_radius=0, border_color="#D3D3D3", border_width=2, command=lambda: gridfrompcd(las_object, xcenter, ycenter, entry_height, entry_latitude, entry_longitude))
         visualize_btn.place(relx=0.5, rely=0.80, anchor="n")
 
-        return_btn = CTkButton(panel_canvas, text="Return", text_color="#F0F0F0", fg_color="#1E3A5F",
-                                  hover_color="#2E4A7F", corner_radius=0, border_color="#D3D3D3", border_width=2, command=btn_return)
+        return_btn = CTkButton(panel_canvas, text="Return", text_color="#F0F0F0", fg_color="#B71C1C",
+                                  hover_color="#C62828", corner_radius=0, border_color="#D3D3D3", border_width=2, command=btn_return)
         return_btn.place(relx=0.5, rely=0.85, anchor="n")
 
         # Normalizar coordenadas
@@ -920,12 +979,24 @@ def panel_left_frame (xcenter, ycenter, las_object):
         x_min, x_max = x_array.min(), x_array.max()
         y_min, y_max = y_array.min(), y_array.max()
 
+        # Centro geométrico
+        x_center_geom = (x_min + x_max) / 2
+        y_center_geom = (y_min + y_max) / 2
+
         def escalar(val, min_val, max_val, new_min, new_max):
             return new_min + (val - min_val) / (max_val - min_val) * (new_max - new_min)
 
         for i in range(len(xcenter)):
-            x = escalar(xcenter[i], x_min, x_max, 10, 290)
-            y = escalar(ycenter[i], y_min, y_max, 10, 290)
+            # Rotar los puntos 180° alrededor del centro
+            x_rotado = 2 * x_center_geom - xcenter[i]
+            y_rotado = 2 * y_center_geom - ycenter[i]
+
+            # Reflejar horizontalmente (invertir en eje X)
+            x_rotado = 2 * x_center_geom - x_rotado
+
+            # Escalar después de rotar
+            x = escalar(x_rotado, x_min, x_max, 10, 290)
+            y = escalar(y_rotado, y_min, y_max, 10, 290)
 
             posiciones.append((xcenter[i], ycenter[i]))
             print({posiciones[-1]})
