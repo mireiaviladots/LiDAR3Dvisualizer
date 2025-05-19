@@ -74,7 +74,7 @@ panel_frame = None
 height_frame = None
 longitude_frame = None
 posiciones = None
-set = False
+mi_set = False
 selected_positions = None
 
 def mostrar_nube_no_vox(show_dose_layer, pc_filepath, downsample, xml_filepath, csv_filepath, high_dose_rgb, medium_dose_rgb,
@@ -645,8 +645,6 @@ def gridfrompcd(las_object, xcenter, ycenter, entry_height, entry_latitude, entr
                             # Guardar
                             cell_stats[i][j]['majority_class'] = majority_class
                             cell_stats[i][j]['majority_tree_class'] = majority_tree_class
-                            if majority_tree_class != 0:
-                                print(f"Celda ({i},{j}) → Clase: {majority_class}, Árbol: {majority_tree_class}")
 
                             prisms.append(prism)
 
@@ -723,7 +721,7 @@ def gridfrompcd(las_object, xcenter, ycenter, entry_height, entry_latitude, entr
             # Actualizar la barra de progreso
             update_progress_bar(progress_bar, 95)
 
-           # resumen_puntos = []
+            total_arboles_cruzados = []
 
             if posiciones_con_altura and posiciones_latlonh:
                 # Junta todos los puntos: los seleccionados + el punto lat/lon (este será el último)
@@ -753,18 +751,18 @@ def gridfrompcd(las_object, xcenter, ycenter, entry_height, entry_latitude, entr
                                 if tree_class and tree_class != 0:
                                     clases_cruzadas.append(tree_class)
 
-                    #resumen_puntos.append({
-                        #"indice": idx + 1,
-                        #"color": colores_puntos[idx],
-                        #"num_arboles": len(set(clases_cruzadas))
-                    #})
-
                     print(f"Línea desde punto {idx + 1} cruza clases de árbol: {clases_cruzadas}")
+
+                    total_arboles_cruzados.append(len(set(clases_cruzadas)))
+
+                print(f"Total de clases de árbol cruzadas por cada línea: {total_arboles_cruzados}")
 
             update_progress_bar(progress_bar, 100)
 
             # Eliminar la barra de progreso
             progress_bar.grid_forget()
+
+            mostrar_resumen_lineas(colores_puntos, total_arboles_cruzados)
 
             vis = o3d.visualization.Visualizer()
 
@@ -1045,6 +1043,35 @@ def latlon_a_utm31(lat, lon):
     # Transform coordinates
     x, y = transform(wgs84, utm31, lon, lat)
     return x, y
+
+def mostrar_resumen_lineas(colores_puntos, total_arboles_cruzados):
+    def ventana():
+        resumen = CTkToplevel()
+        resumen.title("Resumen de líneas")
+        resumen.geometry("300x400")
+        resumen.configure(fg_color="#1E1E1E")
+
+        scroll = CTkScrollableFrame(resumen, fg_color="#1E1E1E")
+        scroll.pack(expand=True, fill="both", padx=10, pady=10)
+
+        for idx, (color, num_arboles) in enumerate(zip(colores_puntos, total_arboles_cruzados)):
+            item_frame = CTkFrame(scroll, fg_color="#1E1E1E")
+            item_frame.pack(anchor="w", padx=10, pady=5)
+
+            # Convertir color float a HEX
+            hex_color = "#{:02x}{:02x}{:02x}".format(
+                int(color[0]*255), int(color[1]*255), int(color[2]*255)
+            )
+
+            circle = CTkCanvas(item_frame, width=20, height=20, bg="#1E1E1E", highlightthickness=0)
+            circle.create_oval(2, 2, 18, 18, fill=hex_color, outline=hex_color)
+            circle.pack(side="left")
+
+            label = CTkLabel(item_frame, text=f"{num_arboles} trees",
+                                 text_color="#F0F0F0", font=("Arial", 12))
+            label.pack(side="left", padx=8)
+
+    threading.Thread(target=ventana, daemon=True).start()
 
 # Crear la barra de progreso
 def create_progress_bar():
@@ -1680,23 +1707,23 @@ def plot_three_color_heatmap(heatmap, xcenter, ycenter, Hcenter, lonmin, lonmax,
 
 def set_run_prueba_flag(xcenter, ycenter):
     # Check if xcenter or ycenter is None or empty
-    global las_object, set
+    global las_object, mi_set
 
     if xcenter is None or len(xcenter) == 0 or ycenter is None or len(ycenter) == 0:
         messagebox.showerror("Error", "Please process the N42 files first.")
         return
 
     if las_object is None:
-        set = False
-        segmentationPlus(set)
+        mi_set = False
+        segmentationPlus(mi_set)
 
     else:
         panel_left_frame(xcenter, ycenter, las_object)
 
 def set_trees():
-    global set
-    set = True
-    segmentationPlus(set)
+    global mi_set
+    mi_set = True
+    segmentationPlus(mi_set)
 
 def visualize(pc_filepath, csv_filepath, xml_filepath, show_dose_layer, dose_min_csv, dose_max_csv):
     global altura_extra, point_size, vox_size, high_dose_rgb, medium_dose_rgb, low_dose_rgb, downsample, progress_bar
@@ -1899,7 +1926,7 @@ def segmentation():
 
     threading.Thread(target=run, daemon=True).start()
 
-def segmentationPlus(set):
+def segmentationPlus(mi_set):
     def run():
         global las_object, progress_bar, classificationtree, labels_clean, chm, rows, cols, pcd, xmin, ymax, resolution
 
@@ -2060,13 +2087,13 @@ def segmentationPlus(set):
 
                 las_object = las
 
-                if set == False:
+                if mi_set == False:
                     update_progress_bar(progress_bar, 100)
                     progress_bar.grid_forget()
                     enable_left_frame()
                     panel_left_frame(xcenter, ycenter, las_object)
 
-                if set == True:
+                if mi_set == True:
                     # Contar las ocurrencias de cada clasificación
                     classifications = np.array(las.classificationtree)
                     counts = Counter(classifications)
@@ -2169,13 +2196,13 @@ def segmentationPlus(set):
             progress_bar = create_progress_bar()
             update_progress_bar(progress_bar, 10)
 
-            if set == False:
+            if mi_set == False:
                 update_progress_bar(progress_bar, 100)
                 progress_bar.grid_forget()
                 enable_left_frame()
                 panel_left_frame(xcenter, ycenter, las_object)
 
-            if set == True:
+            if mi_set == True:
                 # Contar las ocurrencias de cada clasificación
                 classifications = np.array(las_object.classificationtree)
                 counts = Counter(classifications)
