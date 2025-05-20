@@ -53,6 +53,7 @@ vis = None
 heatmap = None
 xcenter = None
 ycenter = None
+FAltcenter = None
 Hcenter = None
 lonmin = None
 lonmax = None
@@ -448,25 +449,13 @@ def mostrar_nube_si_vox(show_dose_layer, pc_filepath, xml_filepath, csv_filepath
 
     threading.Thread(target=run, daemon=True).start()
 
-def gridfrompcd(las_object, xcenter, ycenter, entry_height, entry_latitude, entry_longitude):
+def gridfrompcd(las_object, entry_latitude, entry_longitude):
     def run():
         global vis
         try:
             if not selected_positions:
                 messagebox.showwarning("Warning", "Please select at least one point before continuing.")
                 return
-
-            try:
-                z_entry = float(entry_height.get())
-            except (ValueError, AttributeError):
-                messagebox.showerror("Error", "Please enter a valid height in meters.")
-                return
-
-            if z_entry <= 0:
-                messagebox.showerror("Error", "Please enter a positive height value.")
-                return
-            else:
-                entry_height.configure(state='disabled')
 
             try:
                 lat = float(entry_latitude.get())
@@ -657,9 +646,9 @@ def gridfrompcd(las_object, xcenter, ycenter, entry_height, entry_latitude, entr
 
             update_progress_bar(progress_bar, 80)
 
-            #Añadir altura posiciones dron
+            # Añadir altura posiciones dron
             posiciones_con_altura = []
-            for (x, y) in selected_positions:
+            for (x, y, alt) in selected_positions:
                 # Convertir (x, y) a índice de celda
                 col = int((x - min_x) / delta_x)
                 row = int((y - min_y) / delta_y)
@@ -669,8 +658,8 @@ def gridfrompcd(las_object, xcenter, ycenter, entry_height, entry_latitude, entr
                     cell_z_vals = cell_stats[row][col]['z_values']
                     if cell_z_vals:
                         altitud_nivel_mar = np.mean(cell_z_vals)
-                        print(f"Altitud nivel mar: {altitud_nivel_mar}, Z introducida: {z_entry}")
-                        z_dron = altitud_nivel_mar + z_entry
+                        print(f"Altitud nivel mar: {altitud_nivel_mar}")
+                        z_dron = altitud_nivel_mar + alt
                         posiciones_con_altura.append((x, y, z_dron))
                     else:
                         print(f"No hay datos de elevación en la celda para ({x}, {y})")
@@ -678,10 +667,6 @@ def gridfrompcd(las_object, xcenter, ycenter, entry_height, entry_latitude, entr
                     print(f"Punto fuera de límites: ({x}, {y})")
 
             update_progress_bar(progress_bar, 85)
-
-            print("Posiciones seleccionadas con altura:")
-            for pos in posiciones_con_altura:
-                print(pos)
 
             #Añadir altura lat,lon
             posiciones_latlonh = []
@@ -860,7 +845,10 @@ def legend_left_frame(counts=None, color_map=None):
     # Si no se pasa color_map, cargar desde JSON
     if color_map is None:
         try:
-            with open("classification_colors_s.json", "r") as f:
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            json_path = os.path.join(script_dir, "classification_colors_s.json")
+
+            with open(json_path, "r") as f:
                 color_map_raw = json.load(f)["classifications"]
                 # Convertir claves a int y colores a lista de floats
                 color_map = {int(k): v for k, v in color_map_raw.items()}
@@ -911,7 +899,7 @@ def legend_left_frame(counts=None, color_map=None):
         count_label = CTkLabel(item_frame, text=f"({count})", text_color="#A0A0A0", font=("Arial", 12))
         count_label.pack(side="left")
 
-def panel_left_frame (xcenter, ycenter, las_object):
+def panel_left_frame (xcenter, ycenter, FAltcenter, las_object):
         global panel_canvas, panel_frame, height_frame, longitude_frame, progress_bar, posiciones, selected_positions
 
         # Crear y mostrar la barra de progreso
@@ -932,15 +920,6 @@ def panel_left_frame (xcenter, ycenter, las_object):
         panel_canvas = CTkCanvas(left_frame, bg="#2E2E2E", highlightthickness=0, width=width, height=height)
         panel_canvas.place(x=0, y=0)
         panel_canvas.create_rectangle(0, 0, width, height, fill="#2E2E2E", outline="")
-
-        height_frame = CTkFrame(panel_canvas, fg_color="#2E2E2E")
-        height_frame.place(relx=0.5, y=80, anchor="n")
-        label_height = CTkLabel(height_frame, text="Dron height:", text_color="white", font=("Arial", 12))
-        label_height.pack(side="left", padx=(0, 5))
-        entry_height = CTkEntry(height_frame, width=50, font=("Arial", 12))
-        entry_height.pack(side="left")
-        label_meters = CTkLabel(height_frame, text="m", text_color="white", font=("Arial", 12))
-        label_meters.pack(side="left", padx=(5, 0))
 
         # Frame
         panel_frame = CTkFrame(master=panel_canvas, width=300, height=300, fg_color="white", corner_radius=10)
@@ -963,7 +942,7 @@ def panel_left_frame (xcenter, ycenter, las_object):
         entry_longitude.pack(side="left")
 
         visualize_btn = CTkButton(panel_canvas, text="Visualize", text_color="#F0F0F0", fg_color="#1E3A5F",
-          hover_color="#2E4A7F", corner_radius=0, border_color="#D3D3D3", border_width=2, command=lambda: gridfrompcd(las_object, xcenter, ycenter, entry_height, entry_latitude, entry_longitude))
+          hover_color="#2E4A7F", corner_radius=0, border_color="#D3D3D3", border_width=2, command=lambda: gridfrompcd(las_object, entry_latitude, entry_longitude))
         visualize_btn.place(relx=0.5, rely=0.80, anchor="n")
 
         return_btn = CTkButton(panel_canvas, text="Return", text_color="#F0F0F0", fg_color="#B71C1C",
@@ -996,7 +975,7 @@ def panel_left_frame (xcenter, ycenter, las_object):
             x = escalar(x_rotado, x_min, x_max, 10, 290)
             y = escalar(y_rotado, y_min, y_max, 10, 290)
 
-            posiciones.append((xcenter[i], ycenter[i]))
+            posiciones.append((xcenter[i], ycenter[i], FAltcenter[i]))
             print({posiciones[-1]})
 
             btn = CTkButton(panel_frame, text="", width=6, height=6,
@@ -1019,21 +998,19 @@ def btn_return():
         longitude_frame.place_forget()
 
 def toggle_color(boton, index):
-    # Alternar entre azul y rosa
     global selected_positions, posiciones
 
-    x, y = posiciones[index]
+    x, y, alt = posiciones[index]
 
     if boton.cget("fg_color") == "blue":
         boton.configure(fg_color="pink", hover_color="#ff69b4")
-        selected_positions.append((x, y))  # Guardamos sin altura aún
-        print(f"Seleccionado: ({x}, {y})")
+        selected_positions.append((x, y, alt))
+        print(f"Seleccionado: ({x}, {y}, {alt})")
 
     else:
         boton.configure(fg_color="blue", hover_color="darkblue")
-        # Eliminar si ya estaba seleccionado
-        selected_positions = [pos for pos in selected_positions if pos != (x, y)]
-        print(f"Eliminado: ({x}, {y})")
+        selected_positions = [pos for pos in selected_positions if pos != (x, y, alt)]
+        print(f"Eliminado: ({x}, {y}, {alt})")
 
 def latlon_a_utm31(lat, lon):
     # Define projections
@@ -1107,7 +1084,7 @@ def load_xml_metadata():
         print("XML Selected:", xml_filepath)
 
 def process_n42_files():
-    global dose_min_csv, dose_max_csv, csv_filepath, heatmap, xcenter, ycenter, Hcenter, lonmin, lonmax, latmin, latmax
+    global dose_min_csv, dose_max_csv, csv_filepath, heatmap, xcenter, ycenter, FAltcenter, Hcenter, lonmin, lonmax, latmin, latmax
     fp = filedialog.askdirectory(title="Select Folder with .n42 Files")
 
     if not fp:
@@ -1705,7 +1682,7 @@ def plot_three_color_heatmap(heatmap, xcenter, ycenter, Hcenter, lonmin, lonmax,
 
     plt.show()
 
-def set_run_prueba_flag(xcenter, ycenter):
+def set_run_prueba_flag(xcenter, ycenter, FAltcenter):
     # Check if xcenter or ycenter is None or empty
     global las_object, mi_set
 
@@ -1718,7 +1695,7 @@ def set_run_prueba_flag(xcenter, ycenter):
         segmentationPlus(mi_set)
 
     else:
-        panel_left_frame(xcenter, ycenter, las_object)
+        panel_left_frame(xcenter, ycenter, FAltcenter, las_object)
 
 def set_trees():
     global mi_set
@@ -1835,8 +1812,10 @@ def segmentation():
             # Actualizar la barra de progreso
             update_progress_bar(progress_bar, 20)
 
-            # Cargar el mapa de colores desde JSON
-            with open("classification_colors_s.json", "r") as f:
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            json_path = os.path.join(script_dir, "classification_colors_s.json")
+
+            with open(json_path, "r") as f:
                 color_map = json.load(f)["classifications"]
 
             # Convertir claves a int y valores a np.array
@@ -2091,7 +2070,7 @@ def segmentationPlus(mi_set):
                     update_progress_bar(progress_bar, 100)
                     progress_bar.grid_forget()
                     enable_left_frame()
-                    panel_left_frame(xcenter, ycenter, las_object)
+                    panel_left_frame(xcenter, ycenter, FAltcenter, las_object)
 
                 if mi_set == True:
                     # Contar las ocurrencias de cada clasificación
@@ -2200,7 +2179,7 @@ def segmentationPlus(mi_set):
                 update_progress_bar(progress_bar, 100)
                 progress_bar.grid_forget()
                 enable_left_frame()
-                panel_left_frame(xcenter, ycenter, las_object)
+                panel_left_frame(xcenter, ycenter, FAltcenter, las_object)
 
             if mi_set == True:
                 # Contar las ocurrencias de cada clasificación
@@ -2650,7 +2629,7 @@ root.btn_three_colors = CTkButton(extra_computations_frame, text="Heatmap with T
 root.btn_three_colors.pack(fill="x", padx=(80, 80), pady=(5, 0))
 root.btn_convert_pcd_to_dat = CTkButton(extra_computations_frame, text="3D grid from PCD", fg_color="#3E3E3E",
                                         text_color="#F0F0F0",
-                                        font=("Arial", 12), command=lambda: set_run_prueba_flag(xcenter, ycenter))
+                                        font=("Arial", 12), command=lambda: set_run_prueba_flag(xcenter, ycenter, FAltcenter))
 root.btn_convert_pcd_to_dat.pack(fill="x", padx=(80, 80), pady=(5, 0))
 
 segmentation_frame = CTkFrame(extra_computations_frame, fg_color="#2E2E2E", corner_radius=0)
