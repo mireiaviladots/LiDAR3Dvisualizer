@@ -902,12 +902,6 @@ def legend_left_frame(counts=None, color_map=None):
 def panel_left_frame (xcenter, ycenter, FAltcenter, las_object):
         global panel_canvas, panel_frame, height_frame, longitude_frame, progress_bar, posiciones, selected_positions
 
-        # Crear y mostrar la barra de progreso
-        #progress_bar = create_progress_bar()
-
-        # Actualizar la barra de progreso
-        #update_progress_bar(progress_bar, 1)
-
         botones = []
         posiciones = []
         selected_positions = []
@@ -998,16 +992,20 @@ def btn_return():
         longitude_frame.place_forget()
 
 def toggle_color(boton, index):
-    global selected_positions, posiciones
+    global selected_positions, posiciones, botones
 
     x, y, alt = posiciones[index]
 
     if boton.cget("fg_color") == "blue":
-        boton.configure(fg_color="pink", hover_color="#ff69b4")
-        selected_positions.append((x, y, alt))
-        print(f"Seleccionado: ({x}, {y}, {alt})")
-
+        if not selected_positions:
+            # No hay selección actual → permitir marcar
+            boton.configure(fg_color="pink", hover_color="#ff69b4")
+            selected_positions.append((x, y, alt))
+            print(f"Seleccionado: ({x}, {y}, {alt})")
+        else:
+            print("Ya hay una posición seleccionada. Deselecciona antes de elegir otra.")
     else:
+        # El botón ya estaba seleccionado → desmarcar
         boton.configure(fg_color="blue", hover_color="darkblue")
         selected_positions = [pos for pos in selected_positions if pos != (x, y, alt)]
         print(f"Eliminado: ({x}, {y}, {alt})")
