@@ -77,6 +77,12 @@ longitude_frame = None
 posiciones = None
 mi_set = False
 selected_positions = None
+combined_mesh = None
+num_pixels_x = None
+num_pixels_y = None
+delta_x = None
+delta_y = None
+cell_stats = None
 
 def mostrar_nube_no_vox(show_dose_layer, pc_filepath, downsample, xml_filepath, csv_filepath, high_dose_rgb, medium_dose_rgb,
                         low_dose_rgb, dose_min_csv, low_max, medium_min, medium_max, high_min, altura_extra, show_source, source_location, point_size, progress_bar):
@@ -449,12 +455,172 @@ def mostrar_nube_si_vox(show_dose_layer, pc_filepath, xml_filepath, csv_filepath
 
     threading.Thread(target=run, daemon=True).start()
 
-def gridfrompcd(las_object, entry_latitude, entry_longitude):
+def grid(las_object):
+    global combined_mesh, num_pixels_x, num_pixels_y, delta_x, delta_y, cell_stats
+
+    progress_bar = create_progress_bar()
+
+    # Actualizar la barra de progreso
+    update_progress_bar(progress_bar, 10)
+
+    las = las_object
+
+    las_points = np.vstack((las.x, las.y, las.z)).T
+    if hasattr(las, "red"):
+        colors = np.vstack((las.red, las.green, las.blue)).T
+        # Normalizar si vienen en 16-bit
+        if colors.max() > 1.0:
+            colors = colors / 65535.0
+    else:
+        colors = np.zeros_like(las_points)
+    classifications = las.classification
+    classificationtree = las['classificationtree']
+
+    update_progress_bar(progress_bar, 20)
+
+    # Get unique classifications
+    unique_classifications = np.unique(classifications)
+    unique_classificationtree = np.unique(classificationtree)
+
+    # Print the unique classifications
+    print("Unique classifications:", unique_classifications)
+    print("Unique classificationtree values:", unique_classificationtree)
+
+    pcd = o3d.geometry.PointCloud()
+    pcd.points = o3d.utility.Vector3dVector(las_points)
+    pcd.colors = o3d.utility.Vector3dVector(colors)
+
+    # Extract point data
+    points = np.asarray(pcd.points)
+    colors = np.asarray(pcd.colors) if pcd.has_colors() else np.zeros_like(points)
+
+    # Determine the bounds of the data
+    min_x, min_y = np.min(points[:, :2], axis=0)
+    max_x, max_y = np.max(points[:, :2], axis=0)
+
+    update_progress_bar(progress_bar, 30)
+
+    # Calculate pixel sizes
+    num_pixels_x = 1000
+    num_pixels_y = 1000
+    delta_x = (max_x - min_x) / num_pixels_x
+    delta_y = (max_y - min_y) / num_pixels_y
+
+    # Initialize structures for statistics
+    z_values = np.full((num_pixels_y, num_pixels_x), np.nan)
+    cell_stats = np.empty((num_pixels_y, num_pixels_x), dtype=object)
+    for i in range(num_pixels_y):
+        for j in range(num_pixels_x):
+            cell_stats[i, j] = {'z_values': [], 'colors': [], 'classes': [], 'tree_classes': []}
+
+    update_progress_bar(progress_bar, 40)
+
+    # Asignar puntos a celdas
+    x_idx = ((points[:, 0] - min_x) / delta_x).astype(int)
+    y_idx = ((points[:, 1] - min_y) / delta_y).astype(int)
+
+    valid_mask = (
+            (x_idx >= 0) & (x_idx < num_pixels_x) &
+            (y_idx >= 0) & (y_idx < num_pixels_y)
+    )
+
+    for xi, yi, z, color in zip(x_idx[valid_mask], y_idx[valid_mask], points[valid_mask][:, 2],
+                                colors[valid_mask]):
+        cell_stats[yi, xi]['z_values'].append(z)
+        cell_stats[yi, xi]['colors'].append(color)
+
+    # Asignar puntos del LAS a celdas
+    x_idx_las = ((las_points[:, 0] - min_x) / delta_x).astype(int)
+    y_idx_las = ((las_points[:, 1] - min_y) / delta_y).astype(int)
+    valid_mask_las = (
+            (x_idx_las >= 0) & (x_idx_las < num_pixels_x) &
+            (y_idx_las >= 0) & (y_idx_las < num_pixels_y)
+    )
+
+    update_progress_bar(progress_bar, 50)
+
+    for xi, yi, cls, cls_tree in zip(
+            x_idx_las[valid_mask_las],
+            y_idx_las[valid_mask_las],
+            classifications[valid_mask_las],
+            classificationtree[valid_mask_las]
+    ):
+        cell_stats[yi, xi]['classes'].append(cls)
+        cell_stats[yi, xi]['tree_classes'].append(cls_tree)
+
+    # Calculate mean Z values and predominant colors for each cell
+    for i in range(num_pixels_y):
+        for j in range(num_pixels_x):
+            z_vals = cell_stats[i][j]['z_values']
+            if z_vals:
+                z_vals = np.array(z_vals)
+                z_mean = np.mean(z_vals)
+                z_std = np.std(z_vals)
+
+                # Filtrar valores atípicos por el criterio z_mean + 2*sigma
+                mask = z_vals <= z_mean + 2 * z_std
+                filtered_z_vals = z_vals[mask]
+                z_values[i, j] = np.mean(filtered_z_vals) + 2 * np.std(filtered_z_vals)
+                cell_stats[i][j]['color'] = np.mean(cell_stats[i][j]['colors'], axis=0)
+
+    update_progress_bar(progress_bar, 60)
+
+    # Create a list to hold all the prisms
+    prisms = []
+
+    # Draw horizontal cells and vertical surfaces
+    for i in range(num_pixels_y):
+        for j in range(num_pixels_x):
+            if not np.isnan(z_values[i, j]):
+                z_final = z_values[i, j]
+                z_min = np.min(cell_stats[i][j]['z_values'])
+                height = z_final - z_min
+                if height > 0:
+                    prism = o3d.geometry.TriangleMesh.create_box(width=delta_x, height=delta_y, depth=height)
+                    prism.translate((min_x + j * delta_x, min_y + i * delta_y, z_min))
+                    prism.paint_uniform_color(cell_stats[i][j]['color'])
+
+                    # Obtener clase mayoritaria
+                    classes = cell_stats[i][j]['classes']
+                    tree_classes = cell_stats[i][j]['tree_classes']
+
+                    if classes:
+                        majority_class = Counter(classes).most_common(1)[0][0]
+                    else:
+                        majority_class = None
+
+                    if tree_classes:
+                        majority_tree_class = Counter(tree_classes).most_common(1)[0][0]
+                    else:
+                        majority_tree_class = None
+
+                    # Guardar
+                    cell_stats[i][j]['majority_class'] = majority_class
+                    cell_stats[i][j]['majority_tree_class'] = majority_tree_class
+
+                    prisms.append(prism)
+
+    update_progress_bar(progress_bar, 80)
+
+    # Combine all prisms into a single mesh
+    combined_mesh = o3d.geometry.TriangleMesh()
+    for prism in prisms:
+        combined_mesh += prism
+
+    update_progress_bar(progress_bar, 100)
+
+    progress_bar.grid_forget()
+
+    print ("acabado")
+
+    panel_left_frame(xcenter, ycenter, FAltcenter, las_object)
+
+def tree_obstacles(las_object, entry_latitude, entry_longitude, combined_mesh, num_pixels_x, num_pixels_y, delta_x, delta_y, cell_stats):
     def run():
         global vis
         try:
             if not selected_positions:
-                messagebox.showwarning("Warning", "Please select at least one point before continuing.")
+                messagebox.showwarning("Warning", "Please select one point before continuing.")
                 return
 
             try:
@@ -466,8 +632,6 @@ def gridfrompcd(las_object, entry_latitude, entry_longitude):
             if not -90 <= lat <= 90:
                 messagebox.showerror("Error", "Latitude must be between -90 and 90.")
                 return
-            else:
-                entry_latitude.configure(state='disabled')
 
             try:
                 lon = float(entry_longitude.get())
@@ -478,173 +642,30 @@ def gridfrompcd(las_object, entry_latitude, entry_longitude):
             if not -180 <= lon <= 180:
                 messagebox.showerror("Error", "Longitude must be between -180 and 180.")
                 return
-            else:
-                entry_longitude.configure(state='disabled')
-
-            progress_bar = create_progress_bar()
-
-            disable_left_frame()
 
             # Convert lat/lon to UTM 31N
             utm_x, utm_y = latlon_a_utm31(lat, lon)
             print(f"UTM coordinates: X={utm_x}, Y={utm_y}")
 
-            # Actualizar la barra de progreso
-            update_progress_bar(progress_bar, 10)
-
             # Load the LAS file
             las = las_object
-            las_points = np.vstack((las.x, las.y, las.z)).T
-            if hasattr(las, "red"):
-                colors = np.vstack((las.red, las.green, las.blue)).T
-                # Normalizar si vienen en 16-bit
-                if colors.max() > 1.0:
-                    colors = colors / 65535.0
-            else:
-                colors = np.zeros_like(las_points)
-            classifications = las.classification
-            classificationtree = las['classificationtree']
 
-            # Get unique classifications
-            unique_classifications = np.unique(classifications)
-            unique_classificationtree = np.unique(classificationtree)
+            min_x, max_x = np.min(las.x), np.max(las.x)
+            min_y, max_y = np.min(las.y), np.max(las.y)
 
-            # Print the unique classifications
-            print("Unique classifications:", unique_classifications)
-            print("Unique classificationtree values:", unique_classificationtree)
+            # Check if the input point is within bounds
+            if not (min_x <= utm_x <= max_x and min_y <= utm_y <= max_y):
+                messagebox.showerror("Error", "The entered position is outside the bounds of the point cloud.")
+                return
+
+            progress_bar = create_progress_bar()
+
+            disable_left_frame()
+            entry_latitude.configure(state='disabled')
+            entry_longitude.configure(state='disabled')
 
             # Actualizar la barra de progreso
-            update_progress_bar(progress_bar, 20)
-
-            pcd = o3d.geometry.PointCloud()
-            pcd.points = o3d.utility.Vector3dVector(las_points)
-            pcd.colors = o3d.utility.Vector3dVector(colors)
-
-            # Extract point data
-            points = np.asarray(pcd.points)
-            colors = np.asarray(pcd.colors) if pcd.has_colors() else np.zeros_like(points)
-
-            update_progress_bar(progress_bar, 30)
-
-            # Determine the bounds of the data
-            min_x, min_y = np.min(points[:, :2], axis=0)
-            max_x, max_y = np.max(points[:, :2], axis=0)
-
-            # Calculate pixel sizes
-            num_pixels_x = 1000
-            num_pixels_y = 1000
-            delta_x = (max_x - min_x) / num_pixels_x
-            delta_y = (max_y - min_y) / num_pixels_y
-
-            # Initialize structures for statistics
-            z_values = np.full((num_pixels_y, num_pixels_x), np.nan)
-            cell_stats = np.empty((num_pixels_y, num_pixels_x), dtype=object)
-            for i in range(num_pixels_y):
-                for j in range(num_pixels_x):
-                    cell_stats[i, j] = {'z_values': [], 'colors': [], 'classes': [], 'tree_classes': []}
-
-            # Actualizar la barra de progreso
-            update_progress_bar(progress_bar, 40)
-
-            # Asignar puntos a celdas
-            x_idx = ((points[:, 0] - min_x) / delta_x).astype(int)
-            y_idx = ((points[:, 1] - min_y) / delta_y).astype(int)
-
-            valid_mask = (
-                    (x_idx >= 0) & (x_idx < num_pixels_x) &
-                    (y_idx >= 0) & (y_idx < num_pixels_y)
-            )
-
-            for xi, yi, z, color in zip(x_idx[valid_mask], y_idx[valid_mask], points[valid_mask][:, 2],
-                                        colors[valid_mask]):
-                cell_stats[yi, xi]['z_values'].append(z)
-                cell_stats[yi, xi]['colors'].append(color)
-
-            update_progress_bar(progress_bar, 50)
-
-            # Asignar puntos del LAS a celdas
-            x_idx_las = ((las_points[:, 0] - min_x) / delta_x).astype(int)
-            y_idx_las = ((las_points[:, 1] - min_y) / delta_y).astype(int)
-            valid_mask_las = (
-                (x_idx_las >= 0) & (x_idx_las < num_pixels_x) &
-                (y_idx_las >= 0) & (y_idx_las < num_pixels_y)
-            )
-
-            update_progress_bar(progress_bar, 55)
-
-            for xi, yi, cls, cls_tree in zip(
-                    x_idx_las[valid_mask_las],
-                    y_idx_las[valid_mask_las],
-                    classifications[valid_mask_las],
-                    classificationtree[valid_mask_las]
-            ):
-                cell_stats[yi, xi]['classes'].append(cls)
-                cell_stats[yi, xi]['tree_classes'].append(cls_tree)
-
-            # Actualizar la barra de progreso
-            update_progress_bar(progress_bar, 60)
-
-            # Calculate mean Z values and predominant colors for each cell
-            for i in range(num_pixels_y):
-                for j in range(num_pixels_x):
-                    z_vals = cell_stats[i][j]['z_values']
-                    if z_vals:
-                        z_vals = np.array(z_vals)
-                        z_mean = np.mean(z_vals)
-                        z_std = np.std(z_vals)
-
-                        # Filtrar valores atípicos por el criterio z_mean + 2*sigma
-                        mask = z_vals <= z_mean + 2 * z_std
-                        filtered_z_vals = z_vals[mask]
-                        z_values[i, j] = np.mean(filtered_z_vals) + 2 * np.std(filtered_z_vals)
-                        cell_stats[i][j]['color'] = np.mean(cell_stats[i][j]['colors'], axis=0)
-
-            # Actualizar la barra de progreso
-            update_progress_bar(progress_bar, 70)
-
-            # Create a list to hold all the prisms
-            prisms = []
-
-            # Draw horizontal cells and vertical surfaces
-            for i in range(num_pixels_y):
-                for j in range(num_pixels_x):
-                    if not np.isnan(z_values[i, j]):
-                        z_final = z_values[i, j]
-                        z_min = np.min(cell_stats[i][j]['z_values'])
-                        height = z_final - z_min
-                        if height > 0:
-                            prism = o3d.geometry.TriangleMesh.create_box(width=delta_x, height=delta_y, depth=height)
-                            prism.translate((min_x + j * delta_x, min_y + i * delta_y, z_min))
-                            prism.paint_uniform_color(cell_stats[i][j]['color'])
-
-                            # Obtener clase mayoritaria
-                            classes = cell_stats[i][j]['classes']
-                            tree_classes = cell_stats[i][j]['tree_classes']
-
-                            if classes:
-                                majority_class = Counter(classes).most_common(1)[0][0]
-                            else:
-                                majority_class = None
-
-                            if tree_classes:
-                                majority_tree_class = Counter(tree_classes).most_common(1)[0][0]
-                            else:
-                                majority_tree_class = None
-
-                            # Guardar
-                            cell_stats[i][j]['majority_class'] = majority_class
-                            cell_stats[i][j]['majority_tree_class'] = majority_tree_class
-
-                            prisms.append(prism)
-
-            update_progress_bar(progress_bar, 75)
-
-            # Combine all prisms into a single mesh
-            combined_mesh = o3d.geometry.TriangleMesh()
-            for prism in prisms:
-                combined_mesh += prism
-
-            update_progress_bar(progress_bar, 80)
+            update_progress_bar(progress_bar, 10)
 
             # Añadir altura posiciones dron
             posiciones_con_altura = []
@@ -666,13 +687,15 @@ def gridfrompcd(las_object, entry_latitude, entry_longitude):
                 else:
                     print(f"Punto fuera de límites: ({x}, {y})")
 
-            update_progress_bar(progress_bar, 85)
+            update_progress_bar(progress_bar, 40)
 
             #Añadir altura lat,lon
             posiciones_latlonh = []
 
             col = int((utm_x - min_x) / delta_x)
             row = int((utm_y - min_y) / delta_y)
+
+            update_progress_bar(progress_bar, 50)
 
             # Verificar si el índice es válido
             if 0 <= col < num_pixels_x and 0 <= row < num_pixels_y:
@@ -685,7 +708,7 @@ def gridfrompcd(las_object, entry_latitude, entry_longitude):
             else:
                 print(f"Punto fuera de límites: ({utm_x}, {utm_y})")
 
-            update_progress_bar(progress_bar, 90)
+            update_progress_bar(progress_bar, 70)
 
             print("Posicion introducida lat,lon:")
             for pos in posiciones_latlonh:
@@ -697,6 +720,8 @@ def gridfrompcd(las_object, entry_latitude, entry_longitude):
                     if not (abs(color[0] - 1.0) < 0.1 and abs(color[1] - 0.0) < 0.1 and abs(
                             color[2] - 1.0) < 0.1):  # evitar rosa
                         return color
+
+            update_progress_bar(progress_bar, 80)
 
             colores_puntos = []
             for _ in posiciones_con_altura:
@@ -902,6 +927,8 @@ def legend_left_frame(counts=None, color_map=None):
 def panel_left_frame (xcenter, ycenter, FAltcenter, las_object):
         global panel_canvas, panel_frame, height_frame, longitude_frame, progress_bar, posiciones, selected_positions
 
+        enable_left_frame()
+
         botones = []
         posiciones = []
         selected_positions = []
@@ -936,7 +963,7 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object):
         entry_longitude.pack(side="left")
 
         visualize_btn = CTkButton(panel_canvas, text="Visualize", text_color="#F0F0F0", fg_color="#1E3A5F",
-          hover_color="#2E4A7F", corner_radius=0, border_color="#D3D3D3", border_width=2, command=lambda: gridfrompcd(las_object, entry_latitude, entry_longitude))
+          hover_color="#2E4A7F", corner_radius=0, border_color="#D3D3D3", border_width=2, command=lambda: tree_obstacles(las_object, entry_latitude, entry_longitude, combined_mesh, num_pixels_x, num_pixels_y, delta_x, delta_y, cell_stats))
         visualize_btn.place(relx=0.5, rely=0.80, anchor="n")
 
         return_btn = CTkButton(panel_canvas, text="Return", text_color="#F0F0F0", fg_color="#B71C1C",
@@ -1693,7 +1720,10 @@ def set_run_prueba_flag(xcenter, ycenter, FAltcenter):
         segmentationPlus(mi_set)
 
     else:
-        panel_left_frame(xcenter, ycenter, FAltcenter, las_object)
+        if combined_mesh is None:
+            grid(las_object)
+        else:
+            panel_left_frame(xcenter, ycenter, FAltcenter, las_object)
 
 def set_trees():
     global mi_set
@@ -2067,8 +2097,7 @@ def segmentationPlus(mi_set):
                 if mi_set == False:
                     update_progress_bar(progress_bar, 100)
                     progress_bar.grid_forget()
-                    enable_left_frame()
-                    panel_left_frame(xcenter, ycenter, FAltcenter, las_object)
+                    grid(las_object)
 
                 if mi_set == True:
                     # Contar las ocurrencias de cada clasificación
@@ -2176,8 +2205,7 @@ def segmentationPlus(mi_set):
             if mi_set == False:
                 update_progress_bar(progress_bar, 100)
                 progress_bar.grid_forget()
-                enable_left_frame()
-                panel_left_frame(xcenter, ycenter, FAltcenter, las_object)
+                grid(las_object)
 
             if mi_set == True:
                 # Contar las ocurrencias de cada clasificación
