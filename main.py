@@ -937,38 +937,189 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object):
         width = left_frame.winfo_width()
         height = left_frame.winfo_height()
 
-        # Lienzo de fondo
         panel_canvas = CTkCanvas(left_frame, bg="#2E2E2E", highlightthickness=0, width=width, height=height)
         panel_canvas.place(x=0, y=0)
+
+        # Fondo amarillo
         panel_canvas.create_rectangle(0, 0, width, height, fill="#2E2E2E", outline="")
 
+        # Crear título (texto centrado en X, en la parte superior)
+        title = "OBSTACLE DETECTION"
+        panel_canvas.create_text(width//2, 40, text=title, font=("Arial", 18, "bold"), fill="white")
+        panel_canvas.pack_propagate(False)
+
+        build_seg = False
+
+        def toggle_parameters():
+            nonlocal build_seg
+
+            build_seg = not build_seg
+
+            if build_seg:
+                button_seg.configure(text=" ▲ Building Segmentation")
+                seg_frame.pack(pady=(10, 0), fill="x")
+                panel_building_frame.pack(pady=(0, 0), fill="x")
+                button_from.pack_forget()
+                button_from.pack(fill="x", padx=(0, 0), pady=(10, 0))
+                button_to.pack_forget()
+                button_to.pack(fill="x", padx=(0, 0), pady=(10, 0))
+                #btn_visualize.pack_forget()
+                #btn_visualize.pack(side="bottom", padx=(0, 0), pady=(10, 25))
+
+                if from_set:
+                    button_from.pack_forget()
+                    button_from.pack(fill="x", padx=(0, 0), pady=(10, 0))
+                    from_frame.pack_forget()
+                    from_frame.pack(pady=(5, 0), fill="x")
+                    button_to.pack_forget()
+                    button_to.pack(fill="x", padx=(0, 0), pady=(10, 0))
+                    #root.btn_visualize.pack_forget()
+                    #root.btn_visualize.pack(side="bottom", padx=(0, 0), pady=(10, 25))
+
+            else:
+                button_seg.configure(text=" ▼ Building Segmentation")
+                seg_frame.pack_forget()
+                panel_building_frame.pack_forget()
+
+            if to_set:
+                to_frame.pack_forget()
+                to_frame.pack(pady=(10, 0), fill="x")
+                #root.btn_visualize.pack_forget()
+                #root.btn_visualize.pack(side="bottom", padx=(0, 0), pady=(10, 25))
+
+        # Parameters Button
+        button_seg = CTkButton(panel_canvas, text=" ▼ Building Segmentation", text_color="#F0F0F0", fg_color="#3E3E3E",
+                                           anchor="w", corner_radius=0, command=toggle_parameters)
+        button_seg.pack(fill="x", padx=(0, 0), pady=(50, 0))
+
+        seg_frame = CTkFrame(panel_canvas, fg_color="#2E2E2E", corner_radius=0)
+
+        label_seg = CTkLabel(seg_frame, text="Selecciona X que formaran el edificio. Cada edificio clica OK.", text_color="white", font=("Arial", 12))
+        label_seg.pack(fill="x", padx=(5, 5), pady=(0, 0))
+
+        panel_building_frame = CTkFrame(seg_frame, fg_color="#2E2E2E", height=150, corner_radius=0)
+
+        panel_building = CTkFrame(panel_building_frame, height=150, fg_color="white", corner_radius=10)
+        panel_building.grid(row=0, column=0, rowspan=2, padx=(10, 10), pady=(10, 0), sticky="nsew")
+
+        ok_button = CTkButton(panel_building_frame, text="OK", text_color="white", width=70, fg_color="#1E3A5F")
+        ok_button.grid(row=0, column=1, padx=(0, 10), pady=(10, 5), sticky="s")
+
+        reset_button = CTkButton(panel_building_frame, text="Reset", text_color="white", width=70, fg_color="#1E3A5F")
+        reset_button.grid(row=1, column=1, padx=(0, 10), pady=(5, 10), sticky="n")
+
+        # Configurar weights para que filas y columnas se distribuyan bien
+        panel_building_frame.grid_rowconfigure(0, weight=1)
+        panel_building_frame.grid_rowconfigure(1, weight=1)
+        panel_building_frame.grid_columnconfigure(0, weight=1)
+        panel_building_frame.grid_columnconfigure(1, weight=0)
+
+        from_set = False
+
+        def toggle_dose_layer_b():
+            nonlocal from_set
+            from_set = not from_set
+
+            if from_set:
+                button_from.configure(text=" ▲ FROM")
+                from_frame.pack(pady=(5, 0), fill="x")
+                button_to.pack_forget()
+                button_to.pack(fill="x", padx=(0, 0), pady=(10, 0))
+                if to_set:
+                    button_to.pack_forget()
+                    button_to.pack(fill="x", padx=(0, 0), pady=(10, 0))
+                    to_frame.pack_forget()
+                    to_frame.pack(pady=(10, 0), fill="x")
+                #root.btn_visualize.pack_forget()
+                #root.btn_visualize.pack(side="bottom", padx=(0, 0), pady=(10, 25))
+
+            else:
+                button_from.configure(text=" ▼ FROM")
+                from_frame.pack_forget()
+
+            if to_set:
+                button_to.pack_forget()
+                button_to.pack(fill="x", padx=(0, 0), pady=(10, 0))
+                to_frame.pack_forget()
+                to_frame.pack(pady=(10, 0), fill="x")
+
+                #root.btn_visualize.pack(side="bottom", padx=(0, 0), pady=(10, 25))
+
+        button_from = CTkButton(panel_canvas, text=" ▼ FROM", text_color="#F0F0F0", fg_color="#3E3E3E",
+                                           anchor="w", corner_radius=0, command=toggle_dose_layer_b)
+        button_from.pack(fill="x", padx=(0, 0), pady=(10, 0))
+
+        # Dose Layer
+        from_frame = CTkFrame(panel_canvas, fg_color="#2E2E2E", corner_radius=0)
+
+        dronPos_label = CTkLabel(from_frame, text="Dron position:", text_color="white", font=("Arial", 12))
+        dronPos_label.pack(padx=(5, 5), pady=(0, 0))
+
+        panel_dronPos = CTkFrame(master=from_frame, width=300, height=200, fg_color="white", corner_radius=10)
+        panel_dronPos.pack(padx=(10, 10), pady=(10, 0))
+
+        to_set = False
+
+        def toggle_extra_computations():
+            nonlocal to_set
+            to_set = not to_set
+
+            if to_set:
+                button_to.configure(text=" ▲ TO")
+                to_frame.pack(pady=(10, 0), fill="x")
+                #root.btn_visualize.pack_forget()
+                #root.btn_visualize.pack(side="bottom", padx=(0, 0), pady=(10, 25))
+            else:
+                button_to.configure(text=" ▼ TO")
+                to_frame.pack_forget()
+                #root.btn_visualize.pack_forget()
+                #root.btn_visualize.pack(side="bottom", padx=(0, 0), pady=(10, 25))
+
+        button_to = CTkButton(panel_canvas, text=" ▼ TO", text_color="#F0F0F0",
+                                                   fg_color="#3E3E3E",
+                                                   anchor="w", corner_radius=0, command=toggle_extra_computations)
+        button_to.pack(fill="x", padx=(0, 0), pady=(10, 0))
+
+        to_frame = CTkFrame(panel_canvas, fg_color="#2E2E2E", height=150, corner_radius=0)
+        to_frame.grid_propagate(False)
+
+        left_to_frame = CTkFrame(to_frame, fg_color="#999999", corner_radius=10)
+        left_to_frame.grid(row=0, column=0, padx=(10, 5), pady=(10, 0))
+
+        right_to_frame = CTkFrame(to_frame, fg_color="#999999", corner_radius=10)
+        right_to_frame.grid(row=0, column=1, padx=(5, 10), pady=(10, 0))
+
+        to_frame.grid_rowconfigure(0, weight=1)
+        to_frame.grid_columnconfigure(0, weight=1)
+        to_frame.grid_columnconfigure(1, weight=1)
+
         # Frame
-        panel_frame = CTkFrame(master=panel_canvas, width=300, height=300, fg_color="white", corner_radius=10)
-        panel_canvas.create_window(width // 2, height//2 - 100, window=panel_frame)
+        #panel_frame = CTkFrame(master=panel_canvas, width=300, height=300, fg_color="white", corner_radius=10)
+        #panel_canvas.create_window(width // 2, height//2 - 100, window=panel_frame)
 
-        # Latitude Frame
-        latitude_frame = CTkFrame(panel_canvas, fg_color="#2E2E2E")
-        latitude_frame.place(relx=0.5, rely=0.65, anchor="n")  # Ajusta la posición según sea necesario
-        label_latitude = CTkLabel(latitude_frame, text="Latitude:", text_color="white", font=("Arial", 12))
-        label_latitude.pack(side="left", padx=(0, 5))
-        entry_latitude = CTkEntry(latitude_frame, width=50, font=("Arial", 12))
-        entry_latitude.pack(side="left")
+        ## Latitude Frame
+        #latitude_frame = CTkFrame(panel_canvas, fg_color="#2E2E2E")
+        #latitude_frame.place(relx=0.5, rely=0.65, anchor="n")  # Ajusta la posición según sea necesario
+        #label_latitude = CTkLabel(latitude_frame, text="Latitude:", text_color="white", font=("Arial", 12))
+        #label_latitude.pack(side="left", padx=(0, 5))
+        #entry_latitude = CTkEntry(latitude_frame, width=50, font=("Arial", 12))
+        #entry_latitude.pack(side="left")
 
-        # Longitude Frame
-        longitude_frame = CTkFrame(panel_canvas, fg_color="#2E2E2E")
-        longitude_frame.place(relx=0.5, rely=0.70, anchor="n")  # Ajusta la posición según sea necesario
-        label_longitude = CTkLabel(longitude_frame, text="Longitude:", text_color="white", font=("Arial", 12))
-        label_longitude.pack(side="left", padx=(0, 5))
-        entry_longitude = CTkEntry(longitude_frame, width=50, font=("Arial", 12))
-        entry_longitude.pack(side="left")
+        ## Longitude Frame
+        #longitude_frame = CTkFrame(panel_canvas, fg_color="#2E2E2E")
+        #longitude_frame.place(relx=0.5, rely=0.70, anchor="n")  # Ajusta la posición según sea necesario
+        #label_longitude = CTkLabel(longitude_frame, text="Longitude:", text_color="white", font=("Arial", 12))
+        #label_longitude.pack(side="left", padx=(0, 5))
+        #entry_longitude = CTkEntry(longitude_frame, width=50, font=("Arial", 12))
+        #entry_longitude.pack(side="left")
 
-        visualize_btn = CTkButton(panel_canvas, text="Visualize", text_color="#F0F0F0", fg_color="#1E3A5F",
-          hover_color="#2E4A7F", corner_radius=0, border_color="#D3D3D3", border_width=2, command=lambda: tree_obstacles(las_object, entry_latitude, entry_longitude, combined_mesh, num_pixels_x, num_pixels_y, delta_x, delta_y, cell_stats))
-        visualize_btn.place(relx=0.5, rely=0.80, anchor="n")
+        #visualize_btn = CTkButton(panel_canvas, text="Visualize", text_color="#F0F0F0", fg_color="#1E3A5F",
+          #hover_color="#2E4A7F", corner_radius=0, border_color="#D3D3D3", border_width=2, command=lambda: tree_obstacles(las_object, entry_latitude, entry_longitude, combined_mesh, num_pixels_x, num_pixels_y, delta_x, delta_y, cell_stats))
+        #visualize_btn.place(relx=0.5, rely=0.80, anchor="n")
 
-        return_btn = CTkButton(panel_canvas, text="Return", text_color="#F0F0F0", fg_color="#B71C1C",
-                                  hover_color="#C62828", corner_radius=0, border_color="#D3D3D3", border_width=2, command=btn_return)
-        return_btn.place(relx=0.5, rely=0.85, anchor="n")
+        #return_btn = CTkButton(panel_canvas, text="Return", text_color="#F0F0F0", fg_color="#B71C1C",
+                                  #hover_color="#C62828", corner_radius=0, border_color="#D3D3D3", border_width=2, command=btn_return)
+        #return_btn.place(relx=0.5, rely=0.85, anchor="n")
 
         # Normalizar coordenadas
         x_array = np.array(xcenter)
@@ -999,11 +1150,11 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object):
             posiciones.append((xcenter[i], ycenter[i], FAltcenter[i]))
             print({posiciones[-1]})
 
-            btn = CTkButton(panel_frame, text="", width=6, height=6,
-                            fg_color="blue", hover_color="darkblue", corner_radius=3,
-                            command=lambda b=i: toggle_color(botones[b], b))
-            btn.place(x=x, y=y, anchor="center")
-            botones.append(btn)
+            #btn = CTkButton(panel_frame, text="", width=6, height=6,
+                            #fg_color="blue", hover_color="darkblue", corner_radius=3,
+                            #command=lambda b=i: toggle_color(botones[b], b))
+            #btn.place(x=x, y=y, anchor="center")
+            #botones.append(btn)
 
 def btn_return():
     if 'panel_canvas' in globals() and panel_canvas.winfo_exists():
@@ -2655,7 +2806,7 @@ root.btn_three_colors = CTkButton(extra_computations_frame, text="Heatmap with T
 root.btn_three_colors.pack(fill="x", padx=(80, 80), pady=(5, 0))
 root.btn_convert_pcd_to_dat = CTkButton(extra_computations_frame, text="3D grid from PCD", fg_color="#3E3E3E",
                                         text_color="#F0F0F0",
-                                        font=("Arial", 12), command=lambda: set_run_prueba_flag(xcenter, ycenter, FAltcenter))
+                                        font=("Arial", 12), command=lambda: panel_left_frame(xcenter, ycenter, FAltcenter, las_object))
 root.btn_convert_pcd_to_dat.pack(fill="x", padx=(80, 80), pady=(5, 0))
 
 segmentation_frame = CTkFrame(extra_computations_frame, fg_color="#2E2E2E", corner_radius=0)
