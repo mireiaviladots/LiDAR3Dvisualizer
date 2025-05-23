@@ -71,9 +71,17 @@ legend_frame = None
 legend_canvas = None
 las_object = None
 panel_canvas = None
-panel_frame = None
-height_frame = None
-longitude_frame = None
+button_seg = None
+seg_frame = None
+button_from = None
+from_frame = None
+button_to = None
+to_frame = None
+button_visualize = None
+button_return = None
+build_seg = False
+from_set = False
+to_set = False
 posiciones = None
 mi_set = False
 selected_positions = None
@@ -925,7 +933,7 @@ def legend_left_frame(counts=None, color_map=None):
         count_label.pack(side="left")
 
 def panel_left_frame (xcenter, ycenter, FAltcenter, las_object):
-        global panel_canvas, panel_frame, height_frame, longitude_frame, progress_bar, posiciones, selected_positions
+        global panel_canvas, button_seg, seg_frame, button_from, from_frame, button_to, to_frame, button_visualize, button_return, progress_bar, posiciones, selected_positions, build_seg, from_set, to_set
 
         enable_left_frame()
 
@@ -951,7 +959,7 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object):
         build_seg = False
 
         def toggle_parameters():
-            nonlocal build_seg, from_set, to_set, button_from, from_frame
+            global build_seg, from_set, to_set, button_from, from_frame
 
             build_seg = not build_seg
 
@@ -1017,7 +1025,7 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object):
         from_set = False
 
         def toggle_dose_layer_b():
-            nonlocal from_set, build_seg, to_set, button_from, from_frame
+            global from_set, build_seg, to_set, button_from, from_frame
             from_set = not from_set
 
             if from_set:
@@ -1068,7 +1076,7 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object):
         to_set = False
 
         def toggle_extra_computations():
-            nonlocal to_set, build_seg
+            global to_set, build_seg
             to_set = not to_set
 
             if to_set:
@@ -1163,40 +1171,16 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object):
         entry_northing.pack(side='left')
 
         button_return = CTkButton(left_frame, text = "Return", text_color = "#F0F0F0", fg_color = "#B71C1C",
-            hover_color = "#C62828", corner_radius = 0, border_color = "#D3D3D3", border_width = 2)
+            hover_color = "#C62828", corner_radius = 0, border_color = "#D3D3D3", border_width = 2, command=btn_return)
         button_return.pack(side="bottom", padx=(0, 0), pady=(10, 0))
 
         button_visualize = CTkButton(left_frame, text="Visualize", text_color="#F0F0F0", fg_color="#1E3A5F",
-            hover_color="#2E4A7F", corner_radius=0, border_color="#D3D3D3", border_width=2)
+            hover_color="#2E4A7F", corner_radius=0, border_color="#D3D3D3", border_width=2,
+                                     command=lambda: tree_obstacles(las_object, entry_lat, entry_lon, combined_mesh, num_pixels_x, num_pixels_y, delta_x, delta_y, cell_stats))
         button_visualize.pack(side="bottom", padx=(0, 0), pady=(5, 0))
 
-        # Frame
-        #panel_frame = CTkFrame(master=panel_canvas, width=300, height=300, fg_color="white", corner_radius=10)
-        #panel_canvas.create_window(width // 2, height//2 - 100, window=panel_frame)
-
-        ## Latitude Frame
-        #latitude_frame = CTkFrame(panel_canvas, fg_color="#2E2E2E")
-        #latitude_frame.place(relx=0.5, rely=0.65, anchor="n")  # Ajusta la posición según sea necesario
-        #label_latitude = CTkLabel(latitude_frame, text="Latitude:", text_color="white", font=("Arial", 12))
-        #label_latitude.pack(side="left", padx=(0, 5))
-        #entry_latitude = CTkEntry(latitude_frame, width=50, font=("Arial", 12))
-        #entry_latitude.pack(side="left")
-
-        ## Longitude Frame
-        #longitude_frame = CTkFrame(panel_canvas, fg_color="#2E2E2E")
-        #longitude_frame.place(relx=0.5, rely=0.70, anchor="n")  # Ajusta la posición según sea necesario
-        #label_longitude = CTkLabel(longitude_frame, text="Longitude:", text_color="white", font=("Arial", 12))
-        #label_longitude.pack(side="left", padx=(0, 5))
-        #entry_longitude = CTkEntry(longitude_frame, width=50, font=("Arial", 12))
-        #entry_longitude.pack(side="left")
-
-        #visualize_btn = CTkButton(panel_canvas, text="Visualize", text_color="#F0F0F0", fg_color="#1E3A5F",
-          #hover_color="#2E4A7F", corner_radius=0, border_color="#D3D3D3", border_width=2, command=lambda: tree_obstacles(las_object, entry_latitude, entry_longitude, combined_mesh, num_pixels_x, num_pixels_y, delta_x, delta_y, cell_stats))
-        #visualize_btn.place(relx=0.5, rely=0.80, anchor="n")
-
-        #return_btn = CTkButton(panel_canvas, text="Return", text_color="#F0F0F0", fg_color="#B71C1C",
-                                  #hover_color="#C62828", corner_radius=0, border_color="#D3D3D3", border_width=2, command=btn_return)
-        #return_btn.place(relx=0.5, rely=0.85, anchor="n")
+        left_frame.update_idletasks()
+        entry_lat.focus_set()
 
         # Normalizar coordenadas
         x_array = np.array(xcenter)
@@ -1222,29 +1206,44 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object):
 
             # Escalar después de rotar
             x = escalar(x_rotado, x_min, x_max, 10, 290)
-            y = escalar(y_rotado, y_min, y_max, 10, 290)
+            y = escalar(y_rotado, y_min, y_max, 10, 190)
 
             posiciones.append((xcenter[i], ycenter[i], FAltcenter[i]))
             print({posiciones[-1]})
 
-            #btn = CTkButton(panel_frame, text="", width=6, height=6,
-                            #fg_color="blue", hover_color="darkblue", corner_radius=3,
-                            #command=lambda b=i: toggle_color(botones[b], b))
-            #btn.place(x=x, y=y, anchor="center")
-            #botones.append(btn)
+            btn = CTkButton(panel_dronPos, text="", width=6, height=6,
+                            fg_color="blue", hover_color="darkblue", corner_radius=3,
+                            command=lambda b=i: toggle_color(botones[b], b))
+            btn.place(x=x, y=y, anchor="center")
+            botones.append(btn)
 
 def btn_return():
     if 'panel_canvas' in globals() and panel_canvas.winfo_exists():
         panel_canvas.place_forget()
 
-    if 'panel_frame' in globals() and panel_frame.winfo_exists():
-        panel_frame.place_forget()
+    if 'button_seg' in globals() and button_seg.winfo_exists():
+        button_seg.pack_forget()
 
-    if 'height_frame' in globals() and height_frame.winfo_exists():
-        height_frame.place_forget()
+    if 'seg_frame' in globals() and seg_frame.winfo_exists():
+        seg_frame.pack_forget()
 
-    if 'longitude_frame' in globals() and longitude_frame.winfo_exists():
-        longitude_frame.place_forget()
+    if 'button_from' in globals() and button_from.winfo_exists():
+        button_from.pack_forget()
+
+    if 'from_frame' in globals() and from_frame.winfo_exists():
+        from_frame.pack_forget()
+
+    if 'button_to' in globals() and button_to.winfo_exists():
+        button_to.pack_forget()
+
+    if 'to_frame' in globals() and to_frame.winfo_exists():
+        to_frame.pack_forget()
+
+    if 'button_return' in globals() and button_return.winfo_exists():
+        button_return.pack_forget()
+
+    if 'button_visualize' in globals() and button_visualize.winfo_exists():
+        button_visualize.pack_forget()
 
 def toggle_color(boton, index):
     global selected_positions, posiciones, botones
@@ -1277,7 +1276,7 @@ def latlon_a_utm31(lat, lon):
 def mostrar_resumen_lineas(colores_puntos, total_arboles_cruzados):
     def ventana():
         resumen = CTkToplevel()
-        resumen.title("Resumen de líneas")
+        resumen.title("Obstacle Detection")
         resumen.geometry("300x400")
         resumen.configure(fg_color="#1E1E1E")
 
@@ -2883,7 +2882,7 @@ root.btn_three_colors = CTkButton(extra_computations_frame, text="Heatmap with T
 root.btn_three_colors.pack(fill="x", padx=(80, 80), pady=(5, 0))
 root.btn_convert_pcd_to_dat = CTkButton(extra_computations_frame, text="3D grid from PCD", fg_color="#3E3E3E",
                                         text_color="#F0F0F0",
-                                        font=("Arial", 12), command=lambda: panel_left_frame(xcenter, ycenter, FAltcenter, las_object))
+                                        font=("Arial", 12), command=lambda: set_run_prueba_flag(xcenter, ycenter, FAltcenter))
 root.btn_convert_pcd_to_dat.pack(fill="x", padx=(80, 80), pady=(5, 0))
 
 segmentation_frame = CTkFrame(extra_computations_frame, fg_color="#2E2E2E", corner_radius=0)
