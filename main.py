@@ -951,7 +951,7 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object):
         build_seg = False
 
         def toggle_parameters():
-            nonlocal build_seg
+            nonlocal build_seg, from_set, to_set, button_from, from_frame
 
             build_seg = not build_seg
 
@@ -963,8 +963,6 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object):
                 button_from.pack(fill="x", padx=(0, 0), pady=(10, 0))
                 button_to.pack_forget()
                 button_to.pack(fill="x", padx=(0, 0), pady=(10, 0))
-                #btn_visualize.pack_forget()
-                #btn_visualize.pack(side="bottom", padx=(0, 0), pady=(10, 25))
 
                 if from_set:
                     button_from.pack_forget()
@@ -973,8 +971,9 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object):
                     from_frame.pack(pady=(5, 0), fill="x")
                     button_to.pack_forget()
                     button_to.pack(fill="x", padx=(0, 0), pady=(10, 0))
-                    #root.btn_visualize.pack_forget()
-                    #root.btn_visualize.pack(side="bottom", padx=(0, 0), pady=(10, 25))
+                    from_set = False
+                    button_from.configure(text=" ▼ FROM")
+                    from_frame.pack_forget()
 
             else:
                 button_seg.configure(text=" ▼ Building Segmentation")
@@ -984,8 +983,9 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object):
             if to_set:
                 to_frame.pack_forget()
                 to_frame.pack(pady=(10, 0), fill="x")
-                #root.btn_visualize.pack_forget()
-                #root.btn_visualize.pack(side="bottom", padx=(0, 0), pady=(10, 25))
+                to_set = False
+                button_to.configure(text=" ▼ TO")
+                to_frame.pack_forget()
 
         # Parameters Button
         button_seg = CTkButton(panel_canvas, text=" ▼ Building Segmentation", text_color="#F0F0F0", fg_color="#3E3E3E",
@@ -1017,7 +1017,7 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object):
         from_set = False
 
         def toggle_dose_layer_b():
-            nonlocal from_set
+            nonlocal from_set, build_seg, to_set, button_from, from_frame
             from_set = not from_set
 
             if from_set:
@@ -1030,8 +1030,17 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object):
                     button_to.pack(fill="x", padx=(0, 0), pady=(10, 0))
                     to_frame.pack_forget()
                     to_frame.pack(pady=(10, 0), fill="x")
-                #root.btn_visualize.pack_forget()
-                #root.btn_visualize.pack(side="bottom", padx=(0, 0), pady=(10, 25))
+
+                if build_seg:
+                    build_seg = False
+                    button_seg.configure(text=" ▼ Building Segmentation")
+                    seg_frame.pack_forget()
+                    button_from.pack_forget()
+                    button_from.pack(fill="x", padx=(0, 0), pady=(10, 0))
+                    from_frame.pack_forget()
+                    from_frame.pack(pady=(5, 0), fill="x")
+                    button_to.pack_forget()
+                    button_to.pack(fill="x", padx=(0, 0), pady=(10, 0))
 
             else:
                 button_from.configure(text=" ▼ FROM")
@@ -1043,9 +1052,7 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object):
                 to_frame.pack_forget()
                 to_frame.pack(pady=(10, 0), fill="x")
 
-                #root.btn_visualize.pack(side="bottom", padx=(0, 0), pady=(10, 25))
-
-        button_from = CTkButton(panel_canvas, text=" ▼ FROM", text_color="#F0F0F0", fg_color="#3E3E3E",
+        button_from = CTkButton(panel_canvas, text=" ▼ FROM", text_color="#F0F0F0", fg_color="#666666",
                                            anchor="w", corner_radius=0, command=toggle_dose_layer_b)
         button_from.pack(fill="x", padx=(0, 0), pady=(10, 0))
 
@@ -1061,37 +1068,107 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object):
         to_set = False
 
         def toggle_extra_computations():
-            nonlocal to_set
+            nonlocal to_set, build_seg
             to_set = not to_set
 
             if to_set:
                 button_to.configure(text=" ▲ TO")
                 to_frame.pack(pady=(10, 0), fill="x")
-                #root.btn_visualize.pack_forget()
-                #root.btn_visualize.pack(side="bottom", padx=(0, 0), pady=(10, 25))
+
+                if build_seg:
+                    build_seg = False
+                    button_seg.configure(text=" ▼ Building Segmentation")
+                    seg_frame.pack_forget()
+                    button_from.pack_forget()
+                    button_from.pack(fill="x", padx=(0, 0), pady=(10, 0))
+                    button_to.pack_forget()
+                    button_to.pack(fill="x", padx=(0, 0), pady=(10, 0))
+                    to_frame.pack_forget()
+                    to_frame.pack(pady=(10, 0), fill="x")
             else:
                 button_to.configure(text=" ▼ TO")
                 to_frame.pack_forget()
-                #root.btn_visualize.pack_forget()
-                #root.btn_visualize.pack(side="bottom", padx=(0, 0), pady=(10, 25))
 
         button_to = CTkButton(panel_canvas, text=" ▼ TO", text_color="#F0F0F0",
-                                                   fg_color="#3E3E3E",
+                                                   fg_color="#666666",
                                                    anchor="w", corner_radius=0, command=toggle_extra_computations)
         button_to.pack(fill="x", padx=(0, 0), pady=(10, 0))
 
-        to_frame = CTkFrame(panel_canvas, fg_color="#2E2E2E", height=150, corner_radius=0)
+        to_frame = CTkFrame(panel_canvas, fg_color="#2E2E2E", height=110, corner_radius=0)
         to_frame.grid_propagate(False)
 
         left_to_frame = CTkFrame(to_frame, fg_color="#999999", corner_radius=10)
         left_to_frame.grid(row=0, column=0, padx=(10, 5), pady=(10, 0))
+        left_to_frame.grid_propagate(False)
 
         right_to_frame = CTkFrame(to_frame, fg_color="#999999", corner_radius=10)
         right_to_frame.grid(row=0, column=1, padx=(5, 10), pady=(10, 0))
+        right_to_frame.grid_propagate(False)
 
         to_frame.grid_rowconfigure(0, weight=1)
         to_frame.grid_columnconfigure(0, weight=1)
         to_frame.grid_columnconfigure(1, weight=1)
+
+        left_to_frame_container = CTkFrame(left_to_frame, fg_color="#999999", corner_radius=10, height=110)
+        left_to_frame_container.pack(padx=(0, 0), pady=(0, 0))
+        left_to_frame_container.pack_propagate(False)
+
+        button_coordLatLng = CTkButton(left_to_frame_container, text="Geographic coordinates", text_color="#F0F0F0", fg_color="#3E3E3E",
+                                       corner_radius=0, height=10)
+        button_coordLatLng.pack(fill='x', padx=0, pady=0)
+
+        lat_frame = CTkFrame(left_to_frame_container, fg_color="#999999", corner_radius=0)
+        lat_frame.pack(pady=(5, 0), anchor='center')
+
+        label_lat = CTkLabel(lat_frame, text="Lat: ", text_color="#F0F0F0", bg_color="#999999")
+        label_lat.pack(side='left', padx=(0, 5))
+
+        entry_lat = CTkEntry(lat_frame, width=50, text_color="black", state="normal", font=("Arial", 12))
+        entry_lat.pack(side='left')
+
+        lon_frame = CTkFrame(left_to_frame_container, fg_color="#999999", corner_radius=0)
+        lon_frame.pack(pady=(5, 0), anchor='center')
+
+        label_lon = CTkLabel(lon_frame, text="Lon: ", text_color="#F0F0F0", bg_color="#999999")
+        label_lon.pack(side='left', padx=(0, 5))
+
+        entry_lon = CTkEntry(lon_frame, width=50, text_color="black", state="normal", font=("Arial", 12))
+        entry_lon.pack(side='left')
+
+        right_to_frame_container = CTkFrame(right_to_frame, fg_color="#999999", corner_radius=10, height=110)
+        right_to_frame_container.pack(padx=(0, 0), pady=(0, 0))
+        right_to_frame_container.pack_propagate(False)
+
+        button_coordUTM = CTkButton(right_to_frame_container, text="UTM coordinates", text_color="#F0F0F0",
+                                       fg_color="#3E3E3E",
+                                       corner_radius=0, height=10)
+        button_coordUTM.pack(fill='x', padx=0, pady=0)
+
+        easting_frame = CTkFrame(right_to_frame_container, fg_color="#999999", corner_radius=0)
+        easting_frame.pack(pady=(5, 0), anchor='center')
+
+        label_easting = CTkLabel(easting_frame, text="Easting: ", text_color="#F0F0F0", bg_color="#999999")
+        label_easting.pack(side='left', padx=(0, 5))
+
+        entry_easting = CTkEntry(easting_frame, width=50, text_color="black", state="normal", font=("Arial", 12))
+        entry_easting.pack(side='left')
+
+        northing_frame = CTkFrame(right_to_frame_container, fg_color="#999999", corner_radius=0)
+        northing_frame.pack(pady=(5, 0), anchor='center')
+
+        label_northing = CTkLabel(northing_frame, text="Northing: ", text_color="#F0F0F0", bg_color="#999999")
+        label_northing.pack(side='left', padx=(0, 5))
+
+        entry_northing = CTkEntry(northing_frame, width=50, text_color="black", state="normal", font=("Arial", 12))
+        entry_northing.pack(side='left')
+
+        button_return = CTkButton(left_frame, text = "Return", text_color = "#F0F0F0", fg_color = "#B71C1C",
+            hover_color = "#C62828", corner_radius = 0, border_color = "#D3D3D3", border_width = 2)
+        button_return.pack(side="bottom", padx=(0, 0), pady=(10, 0))
+
+        button_visualize = CTkButton(left_frame, text="Visualize", text_color="#F0F0F0", fg_color="#1E3A5F",
+            hover_color="#2E4A7F", corner_radius=0, border_color="#D3D3D3", border_width=2)
+        button_visualize.pack(side="bottom", padx=(0, 0), pady=(5, 0))
 
         # Frame
         #panel_frame = CTkFrame(master=panel_canvas, width=300, height=300, fg_color="white", corner_radius=10)
