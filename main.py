@@ -82,6 +82,10 @@ button_return = None
 build_seg = False
 from_set = False
 to_set = False
+show_latlon = False
+show_utm = False
+latlon_set = 0
+utm_set = 0
 posiciones = None
 mi_set = False
 selected_positions = None
@@ -623,7 +627,7 @@ def grid(las_object):
 
     panel_left_frame(xcenter, ycenter, FAltcenter, las_object)
 
-def tree_obstacles(las_object, entry_latitude, entry_longitude, combined_mesh, num_pixels_x, num_pixels_y, delta_x, delta_y, cell_stats):
+def tree_obstacles(las_object, entry_latitude, entry_longitude, entry_zone, entry_easting, entry_northing, latlon_set, utm_set, combined_mesh, num_pixels_x, num_pixels_y, delta_x, delta_y, cell_stats):
     def run():
         global vis
         try:
@@ -631,29 +635,68 @@ def tree_obstacles(las_object, entry_latitude, entry_longitude, combined_mesh, n
                 messagebox.showwarning("Warning", "Please select one point before continuing.")
                 return
 
-            try:
-                lat = float(entry_latitude.get())
-            except (ValueError, AttributeError):
-                messagebox.showerror("Error", "Latitude must be a number between -90 and 90.")
-                return
+            if latlon_set == 1:
+                try:
+                    zone = int(entry_zone.get())
+                except (ValueError, AttributeError):
+                    messagebox.showerror("Error", "UTM zone must be an integer between 1 and 60.")
+                    return
 
-            if not -90 <= lat <= 90:
-                messagebox.showerror("Error", "Latitude must be between -90 and 90.")
-                return
+                if not 1 <= zone <= 60:
+                    messagebox.showerror("Error", "UTM zone must be between 1 and 60.")
+                    return
 
-            try:
-                lon = float(entry_longitude.get())
-            except (ValueError, AttributeError):
-                messagebox.showerror("Error", "Longitude must be a number between -180 and 180.")
-                return
+                try:
+                    lat = float(entry_latitude.get())
+                except (ValueError, AttributeError):
+                    messagebox.showerror("Error", "Latitude must be a number between -90 and 90.")
+                    return
 
-            if not -180 <= lon <= 180:
-                messagebox.showerror("Error", "Longitude must be between -180 and 180.")
-                return
+                if not -90 <= lat <= 90:
+                    messagebox.showerror("Error", "Latitude must be between -90 and 90.")
+                    return
 
-            # Convert lat/lon to UTM 31N
-            utm_x, utm_y = latlon_a_utm31(lat, lon)
-            print(f"UTM coordinates: X={utm_x}, Y={utm_y}")
+                try:
+                    lon = float(entry_longitude.get())
+                except (ValueError, AttributeError):
+                    messagebox.showerror("Error", "Longitude must be a number between -180 and 180.")
+                    return
+
+                if not -180 <= lon <= 180:
+                    messagebox.showerror("Error", "Longitude must be between -180 and 180.")
+                    return
+
+                # Convert to UTM
+                utm_x, utm_y = latlon_a_utm(lat, lon, zone)
+                print(f"UTM coordinates from lat/lon: X={utm_x}, Y={utm_y}")
+
+            elif utm_set == 1:
+                try:
+                    easting = float(entry_easting.get())
+                except (ValueError, AttributeError):
+                    messagebox.showerror("Error", "Easting must be a number.")
+                    return
+
+                if not 100000 <= easting <= 900000:
+                    messagebox.showerror("Error", "Easting must be between 100,000 and 900,000 meters.")
+                    return
+
+                try:
+                    northing = float(entry_northing.get())
+                except (ValueError, AttributeError):
+                    messagebox.showerror("Error", "Northing must be a number.")
+                    return
+
+                if not 0 <= northing <= 10000000:
+                    messagebox.showerror("Error", "Northing must be between 0 and 10,000,000 meters.")
+                    return
+
+                utm_x = easting
+                utm_y = northing
+                print(f"UTM coordinates from UTM input: X={utm_x}, Y={utm_y}")
+            else:
+                messagebox.showerror("Error", "Please select either Lat/Lon or UTM input mode.")
+                return
 
             # Load the LAS file
             las = las_object
@@ -933,7 +976,7 @@ def legend_left_frame(counts=None, color_map=None):
         count_label.pack(side="left")
 
 def panel_left_frame (xcenter, ycenter, FAltcenter, las_object):
-        global panel_canvas, button_seg, seg_frame, button_from, from_frame, button_to, to_frame, button_visualize, button_return, progress_bar, posiciones, selected_positions, build_seg, from_set, to_set
+        global panel_canvas, button_seg, seg_frame, button_from, from_frame, button_to, to_frame, button_visualize, button_return, progress_bar, posiciones, selected_positions, build_seg, from_set, to_set, latlon_set, utm_set
 
         enable_left_frame()
 
@@ -1102,8 +1145,73 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object):
                                                    anchor="w", corner_radius=0, command=toggle_extra_computations)
         button_to.pack(fill="x", padx=(0, 0), pady=(10, 0))
 
-        to_frame = CTkFrame(panel_canvas, fg_color="#2E2E2E", height=110, corner_radius=0)
+        to_frame = CTkFrame(panel_canvas, fg_color="#2E2E2E", height=140, corner_radius=0)
         to_frame.grid_propagate(False)
+
+        show_latlon = False
+        show_utm = False
+
+        latlon_set = 0
+        utm_set = 0
+
+        def toggle_latlon():
+            global latlon_set, utm_set, show_latlon, show_utm
+            show_latlon = not show_latlon
+
+            if show_latlon:
+                latlon_set = 1
+                button_coordLatLng.configure(text="▲ Geographic coordinates")
+                label_hint_left.pack_forget()
+                label_hint_right.pack_forget()
+                zone_frame.pack(pady=(5, 0), anchor='center')
+                lat_frame.pack(pady=(5, 0), anchor='center')
+                lon_frame.pack(pady=(5, 0), anchor='center')
+
+                # Si UTM está abierto, lo cerramos
+                if show_utm:
+                    utm_set = 0
+                    show_utm = False
+                    button_coordUTM.configure(text="▼ UTM coordinates")
+                    easting_frame.pack_forget()
+                    northing_frame.pack_forget()
+
+            else:
+                latlon_set = 0
+                button_coordLatLng.configure(text="▼ Geographic coordinates")
+                zone_frame.pack_forget()
+                lat_frame.pack_forget()
+                lon_frame.pack_forget()
+                label_hint_left.pack(pady=(10, 10))
+                label_hint_right.pack(pady=(10, 10))
+
+        def toggle_utm():
+            global latlon_set, utm_set, show_latlon, show_utm
+            show_utm = not show_utm
+
+            if show_utm:
+                utm_set = 1
+                button_coordUTM.configure(text="▲ UTM coordinates")
+                label_hint_right.pack_forget()
+                label_hint_left.pack_forget()
+                easting_frame.pack(pady=(5, 0), anchor='center')
+                northing_frame.pack(pady=(5, 0), anchor='center')
+
+                # Si Lat/Lon está abierto, lo cerramos
+                if show_latlon:
+                    latlon_set = 0
+                    show_latlon = False
+                    button_coordLatLng.configure(text="▼ Geographic coordinates")
+                    zone_frame.pack_forget()
+                    lat_frame.pack_forget()
+                    lon_frame.pack_forget()
+
+            else:
+                utm_set = 0
+                button_coordUTM.configure(text="▼ UTM coordinates")
+                easting_frame.pack_forget()
+                northing_frame.pack_forget()
+                label_hint_right.pack(pady=(10, 10))
+                label_hint_left.pack(pady=(10, 10))
 
         left_to_frame = CTkFrame(to_frame, fg_color="#999999", corner_radius=10)
         left_to_frame.grid(row=0, column=0, padx=(10, 5), pady=(10, 0))
@@ -1117,16 +1225,35 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object):
         to_frame.grid_columnconfigure(0, weight=1)
         to_frame.grid_columnconfigure(1, weight=1)
 
-        left_to_frame_container = CTkFrame(left_to_frame, fg_color="#999999", corner_radius=10, height=110)
+        left_to_frame_container = CTkFrame(left_to_frame, fg_color="#999999", corner_radius=10, height=140)
         left_to_frame_container.pack(padx=(0, 0), pady=(0, 0))
         left_to_frame_container.pack_propagate(False)
 
-        button_coordLatLng = CTkButton(left_to_frame_container, text="Geographic coordinates", text_color="#F0F0F0", fg_color="#3E3E3E",
-                                       corner_radius=0, height=10)
+        button_coordLatLng = CTkButton(left_to_frame_container, text="▼ Geographic coordinates", text_color="#F0F0F0",
+                                       fg_color="#3E3E3E",
+                                       corner_radius=0, height=10, command=toggle_latlon)
         button_coordLatLng.pack(fill='x', padx=0, pady=0)
 
+        label_hint_left = CTkLabel(
+            left_to_frame_container,
+            text="Select geographic or UTM coordinates",
+            text_color="#F0F0F0",
+            font=("Arial", 12),
+            bg_color="#999999",
+            wraplength=180,
+            justify="center"
+        )
+        label_hint_left.pack(padx=(5, 5), pady=(10, 10), fill="x")
+
+        zone_frame = CTkFrame(left_to_frame_container, fg_color="#999999", corner_radius=0)
+
+        label_zone = CTkLabel(zone_frame, text="Zone: ", text_color="#F0F0F0", bg_color="#999999")
+        label_zone.pack(side='left', padx=(0, 5))
+
+        entry_zone = CTkEntry(zone_frame, width=50, text_color="black", state="normal", font=("Arial", 12))
+        entry_zone.pack(side='left')
+
         lat_frame = CTkFrame(left_to_frame_container, fg_color="#999999", corner_radius=0)
-        lat_frame.pack(pady=(5, 0), anchor='center')
 
         label_lat = CTkLabel(lat_frame, text="Lat: ", text_color="#F0F0F0", bg_color="#999999")
         label_lat.pack(side='left', padx=(0, 5))
@@ -1135,7 +1262,6 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object):
         entry_lat.pack(side='left')
 
         lon_frame = CTkFrame(left_to_frame_container, fg_color="#999999", corner_radius=0)
-        lon_frame.pack(pady=(5, 0), anchor='center')
 
         label_lon = CTkLabel(lon_frame, text="Lon: ", text_color="#F0F0F0", bg_color="#999999")
         label_lon.pack(side='left', padx=(0, 5))
@@ -1143,17 +1269,27 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object):
         entry_lon = CTkEntry(lon_frame, width=50, text_color="black", state="normal", font=("Arial", 12))
         entry_lon.pack(side='left')
 
-        right_to_frame_container = CTkFrame(right_to_frame, fg_color="#999999", corner_radius=10, height=110)
+        right_to_frame_container = CTkFrame(right_to_frame, fg_color="#999999", corner_radius=10, height=140)
         right_to_frame_container.pack(padx=(0, 0), pady=(0, 0))
         right_to_frame_container.pack_propagate(False)
 
-        button_coordUTM = CTkButton(right_to_frame_container, text="UTM coordinates", text_color="#F0F0F0",
-                                       fg_color="#3E3E3E",
-                                       corner_radius=0, height=10)
+        button_coordUTM = CTkButton(right_to_frame_container, text="▼ UTM coordinates", text_color="#F0F0F0",
+                                    fg_color="#3E3E3E",
+                                    corner_radius=0, height=10, command=toggle_utm)
         button_coordUTM.pack(fill='x', padx=0, pady=0)
 
+        label_hint_right = CTkLabel(
+            right_to_frame_container,
+            text="Select geographic or UTM coordinates",
+            text_color="#F0F0F0",
+            font=("Arial", 12),
+            bg_color="#999999",
+            wraplength=180,
+            justify="center"
+        )
+        label_hint_right.pack(padx=(5, 5), pady=(10, 10), fill="x")
+
         easting_frame = CTkFrame(right_to_frame_container, fg_color="#999999", corner_radius=0)
-        easting_frame.pack(pady=(5, 0), anchor='center')
 
         label_easting = CTkLabel(easting_frame, text="Easting: ", text_color="#F0F0F0", bg_color="#999999")
         label_easting.pack(side='left', padx=(0, 5))
@@ -1162,7 +1298,6 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object):
         entry_easting.pack(side='left')
 
         northing_frame = CTkFrame(right_to_frame_container, fg_color="#999999", corner_radius=0)
-        northing_frame.pack(pady=(5, 0), anchor='center')
 
         label_northing = CTkLabel(northing_frame, text="Northing: ", text_color="#F0F0F0", bg_color="#999999")
         label_northing.pack(side='left', padx=(0, 5))
@@ -1170,13 +1305,17 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object):
         entry_northing = CTkEntry(northing_frame, width=50, text_color="black", state="normal", font=("Arial", 12))
         entry_northing.pack(side='left')
 
-        button_return = CTkButton(left_frame, text = "Return", text_color = "#F0F0F0", fg_color = "#B71C1C",
-            hover_color = "#C62828", corner_radius = 0, border_color = "#D3D3D3", border_width = 2, command=btn_return)
-        button_return.pack(side="bottom", padx=(0, 0), pady=(10, 0))
+        button_return = CTkButton(left_frame, text="Return", text_color="#F0F0F0", fg_color="#B71C1C",
+                                  hover_color="#C62828", corner_radius=0, border_color="#D3D3D3", border_width=2,
+                                  command=btn_return)
+        button_return.pack(side="bottom", padx=(0, 0), pady=(5, 0))
 
         button_visualize = CTkButton(left_frame, text="Visualize", text_color="#F0F0F0", fg_color="#1E3A5F",
-            hover_color="#2E4A7F", corner_radius=0, border_color="#D3D3D3", border_width=2,
-                                     command=lambda: tree_obstacles(las_object, entry_lat, entry_lon, combined_mesh, num_pixels_x, num_pixels_y, delta_x, delta_y, cell_stats))
+                                     hover_color="#2E4A7F", corner_radius=0, border_color="#D3D3D3", border_width=2,
+                                     command=lambda: tree_obstacles(las_object, entry_lat, entry_lon, entry_zone, entry_easting,
+                                                                    entry_northing, latlon_set, utm_set,
+                                                                    combined_mesh, num_pixels_x, num_pixels_y, delta_x,
+                                                                    delta_y, cell_stats))
         button_visualize.pack(side="bottom", padx=(0, 0), pady=(5, 0))
 
         left_frame.update_idletasks()
@@ -1264,13 +1403,13 @@ def toggle_color(boton, index):
         selected_positions = [pos for pos in selected_positions if pos != (x, y, alt)]
         print(f"Eliminado: ({x}, {y}, {alt})")
 
-def latlon_a_utm31(lat, lon):
+def latlon_a_utm(lat, lon, zone):
     # Define projections
     wgs84 = Proj(proj='latlong', datum='WGS84')
-    utm31 = Proj(proj='utm', zone=31, datum='WGS84', units='m')
+    utm = Proj(proj='utm', zone=zone, datum='WGS84', units='m')
 
     # Transform coordinates
-    x, y = transform(wgs84, utm31, lon, lat)
+    x, y = transform(wgs84, utm, lon, lat)
     return x, y
 
 def mostrar_resumen_lineas(colores_puntos, total_arboles_cruzados):
