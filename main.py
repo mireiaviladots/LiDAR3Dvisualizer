@@ -90,11 +90,14 @@ posiciones = None
 mi_set = False
 selected_positions = None
 combined_mesh = None
-num_pixels_x = None
-num_pixels_y = None
+pixels_x = None
+pixels_y = None
 delta_x = None
 delta_y = None
 cell_stats = None
+combined_mesh_pixels_x = None
+combined_mesh_pixels_y = None
+las = None
 
 def mostrar_nube_no_vox(show_dose_layer, pc_filepath, downsample, xml_filepath, csv_filepath, high_dose_rgb, medium_dose_rgb,
                         low_dose_rgb, dose_min_csv, low_max, medium_min, medium_max, high_min, altura_extra, show_source, source_location, point_size, progress_bar):
@@ -467,8 +470,8 @@ def mostrar_nube_si_vox(show_dose_layer, pc_filepath, xml_filepath, csv_filepath
 
     threading.Thread(target=run, daemon=True).start()
 
-def grid(las_object):
-    global combined_mesh, num_pixels_x, num_pixels_y, delta_x, delta_y, cell_stats
+def grid(las_object, pixels_x, pixels_y):
+    global combined_mesh, delta_x, delta_y, cell_stats
 
     progress_bar = create_progress_bar()
 
@@ -513,16 +516,14 @@ def grid(las_object):
     update_progress_bar(progress_bar, 30)
 
     # Calculate pixel sizes
-    num_pixels_x = 1000
-    num_pixels_y = 1000
-    delta_x = (max_x - min_x) / num_pixels_x
-    delta_y = (max_y - min_y) / num_pixels_y
+    delta_x = (max_x - min_x) / pixels_x
+    delta_y = (max_y - min_y) / pixels_y
 
     # Initialize structures for statistics
-    z_values = np.full((num_pixels_y, num_pixels_x), np.nan)
-    cell_stats = np.empty((num_pixels_y, num_pixels_x), dtype=object)
-    for i in range(num_pixels_y):
-        for j in range(num_pixels_x):
+    z_values = np.full((pixels_y, pixels_x), np.nan)
+    cell_stats = np.empty((pixels_y, pixels_x), dtype=object)
+    for i in range(pixels_y):
+        for j in range(pixels_x):
             cell_stats[i, j] = {'z_values': [], 'colors': [], 'classes': [], 'tree_classes': []}
 
     update_progress_bar(progress_bar, 40)
@@ -532,8 +533,8 @@ def grid(las_object):
     y_idx = ((points[:, 1] - min_y) / delta_y).astype(int)
 
     valid_mask = (
-            (x_idx >= 0) & (x_idx < num_pixels_x) &
-            (y_idx >= 0) & (y_idx < num_pixels_y)
+            (x_idx >= 0) & (x_idx < pixels_x) &
+            (y_idx >= 0) & (y_idx < pixels_y)
     )
 
     for xi, yi, z, color in zip(x_idx[valid_mask], y_idx[valid_mask], points[valid_mask][:, 2],
@@ -545,8 +546,8 @@ def grid(las_object):
     x_idx_las = ((las_points[:, 0] - min_x) / delta_x).astype(int)
     y_idx_las = ((las_points[:, 1] - min_y) / delta_y).astype(int)
     valid_mask_las = (
-            (x_idx_las >= 0) & (x_idx_las < num_pixels_x) &
-            (y_idx_las >= 0) & (y_idx_las < num_pixels_y)
+            (x_idx_las >= 0) & (x_idx_las < pixels_x) &
+            (y_idx_las >= 0) & (y_idx_las < pixels_y)
     )
 
     update_progress_bar(progress_bar, 50)
@@ -561,8 +562,8 @@ def grid(las_object):
         cell_stats[yi, xi]['tree_classes'].append(cls_tree)
 
     # Calculate mean Z values and predominant colors for each cell
-    for i in range(num_pixels_y):
-        for j in range(num_pixels_x):
+    for i in range(pixels_y):
+        for j in range(pixels_x):
             z_vals = cell_stats[i][j]['z_values']
             if z_vals:
                 z_vals = np.array(z_vals)
@@ -581,8 +582,8 @@ def grid(las_object):
     prisms = []
 
     # Draw horizontal cells and vertical surfaces
-    for i in range(num_pixels_y):
-        for j in range(num_pixels_x):
+    for i in range(pixels_y):
+        for j in range(pixels_x):
             if not np.isnan(z_values[i, j]):
                 z_final = z_values[i, j]
                 z_min = np.min(cell_stats[i][j]['z_values'])
@@ -625,9 +626,9 @@ def grid(las_object):
 
     print ("acabado")
 
-    panel_left_frame(xcenter, ycenter, FAltcenter, las_object)
+    panel_left_frame(xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels_y)
 
-def tree_obstacles(las_object, entry_latitude, entry_longitude, entry_zone, entry_easting, entry_northing, latlon_set, utm_set, combined_mesh, num_pixels_x, num_pixels_y, delta_x, delta_y, cell_stats):
+def tree_obstacles(las_object, entry_latitude, entry_longitude, entry_zone, entry_easting, entry_northing, latlon_set, utm_set, combined_mesh, pixels_x, pixels_y, delta_x, delta_y, cell_stats):
     def run():
         global vis
         try:
@@ -726,7 +727,7 @@ def tree_obstacles(las_object, entry_latitude, entry_longitude, entry_zone, entr
                 row = int((y - min_y) / delta_y)
 
                 # Verificar si el índice es válido
-                if 0 <= col < num_pixels_x and 0 <= row < num_pixels_y:
+                if 0 <= col < pixels_x and 0 <= row < pixels_y:
                     cell_z_vals = cell_stats[row][col]['z_values']
                     if cell_z_vals:
                         altitud_nivel_mar = np.mean(cell_z_vals)
@@ -749,7 +750,7 @@ def tree_obstacles(las_object, entry_latitude, entry_longitude, entry_zone, entr
             update_progress_bar(progress_bar, 50)
 
             # Verificar si el índice es válido
-            if 0 <= col < num_pixels_x and 0 <= row < num_pixels_y:
+            if 0 <= col < pixels_x and 0 <= row < pixels_y:
                 cell_z_vals = cell_stats[row][col]['z_values']
                 if cell_z_vals:
                     altitud_nivel_mar = np.mean(cell_z_vals)
@@ -797,8 +798,8 @@ def tree_obstacles(las_object, entry_latitude, entry_longitude, entry_zone, entr
                     linea = LineString([start_point[:2], end_point[:2]])
                     clases_cruzadas = []
 
-                    for i in range(num_pixels_y):
-                        for j in range(num_pixels_x):
+                    for i in range(pixels_y):
+                        for j in range(pixels_x):
                             # Coordenadas de la celda
                             x0 = min_x + j * delta_x
                             y0 = min_y + i * delta_y
@@ -975,7 +976,7 @@ def legend_left_frame(counts=None, color_map=None):
         count_label = CTkLabel(item_frame, text=f"({count})", text_color="#A0A0A0", font=("Arial", 12))
         count_label.pack(side="left")
 
-def panel_left_frame (xcenter, ycenter, FAltcenter, las_object):
+def panel_left_frame (xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels_y):
         global panel_canvas, button_seg, seg_frame, button_from, from_frame, button_to, to_frame, button_visualize, button_return, progress_bar, posiciones, selected_positions, build_seg, from_set, to_set, latlon_set, utm_set
 
         enable_left_frame()
@@ -1314,7 +1315,7 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object):
                                      hover_color="#2E4A7F", corner_radius=0, border_color="#D3D3D3", border_width=2,
                                      command=lambda: tree_obstacles(las_object, entry_lat, entry_lon, entry_zone, entry_easting,
                                                                     entry_northing, latlon_set, utm_set,
-                                                                    combined_mesh, num_pixels_x, num_pixels_y, delta_x,
+                                                                    combined_mesh, pixels_x, pixels_y, delta_x,
                                                                     delta_y, cell_stats))
         button_visualize.pack(side="bottom", padx=(0, 0), pady=(5, 0))
 
@@ -2073,28 +2074,42 @@ def plot_three_color_heatmap(heatmap, xcenter, ycenter, Hcenter, lonmin, lonmax,
 
     plt.show()
 
-def set_run_prueba_flag(xcenter, ycenter, FAltcenter):
+def set_run_prueba_flag(xcenter, ycenter, FAltcenter, pixels_x_str, pixels_y_str):
     # Check if xcenter or ycenter is None or empty
-    global las_object, mi_set
+    global las_object, mi_set, pixels_x, pixels_y, combined_mesh_pixels_x, combined_mesh_pixels_y, las
 
     if xcenter is None or len(xcenter) == 0 or ycenter is None or len(ycenter) == 0:
         messagebox.showerror("Error", "Please process the N42 files first.")
         return
 
+    # Validar que sean números enteros
+    if not pixels_x_str.isdigit() or not pixels_y_str.isdigit():
+        messagebox.showerror("Invalid Input", "Num Pixels X and Y must be integers.")
+        return
+
+    # Convertir a int una vez validados
+    pixels_x = int(pixels_x_str)
+    pixels_y = int(pixels_y_str)
+
     if las_object is None:
         mi_set = False
-        segmentationPlus(mi_set)
+        segmentationPlus(mi_set, pixels_x, pixels_y)
 
     else:
-        if combined_mesh is None:
-            grid(las_object)
+        if (combined_mesh is None or combined_mesh_pixels_x != pixels_x or combined_mesh_pixels_y != pixels_y):
+            grid(las_object, pixels_x, pixels_y)
+
+            # Guardamos los nuevos valores
+            combined_mesh_pixels_x = pixels_x
+            combined_mesh_pixels_y = pixels_y
+
         else:
-            panel_left_frame(xcenter, ycenter, FAltcenter, las_object)
+            panel_left_frame(xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels_y)
 
 def set_trees():
-    global mi_set
+    global mi_set, las
     mi_set = True
-    segmentationPlus(mi_set)
+    segmentationPlus(mi_set, pixels_x, pixels_y)
 
 def visualize(pc_filepath, csv_filepath, xml_filepath, show_dose_layer, dose_min_csv, dose_max_csv):
     global altura_extra, point_size, vox_size, high_dose_rgb, medium_dose_rgb, low_dose_rgb, downsample, progress_bar
@@ -2299,271 +2314,284 @@ def segmentation():
 
     threading.Thread(target=run, daemon=True).start()
 
-def segmentationPlus(mi_set):
+def segmentationPlus(mi_set, pixels_x, pixels_y):
     def run():
-        global las_object, progress_bar, classificationtree, labels_clean, chm, rows, cols, pcd, xmin, ymax, resolution
+        global las_object, progress_bar, classificationtree, labels_clean, chm, rows, cols, pcd, xmin, ymax, resolution, las
 
-        if las_object is None:
-            fp = filedialog.askopenfilename(filetypes=[("LAS Files", "*.las")])
-            if fp:
-                print("Point Cloud Selected:", fp)
-
-                disable_left_frame()
-
-                # Crear y mostrar la barra de progreso
-                progress_bar = create_progress_bar()
-
-                # Actualizar la barra de progreso
-                update_progress_bar(progress_bar, 1)
-
-                # Read the LAS file
-                las = laspy.read(fp)
-
-                # Extract points and classifications
-                points = np.vstack((las.x, las.y, las.z)).transpose()
-                classifications = np.array(las.classification)
-
-                # Actualizar la barra de progreso
-                update_progress_bar(progress_bar, 5)
-
-                # Conteo de cada clasificación
-                counts = dict(Counter(classifications))
-
-                script_dir = os.path.dirname(os.path.abspath(__file__))
-                json_path = os.path.join(script_dir, "classification_colors_sp.json")
-
-                with open(json_path, "r") as f:
-                    color_map = json.load(f)["classifications"]
-
-                # Convertir claves a int y valores a np.array
-                color_map = {int(k): np.array(v) for k, v in color_map.items()}
-
-                unique_classes = np.unique(classifications)
-                for cls in unique_classes:
-                    if cls not in color_map:
-                        gray = np.random.uniform(0.3, 0.8)
-                        color_map[cls] = [gray, gray, gray]
-                        print(f"Clase adicional detectada: {cls}, color asignado: {color_map[cls]}")
-
-                # Actualizar la barra de progreso
-                update_progress_bar(progress_bar, 10)
-
-                pcd = o3d.geometry.PointCloud()
-                pcd.points = o3d.utility.Vector3dVector(points)
-
-                colors = np.zeros((points.shape[0], 3))
-                for classification, color in color_map.items():
-                    colors[classifications == classification] = color
-
-                # Actualizar la barra de progreso
-                update_progress_bar(progress_bar, 15)
-
-                pcd.colors = o3d.utility.Vector3dVector(colors)
-
-                # === Filtrar clasificación 4 (Medium Vegetation) ===
-                medium_veg_points = points[classifications == 4]
-                if medium_veg_points.shape[0] == 0:
-                    print("No hay puntos con clasificación 4 en esta nube.")
+        if mi_set==True:
+            if las is None:
+                fp = filedialog.askopenfilename(filetypes=[("LAS Files", "*.las")])
+                if not fp:
                     return
-
-                # Actualizar la barra de progreso
-                update_progress_bar(progress_bar, 20)
-
-                # === Filtrar por altura mínima ===
-                min_medium_veg_height = np.min(medium_veg_points[:, 2])
-                max_medium_veg_height = np.max(medium_veg_points[:, 2])
-
-                print(f"Altura mínima de la medium vegetation: {min_medium_veg_height}")
-                print(f"Altura max de la medium vegetation: {max_medium_veg_height}")
-
-                medium_veg_points = medium_veg_points[medium_veg_points[:, 2] >= min_medium_veg_height + 2.3]
-
-                # Actualizar la barra de progreso
-                update_progress_bar(progress_bar, 25)
-
-                # Crear un Canopy Height Model (CHM) rasterizado
-                resolution = 0.55  # tamaño de celda en metros
-                xmin, ymin = medium_veg_points[:, 0].min(), medium_veg_points[:, 1].min() #Obtiene el área de la nube.
-                xmax, ymax = medium_veg_points[:, 0].max(), medium_veg_points[:, 1].max()
-
-                # Actualizar la barra de progreso
-                update_progress_bar(progress_bar, 30)
-
-                cols = int(np.ceil((xmax - xmin) / resolution))
-                rows = int(np.ceil((ymax - ymin) / resolution))
-                chm = np.full((rows, cols), -999.0) #Crea la matriz CHM vacía.
-
-                for x, y, z in medium_veg_points:
-                    col = int((x - xmin) / resolution)
-                    row = int((ymax - y) / resolution)  # Y invertido
-                    if 0 <= row < rows and 0 <= col < cols:
-                        if z > chm[row, col]:   #Llena el CHM con la altura máxima en cada celda.
-                            chm[row, col] = z
-
-                # Actualizar la barra de progreso
-                update_progress_bar(progress_bar, 40)
-
-                chm[chm == -999.0] = np.nan  # Celda vacía = NaN
-                chm_smooth = np.nan_to_num(chm)
-                chm_smooth = gaussian_filter(chm_smooth, sigma=2) #Elimina ruido y micro-picos para mejorar la detección.
-
-                # Detectar máximos locales: posibles copas de árboles
-                coordinates = peak_local_max(chm_smooth, min_distance=2, exclude_border=False)
-
-                # Actualizar la barra de progreso
-                update_progress_bar(progress_bar, 50)
-
-                # Crear marcadores para Watershed
-                markers = np.zeros_like(chm_smooth, dtype=int)
-                for i, (r, c) in enumerate(coordinates, 1): #Cada máximo local recibe un número.
-                    markers[r, c] = i
-
-                # Actualizar la barra de progreso
-                update_progress_bar(progress_bar, 60)
-
-                # Aplicar Watershed sobre CHM invertido
-                elevation = -chm_smooth #Invierte la altura (Watershed trabaja buscando valles)
-                labels = watershed(elevation, markers, mask=~np.isnan(chm)) #Segmenta el CHM en árboles. Asigna cada celda a un árbol específico.
-
-                # Conteo de píxeles por árbol
-                label_sizes = ndi.sum(~np.isnan(chm), labels, index=np.arange(1, labels.max() + 1))
-
-                # Define un mínimo de celdas, por ejemplo 20 celdas
-                min_size = 20
-                mask = np.zeros_like(labels, dtype=bool)
-
-                # Actualizar la barra de progreso
-                update_progress_bar(progress_bar, 70)
-
-                for i, size in enumerate(label_sizes, 1):
-                  if size >= min_size:
-                        mask |= labels == i
-
-                # Filtrar etiquetas pequeñas
-                labels_clean = labels * mask
-
-                # Crear una nueva columna `classificationtree`
-                classificationtree = np.zeros(len(points), dtype=int)
-                for i, (x, y, z) in enumerate(points):
-                    col = int((x - xmin) / resolution)
-                    row = int((ymax - y) / resolution)
-                    if 0 <= row < labels_clean.shape[0] and 0 <= col < labels_clean.shape[1]:
-                        tree_id = labels_clean[row, col]
-                        if tree_id > 0:
-                            classificationtree[i] = tree_id
-
-                # Agregar la nueva columna al archivo LAS
-                las.add_extra_dim(
-                    laspy.ExtraBytesParams(name="classificationtree", type=np.int32)
-                )
-                las["classificationtree"] = classificationtree
-
-                las_object = las
-
-                if mi_set == False:
-                    update_progress_bar(progress_bar, 100)
-                    progress_bar.grid_forget()
-                    grid(las_object)
-
-                if mi_set == True:
-                    # Contar las ocurrencias de cada clasificación
-                    classifications = np.array(las.classificationtree)
-                    counts = Counter(classifications)
-                    print("Clasificación de puntos en el archivo LAS:")
-                    for classification, count in counts.items():
-                        print(f"Categoría {classification}: {count} puntos")
-
-                    unique_classificationtree = np.unique(classificationtree)
-                    print("Unique classifications 1:", unique_classificationtree)
-
-                    num_arboles = len(np.unique(labels_clean)) - 1  # Restar 1 para no contar el fondo
-                    print(f"Número de árboles detectados: {num_arboles}")
-
-                    # Filtrar el CHM y las etiquetas usando labels_clean
-                    filtered_chm = np.where((labels_clean > 0), chm, np.nan)  # Mantén solo celdas válidas
-
-                    # Actualizar la barra de progreso
-                    update_progress_bar(progress_bar, 80)
-
-                    # Get the maximum label value
-                    max_label = np.max(labels_clean)
-
-                    # Generate random colors for each label, including the background (label 0)
-                    colors = np.random.rand(max_label + 1, 3)  # Ensure the size matches the maximum label
-
-                    # Assign colors to each tree
-                    tree_colors = np.zeros((labels_clean.shape[0], labels_clean.shape[1], 3))
-                    for label in range(max_label + 1):
-                        tree_colors[labels_clean == label] = colors[label]
-
-                    # Actualizar la barra de progreso
-                    update_progress_bar(progress_bar, 90)
-
-                    # Crear una nube de puntos coloreada
-                    pcd_points = []
-                    pcd_colors = []
-
-                    for row in range(rows):
-                        for col in range(cols):
-                            if not np.isnan(chm[row, col]):
-                                pcd_points.append(
-                                    [xmin + col * resolution, ymax - row * resolution, filtered_chm[row, col]])
-                                pcd_colors.append(tree_colors[row, col])
-
-                    pcd_points = np.array(pcd_points)
-                    pcd_points[:, 2] = pcd_points[:, 2] + 3
-
-                    pcd_tree = o3d.geometry.PointCloud()
-                    pcd_tree.points = o3d.utility.Vector3dVector(np.array(pcd_points))
-                    pcd_tree.colors = o3d.utility.Vector3dVector(np.array(pcd_colors))
-
-                    # Actualizar la barra de progreso
-                    update_progress_bar(progress_bar, 100)
-
-                    # Eliminar la barra de progreso
-                    progress_bar.grid_forget()
-
-                    messagebox.showinfo("Segmentation Complete", f"Number of detected trees: {num_arboles}")
-
-                    # Visualizar la nube de puntos
-                    vis = o3d.visualization.Visualizer()
-
-                    # Obtener las dimensiones del right_frame
-                    right_frame.update_idletasks()
-                    right_frame_width = right_frame.winfo_width()
-                    right_frame_height = right_frame.winfo_height()
-
-                    # Obtener las dimensiones del left_frame
-                    left_frame.update_idletasks()
-                    left_frame_width = left_frame.winfo_width()
-
-                    # Calcular tittle bar
-                    title_bar_height = ctypes.windll.user32.GetSystemMetrics(4)
-
-                    vis.create_window(window_name='Open3D', width=right_frame_width + left_frame_width,
-                                      height=right_frame_height,
-                                      left=0, top=title_bar_height)
-                    vis.clear_geometries()
-                    vis.add_geometry(pcd)
-                    vis.add_geometry(pcd_tree)
-
-                    while True:
-                        vis.poll_events()
-                        vis.update_renderer()
-
-                        if not vis.poll_events():
-                            print("Ventana Cerrada")
-                            enable_left_frame()
-                            break
-
-                    # Verificar si la nube de puntos tiene atributos
-                    if not pcd.has_points():
-                        print("La nube de puntos no tiene puntos.")
-                        return
+                else:
+                    las = fp
 
             else:
-                print("No file selected.")
+                fp = las
+
+        if mi_set==False:
+            fp = las
+
+        if fp is None:
+            print("No file selected.")
+            return
+
+        if las_object is None:
+            print("Point Cloud Selected:", fp)
+
+            disable_left_frame()
+
+            # Crear y mostrar la barra de progreso
+            progress_bar = create_progress_bar()
+
+            # Actualizar la barra de progreso
+            update_progress_bar(progress_bar, 1)
+
+            # Read the LAS file
+            las_r = laspy.read(fp)
+
+            # Extract points and classifications
+            points = np.vstack((las_r.x, las_r.y, las_r.z)).transpose()
+            classifications = np.array(las_r.classification)
+
+            # Actualizar la barra de progreso
+            update_progress_bar(progress_bar, 5)
+
+            # Conteo de cada clasificación
+            counts = dict(Counter(classifications))
+
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            json_path = os.path.join(script_dir, "classification_colors_sp.json")
+
+            with open(json_path, "r") as f:
+                color_map = json.load(f)["classifications"]
+
+            # Convertir claves a int y valores a np.array
+            color_map = {int(k): np.array(v) for k, v in color_map.items()}
+
+            unique_classes = np.unique(classifications)
+            for cls in unique_classes:
+                if cls not in color_map:
+                    gray = np.random.uniform(0.3, 0.8)
+                    color_map[cls] = [gray, gray, gray]
+                    print(f"Clase adicional detectada: {cls}, color asignado: {color_map[cls]}")
+
+            # Actualizar la barra de progreso
+            update_progress_bar(progress_bar, 10)
+
+            pcd = o3d.geometry.PointCloud()
+            pcd.points = o3d.utility.Vector3dVector(points)
+
+            colors = np.zeros((points.shape[0], 3))
+            for classification, color in color_map.items():
+                colors[classifications == classification] = color
+
+            # Actualizar la barra de progreso
+            update_progress_bar(progress_bar, 15)
+
+            pcd.colors = o3d.utility.Vector3dVector(colors)
+
+            # === Filtrar clasificación 4 (Medium Vegetation) ===
+            medium_veg_points = points[classifications == 4]
+            if medium_veg_points.shape[0] == 0:
+                print("No hay puntos con clasificación 4 en esta nube.")
                 return
+
+            # Actualizar la barra de progreso
+            update_progress_bar(progress_bar, 20)
+
+            # === Filtrar por altura mínima ===
+            min_medium_veg_height = np.min(medium_veg_points[:, 2])
+            max_medium_veg_height = np.max(medium_veg_points[:, 2])
+
+            print(f"Altura mínima de la medium vegetation: {min_medium_veg_height}")
+            print(f"Altura max de la medium vegetation: {max_medium_veg_height}")
+
+            medium_veg_points = medium_veg_points[medium_veg_points[:, 2] >= min_medium_veg_height + 2.3]
+
+            # Actualizar la barra de progreso
+            update_progress_bar(progress_bar, 25)
+
+            # Crear un Canopy Height Model (CHM) rasterizado
+            resolution = 0.55  # tamaño de celda en metros
+            xmin, ymin = medium_veg_points[:, 0].min(), medium_veg_points[:, 1].min() #Obtiene el área de la nube.
+            xmax, ymax = medium_veg_points[:, 0].max(), medium_veg_points[:, 1].max()
+
+            # Actualizar la barra de progreso
+            update_progress_bar(progress_bar, 30)
+
+            cols = int(np.ceil((xmax - xmin) / resolution))
+            rows = int(np.ceil((ymax - ymin) / resolution))
+            chm = np.full((rows, cols), -999.0) #Crea la matriz CHM vacía.
+
+            for x, y, z in medium_veg_points:
+                col = int((x - xmin) / resolution)
+                row = int((ymax - y) / resolution)  # Y invertido
+                if 0 <= row < rows and 0 <= col < cols:
+                    if z > chm[row, col]:   #Llena el CHM con la altura máxima en cada celda.
+                        chm[row, col] = z
+
+            # Actualizar la barra de progreso
+            update_progress_bar(progress_bar, 40)
+
+            chm[chm == -999.0] = np.nan  # Celda vacía = NaN
+            chm_smooth = np.nan_to_num(chm)
+            chm_smooth = gaussian_filter(chm_smooth, sigma=2) #Elimina ruido y micro-picos para mejorar la detección.
+
+            # Detectar máximos locales: posibles copas de árboles
+            coordinates = peak_local_max(chm_smooth, min_distance=2, exclude_border=False)
+
+            # Actualizar la barra de progreso
+            update_progress_bar(progress_bar, 50)
+
+            # Crear marcadores para Watershed
+            markers = np.zeros_like(chm_smooth, dtype=int)
+            for i, (r, c) in enumerate(coordinates, 1): #Cada máximo local recibe un número.
+                markers[r, c] = i
+
+            # Actualizar la barra de progreso
+            update_progress_bar(progress_bar, 60)
+
+            # Aplicar Watershed sobre CHM invertido
+            elevation = -chm_smooth #Invierte la altura (Watershed trabaja buscando valles)
+            labels = watershed(elevation, markers, mask=~np.isnan(chm)) #Segmenta el CHM en árboles. Asigna cada celda a un árbol específico.
+
+            # Conteo de píxeles por árbol
+            label_sizes = ndi.sum(~np.isnan(chm), labels, index=np.arange(1, labels.max() + 1))
+
+            # Define un mínimo de celdas, por ejemplo 20 celdas
+            min_size = 20
+            mask = np.zeros_like(labels, dtype=bool)
+
+            # Actualizar la barra de progreso
+            update_progress_bar(progress_bar, 70)
+
+            for i, size in enumerate(label_sizes, 1):
+              if size >= min_size:
+                    mask |= labels == i
+
+            # Filtrar etiquetas pequeñas
+            labels_clean = labels * mask
+
+            # Crear una nueva columna `classificationtree`
+            classificationtree = np.zeros(len(points), dtype=int)
+            for i, (x, y, z) in enumerate(points):
+                col = int((x - xmin) / resolution)
+                row = int((ymax - y) / resolution)
+                if 0 <= row < labels_clean.shape[0] and 0 <= col < labels_clean.shape[1]:
+                    tree_id = labels_clean[row, col]
+                    if tree_id > 0:
+                        classificationtree[i] = tree_id
+
+            # Agregar la nueva columna al archivo LAS
+            las_r.add_extra_dim(
+                laspy.ExtraBytesParams(name="classificationtree", type=np.int32)
+            )
+            las_r["classificationtree"] = classificationtree
+
+            las_object = las_r
+
+            if mi_set == False:
+                update_progress_bar(progress_bar, 100)
+                progress_bar.grid_forget()
+                grid(las_object, pixels_x, pixels_y)
+
+            if mi_set == True:
+                # Contar las ocurrencias de cada clasificación
+                classifications = np.array(las_r.classificationtree)
+                counts = Counter(classifications)
+                print("Clasificación de puntos en el archivo LAS:")
+                for classification, count in counts.items():
+                    print(f"Categoría {classification}: {count} puntos")
+
+                unique_classificationtree = np.unique(classificationtree)
+                print("Unique classifications 1:", unique_classificationtree)
+
+                num_arboles = len(np.unique(labels_clean)) - 1  # Restar 1 para no contar el fondo
+                print(f"Número de árboles detectados: {num_arboles}")
+
+                # Filtrar el CHM y las etiquetas usando labels_clean
+                filtered_chm = np.where((labels_clean > 0), chm, np.nan)  # Mantén solo celdas válidas
+
+                # Actualizar la barra de progreso
+                update_progress_bar(progress_bar, 80)
+
+                # Get the maximum label value
+                max_label = np.max(labels_clean)
+
+                # Generate random colors for each label, including the background (label 0)
+                colors = np.random.rand(max_label + 1, 3)  # Ensure the size matches the maximum label
+
+                # Assign colors to each tree
+                tree_colors = np.zeros((labels_clean.shape[0], labels_clean.shape[1], 3))
+                for label in range(max_label + 1):
+                    tree_colors[labels_clean == label] = colors[label]
+
+                # Actualizar la barra de progreso
+                update_progress_bar(progress_bar, 90)
+
+                # Crear una nube de puntos coloreada
+                pcd_points = []
+                pcd_colors = []
+
+                for row in range(rows):
+                    for col in range(cols):
+                        if not np.isnan(chm[row, col]):
+                            pcd_points.append(
+                                [xmin + col * resolution, ymax - row * resolution, filtered_chm[row, col]])
+                            pcd_colors.append(tree_colors[row, col])
+
+                pcd_points = np.array(pcd_points)
+                pcd_points[:, 2] = pcd_points[:, 2] + 3
+
+                pcd_tree = o3d.geometry.PointCloud()
+                pcd_tree.points = o3d.utility.Vector3dVector(np.array(pcd_points))
+                pcd_tree.colors = o3d.utility.Vector3dVector(np.array(pcd_colors))
+
+                # Actualizar la barra de progreso
+                update_progress_bar(progress_bar, 100)
+
+                # Eliminar la barra de progreso
+                progress_bar.grid_forget()
+
+                messagebox.showinfo("Segmentation Complete", f"Number of detected trees: {num_arboles}")
+
+                # Visualizar la nube de puntos
+                vis = o3d.visualization.Visualizer()
+
+                # Obtener las dimensiones del right_frame
+                right_frame.update_idletasks()
+                right_frame_width = right_frame.winfo_width()
+                right_frame_height = right_frame.winfo_height()
+
+                # Obtener las dimensiones del left_frame
+                left_frame.update_idletasks()
+                left_frame_width = left_frame.winfo_width()
+
+                # Calcular tittle bar
+                title_bar_height = ctypes.windll.user32.GetSystemMetrics(4)
+
+                vis.create_window(window_name='Open3D', width=right_frame_width + left_frame_width,
+                                  height=right_frame_height,
+                                  left=0, top=title_bar_height)
+                vis.clear_geometries()
+                vis.add_geometry(pcd)
+                vis.add_geometry(pcd_tree)
+
+                while True:
+                    vis.poll_events()
+                    vis.update_renderer()
+
+                    if not vis.poll_events():
+                        print("Ventana Cerrada")
+                        enable_left_frame()
+                        break
+
+                # Verificar si la nube de puntos tiene atributos
+                if not pcd.has_points():
+                    print("La nube de puntos no tiene puntos.")
+                    return
+
         else:
             progress_bar = create_progress_bar()
             update_progress_bar(progress_bar, 10)
@@ -2571,7 +2599,7 @@ def segmentationPlus(mi_set):
             if mi_set == False:
                 update_progress_bar(progress_bar, 100)
                 progress_bar.grid_forget()
-                grid(las_object)
+                grid(las_object, pixels_x, pixels_y)
 
             if mi_set == True:
                 # Contar las ocurrencias de cada clasificación
@@ -2984,7 +3012,7 @@ root.show_source_switch.grid(row=0, column=2, padx=(10, 5), pady=(5, 0), sticky=
 
 # Extra Computations
 root.extra_computations_visible = False
-
+root.obstacle_detection_visible = False
 
 def toggle_extra_computations():
     root.extra_computations_visible = not root.extra_computations_visible
@@ -2998,6 +3026,11 @@ def toggle_extra_computations():
         root.btn_visualize.pack_forget()
         root.btn_visualize.pack(side="bottom", padx=(0, 0), pady=(10, 25))
     else:
+        if root.obstacle_detection_visible:
+            root.obstacle_detection.configure(text=" ▼ Obstacle detection")
+            frame_obstacle_detection.pack_forget()
+            root.obstacle_detection_visible = False
+
         root.button_extra_computations.configure(text=" ▼ Extra Computations")
         extra_computations_frame.pack_forget()
         root.btn_visualize.pack_forget()
@@ -3019,10 +3052,6 @@ root.btn_three_colors = CTkButton(extra_computations_frame, text="Heatmap with T
                                   text_color="#F0F0F0", font=("Arial", 12),
                                   command=lambda: plot_three_color_heatmap(heatmap, xcenter, ycenter, Hcenter, lonmin, lonmax, latmin, latmax))
 root.btn_three_colors.pack(fill="x", padx=(80, 80), pady=(5, 0))
-root.btn_convert_pcd_to_dat = CTkButton(extra_computations_frame, text="3D grid from PCD", fg_color="#3E3E3E",
-                                        text_color="#F0F0F0",
-                                        font=("Arial", 12), command=lambda: set_run_prueba_flag(xcenter, ycenter, FAltcenter))
-root.btn_convert_pcd_to_dat.pack(fill="x", padx=(80, 80), pady=(5, 0))
 
 segmentation_frame = CTkFrame(extra_computations_frame, fg_color="#2E2E2E", corner_radius=0)
 segmentation_frame.pack(fill="x", padx=(80, 80), pady=(5, 0))
@@ -3032,6 +3061,58 @@ root.segmentation.pack(side="left", padx=(0, 2.5))
 root.segmentation_with_trees = CTkButton(segmentation_frame, text="Segmentation\nwith trees", fg_color="#3E3E3E",
                                          text_color="#F0F0F0", font=("Arial", 12), command=set_trees)
 root.segmentation_with_trees.pack(side="left", padx=(2.5, 0))
+
+def toggle_obstacle_detection():
+    global las
+    root.obstacle_detection_visible = not root.obstacle_detection_visible
+
+    if root.obstacle_detection_visible:
+        root.obstacle_detection.configure(text=" ▲ Obstacle detection")
+        frame_obstacle_detection.pack(fill="x", padx=(80, 80), pady=(0, 0))
+        if las_object is None:
+            fp = filedialog.askopenfilename(filetypes=[("LAS Files", "*.las")])
+            if fp:
+                print("Point Cloud Selected:", fp)
+                # Read the LAS file
+                las = fp
+    else:
+        root.obstacle_detection.configure(text=" ▼ Obstacle detection")
+        frame_obstacle_detection.pack_forget()
+
+root.obstacle_detection = CTkButton(extra_computations_frame, text=" ▼ Obstacle detection", fg_color="#3E3E3E",
+                                        text_color="#F0F0F0", font=("Arial", 12), command=toggle_obstacle_detection)
+root.obstacle_detection.pack(fill="x", padx=(80, 80), pady=(5, 0))
+
+frame_obstacle_detection = CTkFrame(extra_computations_frame, fg_color="#666666", corner_radius=0)
+
+root.label_pixeles = CTkLabel(frame_obstacle_detection, text="Set the number of pixels to define the prism size of the mesh:", text_color="#2E2E2E", font=("Arial", 12), wraplength=200)
+root.label_pixeles.pack(fill="x", padx=(5, 5), pady=(5, 0))
+
+frame_pixels = CTkFrame(frame_obstacle_detection, fg_color="#666666", corner_radius=0)
+frame_pixels.pack(fill="x", padx=(0, 0), pady=(0, 0))
+for i in range(3):
+    frame_pixels.rowconfigure(i, weight=1)
+frame_pixels.columnconfigure(0, weight=1)
+frame_pixels.columnconfigure(1, weight=1)
+
+root.num_pixeles_x_label = CTkLabel(frame_pixels, text="Num Pixels X:", text_color="#F0F0F0", font=("Arial", 12))
+root.num_pixeles_x_label.grid(row=0, column=0, padx=(10, 5), pady=(5, 5), sticky="e")
+root.num_pixeles_x_entry = CTkEntry(frame_pixels, width=50, font=("Arial", 12))
+root.num_pixeles_x_entry.grid(row=0, column=1, padx=(0, 10), pady=(5, 5), sticky="w")
+
+root.num_pixeles_y_label = CTkLabel(frame_pixels, text="Num Pixels Y:", text_color="#F0F0F0", font=("Arial", 12))
+root.num_pixeles_y_label.grid(row=1, column=0, padx=(10, 5), pady=(5, 5), sticky="e")
+root.num_pixeles_y_entry = CTkEntry(frame_pixels, width=50, font=("Arial", 12))
+root.num_pixeles_y_entry.grid(row=1, column=1, padx=(0, 10), pady=(5, 5), sticky="w")
+
+root.prism_size_label = CTkLabel(frame_pixels, text="Prism Size:", text_color="#F0F0F0", font=("Arial", 12))
+root.prism_size_label.grid(row=2, column=0, padx=(10, 5), pady=(5, 5), sticky="e")
+root.prism_size_label_entry = CTkLabel(frame_pixels, text="",text_color="#F0F0F0", font=("Arial", 12))
+root.prism_size_label_entry.grid(row=2, column=1, padx=(0, 10), pady=(5, 5), sticky="w")
+
+root.compute = CTkButton(frame_obstacle_detection, text="Compute", fg_color="#3E3E3E", text_color="#F0F0F0", font=("Arial", 12), command=lambda: set_run_prueba_flag(xcenter, ycenter, FAltcenter, root.num_pixeles_x_entry.get(),
+        root.num_pixeles_y_entry.get()))
+root.compute.pack(fill="x", padx=(40, 40), pady=(5, 5))
 
 # Visualize
 root.btn_visualize = CTkButton(left_frame, text="Visualize", text_color="#F0F0F0", fg_color="#1E3A5F",
