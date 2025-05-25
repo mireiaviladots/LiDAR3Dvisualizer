@@ -98,6 +98,7 @@ cell_stats = None
 combined_mesh_pixels_x = None
 combined_mesh_pixels_y = None
 las = None
+min_x_las = max_x_las = min_y_las = max_y_las = None
 
 def mostrar_nube_no_vox(show_dose_layer, pc_filepath, downsample, xml_filepath, csv_filepath, high_dose_rgb, medium_dose_rgb,
                         low_dose_rgb, dose_min_csv, low_max, medium_min, medium_max, high_min, altura_extra, show_source, source_location, point_size, progress_bar):
@@ -3063,18 +3064,27 @@ root.segmentation_with_trees = CTkButton(segmentation_frame, text="Segmentation\
 root.segmentation_with_trees.pack(side="left", padx=(2.5, 0))
 
 def toggle_obstacle_detection():
-    global las
+    global las, min_x_las, max_x_las, min_y_las, max_y_las
     root.obstacle_detection_visible = not root.obstacle_detection_visible
 
     if root.obstacle_detection_visible:
-        root.obstacle_detection.configure(text=" ▲ Obstacle detection")
-        frame_obstacle_detection.pack(fill="x", padx=(80, 80), pady=(0, 0))
-        if las_object is None:
+        if las is None:
             fp = filedialog.askopenfilename(filetypes=[("LAS Files", "*.las")])
             if fp:
                 print("Point Cloud Selected:", fp)
-                # Read the LAS file
                 las = fp
+                root.obstacle_detection.configure(text=" ▲ Obstacle detection")
+                frame_obstacle_detection.pack(fill="x", padx=(80, 80), pady=(0, 0))
+            else:
+                return
+        else:
+            root.obstacle_detection.configure(text=" ▲ Obstacle detection")
+            frame_obstacle_detection.pack(fill="x", padx=(80, 80), pady=(0, 0))
+
+        las_read = laspy.read(las)
+        min_x_las, max_x_las = las_read.x.min(), las_read.x.max()
+        min_y_las, max_y_las = las_read.y.min(), las_read.y.max()
+
     else:
         root.obstacle_detection.configure(text=" ▼ Obstacle detection")
         frame_obstacle_detection.pack_forget()
@@ -3095,15 +3105,34 @@ for i in range(3):
 frame_pixels.columnconfigure(0, weight=1)
 frame_pixels.columnconfigure(1, weight=1)
 
+def update_prism_size_label(*args):
+    global min_x_las, max_x_las, min_y_las, max_y_las
+    if None in (min_x_las, max_x_las, min_y_las, max_y_las):
+        root.prism_size_label_entry.configure(text="")
+        return
+    try:
+        pixels_x = int(root.num_pixeles_x_entry.get())
+        pixels_y = int(root.num_pixeles_y_entry.get())
+        if pixels_x > 0 and pixels_y > 0:
+            delta_x = (max_x_las - min_x_las) / pixels_x
+            delta_y = (max_y_las - min_y_las) / pixels_y
+            root.prism_size_label_entry.configure(text=f"{delta_x:.2f} x {delta_y:.2f} m")
+        else:
+            root.prism_size_label_entry.configure(text="")
+    except ValueError:
+        root.prism_size_label_entry.configure(text="")
+
 root.num_pixeles_x_label = CTkLabel(frame_pixels, text="Num Pixels X:", text_color="#F0F0F0", font=("Arial", 12))
 root.num_pixeles_x_label.grid(row=0, column=0, padx=(10, 5), pady=(5, 5), sticky="e")
 root.num_pixeles_x_entry = CTkEntry(frame_pixels, width=50, font=("Arial", 12))
 root.num_pixeles_x_entry.grid(row=0, column=1, padx=(0, 10), pady=(5, 5), sticky="w")
+root.num_pixeles_x_entry.bind("<KeyRelease>", update_prism_size_label)
 
 root.num_pixeles_y_label = CTkLabel(frame_pixels, text="Num Pixels Y:", text_color="#F0F0F0", font=("Arial", 12))
 root.num_pixeles_y_label.grid(row=1, column=0, padx=(10, 5), pady=(5, 5), sticky="e")
 root.num_pixeles_y_entry = CTkEntry(frame_pixels, width=50, font=("Arial", 12))
 root.num_pixeles_y_entry.grid(row=1, column=1, padx=(0, 10), pady=(5, 5), sticky="w")
+root.num_pixeles_y_entry.bind("<KeyRelease>", update_prism_size_label)
 
 root.prism_size_label = CTkLabel(frame_pixels, text="Prism Size:", text_color="#F0F0F0", font=("Arial", 12))
 root.prism_size_label.grid(row=2, column=0, padx=(10, 5), pady=(5, 5), sticky="e")
