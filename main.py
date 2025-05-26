@@ -99,6 +99,7 @@ combined_mesh_pixels_x = None
 combined_mesh_pixels_y = None
 las = None
 min_x_las = max_x_las = min_y_las = max_y_las = None
+rects = None
 
 def mostrar_nube_no_vox(show_dose_layer, pc_filepath, downsample, xml_filepath, csv_filepath, high_dose_rgb, medium_dose_rgb,
                         low_dose_rgb, dose_min_csv, low_max, medium_min, medium_max, high_min, altura_extra, show_source, source_location, point_size, progress_bar):
@@ -472,7 +473,7 @@ def mostrar_nube_si_vox(show_dose_layer, pc_filepath, xml_filepath, csv_filepath
     threading.Thread(target=run, daemon=True).start()
 
 def grid(las_object, pixels_x, pixels_y):
-    global combined_mesh, delta_x, delta_y, cell_stats
+    global combined_mesh, delta_x, delta_y, cell_stats, rects
 
     progress_bar = create_progress_bar()
 
@@ -620,6 +621,42 @@ def grid(las_object, pixels_x, pixels_y):
     combined_mesh = o3d.geometry.TriangleMesh()
     for prism in prisms:
         combined_mesh += prism
+
+    building_prisms = []
+
+    for i in range(cell_stats.shape[0]):
+        for j in range(cell_stats.shape[1]):
+            stats = cell_stats[i, j]
+            z_vals = stats['z_values']
+            color = stats.get('color', [0.5, 0.5, 0.5])  # Color por defecto si no existe
+
+            if z_vals:
+                majority_class = stats.get('majority_class')
+                if majority_class == 6:
+                    z_final = np.mean(z_vals) + 2 * np.std(z_vals)
+                    z_min = np.min(z_vals)
+                    height = z_final - z_min
+                    if height > 0:
+                        prism = o3d.geometry.TriangleMesh.create_box(width=delta_x, height=delta_y, depth=height)
+                        prism.translate((min_x + j * delta_x, min_y + i * delta_y, z_min))
+                        prism.paint_uniform_color(color)
+                        building_prisms.append(prism)
+
+    rects = []
+
+    for prism in building_prisms:
+        vertices = np.asarray(prism.vertices)
+        top_z = np.max(vertices[:, 2])
+        top_face = vertices[np.isclose(vertices[:, 2], top_z)]
+
+        if len(top_face) >= 4:
+            x_min, y_min = np.min(top_face[:, :2], axis=0)
+            x_max, y_max = np.max(top_face[:, :2], axis=0)
+            rects.append((x_min, y_min, x_max, y_max))
+
+    #building_mesh = o3d.geometry.TriangleMesh()
+    #for prism in building_prisms:
+        #building_mesh += prism
 
     update_progress_bar(progress_bar, 100)
 
@@ -1052,10 +1089,85 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels
 
         panel_building_frame = CTkFrame(seg_frame, fg_color="#2E2E2E", height=150, corner_radius=0)
 
-        panel_building = CTkFrame(panel_building_frame, height=150, fg_color="white", corner_radius=10)
+        panel_building = CTkFrame(panel_building_frame, height=150, width=250, fg_color="white", corner_radius=10)
         panel_building.grid(row=0, column=0, rowspan=2, padx=(10, 10), pady=(10, 0), sticky="nsew")
 
-        ok_button = CTkButton(panel_building_frame, text="OK", text_color="white", width=70, fg_color="#1E3A5F")
+        canvas_2d = CTkCanvas(panel_building, bg="white", width=250, height=150, highlightthickness=0)
+        canvas_2d.pack(fill="both", expand=True)
+
+        # Variables de estado
+        start_x = start_y = None
+        selection_rect = None
+        drag_threshold = 5  # Para distinguir clic de arrastre
+
+        current_building = 1  # Contador de grupo
+
+        def random_color(exclude=("pink", "#FFC0CB")):
+            while True:
+                color = "#{:06x}".format(random.randint(0, 0xFFFFFF))
+                if color.lower() not in [c.lower() for c in exclude]:
+                    return color
+
+        def on_mouse_down(event):
+            nonlocal start_x, start_y, selection_rect
+            start_x, start_y = event.x, event.y
+            selection_rect = canvas_2d.create_rectangle(start_x, start_y, start_x, start_y,
+                                                        outline="red", dash=(2, 2))
+
+        def on_mouse_drag(event):
+            nonlocal selection_rect
+            canvas_2d.coords(selection_rect, start_x, start_y, event.x, event.y)
+
+        def on_mouse_up(event):
+            nonlocal selection_rect
+            end_x, end_y = event.x, event.y
+            dx, dy = abs(end_x - start_x), abs(end_y - start_y)
+
+            if dx < drag_threshold and dy < drag_threshold:
+                for edificio in edificios:
+                    x0, y0, x1, y1 = edificio["bbox"]
+                    if x0 <= end_x <= x1 and y0 <= end_y <= y1:
+                        if edificio.get("building") is None:  # <- Solo si aún no fue asignado
+                            edificio["selected"] = not edificio["selected"]
+                            color = "pink" if edificio["selected"] else edificio.get("color", "#3A86FF")
+                            canvas_2d.itemconfig(edificio["id"], fill=color)
+                        break
+            else:
+                # Es un arrastre: seleccionar todos los edificios que toquen el rectángulo
+                x0_sel, y0_sel = min(start_x, end_x), min(start_y, end_y)
+                x1_sel, y1_sel = max(start_x, end_x), max(start_y, end_y)
+
+                for edificio in edificios:
+                    ex0, ey0, ex1, ey1 = edificio["bbox"]
+                    if (ex1 >= x0_sel and ex0 <= x1_sel and ey1 >= y0_sel and ey0 <= y1_sel):
+                        if edificio.get("building") is None:  # <- Solo si aún no fue asignado
+                            edificio["selected"] = True
+                            canvas_2d.itemconfig(edificio["id"], fill="pink")
+
+            # Limpiar el rectángulo de selección
+            if selection_rect is not None:
+                canvas_2d.delete(selection_rect)
+                selection_rect = None
+
+        def confirm_selection():
+            nonlocal current_building
+            group_color = random_color()
+
+            for edificio in edificios:
+                if edificio.get("selected"):
+                    edificio["building"] = f"Building {current_building}"
+                    edificio["selected"] = False
+                    edificio["color"] = group_color  # Guardamos el color asignado
+                    canvas_2d.itemconfig(edificio["id"], fill=group_color)
+
+            current_building += 1
+
+        # Bindings
+        canvas_2d.bind("<ButtonPress-1>", on_mouse_down)
+        canvas_2d.bind("<B1-Motion>", on_mouse_drag)
+        canvas_2d.bind("<ButtonRelease-1>", on_mouse_up)
+
+        ok_button = CTkButton(panel_building_frame, text="OK", text_color="white", width=70, fg_color="#1E3A5F", command=confirm_selection)
         ok_button.grid(row=0, column=1, padx=(0, 10), pady=(10, 5), sticky="s")
 
         reset_button = CTkButton(panel_building_frame, text="Reset", text_color="white", width=70, fg_color="#1E3A5F")
@@ -1109,7 +1221,6 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels
                                            anchor="w", corner_radius=0, command=toggle_dose_layer_b)
         button_from.pack(fill="x", padx=(0, 0), pady=(10, 0))
 
-        # Dose Layer
         from_frame = CTkFrame(panel_canvas, fg_color="#2E2E2E", corner_radius=0)
 
         dronPos_label = CTkLabel(from_frame, text="Dron position:", text_color="white", font=("Arial", 12))
@@ -1357,6 +1468,53 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels
                             command=lambda b=i: toggle_color(botones[b], b))
             btn.place(x=x, y=y, anchor="center")
             botones.append(btn)
+
+
+        # Unifica todos los valores para calcular el rango global
+        x_all = [x0 for x0, _, x1, _ in rects] + [x1 for _, _, x1, _ in rects]
+        y_all = [y0 for _, y0, _, y1 in rects] + [y1 for _, _, _, y1 in rects]
+
+        x_min_global, x_max_global = min(x_all), max(x_all)
+        y_min_global, y_max_global = min(y_all), max(y_all)
+
+        x_center_geom = (x_min_global + x_max_global) / 2
+        y_center_geom = (y_min_global + y_max_global) / 2
+
+        def escalar(val, min_val, max_val, new_min, new_max):
+            return new_min + (val - min_val) / (max_val - min_val) * (new_max - new_min)
+
+        edificios = []
+
+        for x0, y0, x1, y1 in rects:
+            # Reflejo horizontal si lo necesitas (como en tu otro código)
+            x0_rot = 2 * x_center_geom - x0
+            x1_rot = 2 * x_center_geom - x1
+
+            y0_rot = 2 * y_center_geom - y0
+            y1_rot = 2 * y_center_geom - y1
+
+            # Escalar al rango del canvas (por ejemplo, 10 a 240 de ancho y 10 a 140 de alto)
+            x0_canvas = escalar(x0_rot, x_min_global, x_max_global, 10, 240)
+            x1_canvas = escalar(x1_rot, x_min_global, x_max_global, 10, 240)
+            y0_canvas = escalar(y0_rot, y_min_global, y_max_global, 10, 140)
+            y1_canvas = escalar(y1_rot, y_min_global, y_max_global, 10, 140)
+
+            # Ordenar coordenadas por si están invertidas
+            x_left = min(x0_canvas, x1_canvas)
+            x_right = max(x0_canvas, x1_canvas)
+            y_top = min(y0_canvas, y1_canvas)
+            y_bottom = max(y0_canvas, y1_canvas)
+
+            id_rect = canvas_2d.create_rectangle(x_left, y_top, x_right, y_bottom, fill="#3A86FF", outline="black")
+            edificios.append({
+                "id": id_rect,
+                "bbox": (x_left, y_top, x_right, y_bottom),
+                "selected": False,
+                "color": "#3A86FF",  # color inicial
+                "building": None  # sin grupo al inicio
+            })
+
+
 
 def btn_return():
     if 'panel_canvas' in globals() and panel_canvas.winfo_exists():
