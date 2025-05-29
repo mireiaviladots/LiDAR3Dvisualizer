@@ -99,7 +99,8 @@ combined_mesh_pixels_x = None
 combined_mesh_pixels_y = None
 las = None
 min_x_las = max_x_las = min_y_las = max_y_las = None
-rects = None
+rects_top = None
+building_prism_cells = None
 
 def mostrar_nube_no_vox(show_dose_layer, pc_filepath, downsample, xml_filepath, csv_filepath, high_dose_rgb, medium_dose_rgb,
                         low_dose_rgb, dose_min_csv, low_max, medium_min, medium_max, high_min, altura_extra, show_source, source_location, point_size, progress_bar):
@@ -473,12 +474,22 @@ def mostrar_nube_si_vox(show_dose_layer, pc_filepath, xml_filepath, csv_filepath
     threading.Thread(target=run, daemon=True).start()
 
 def grid(las_object, pixels_x, pixels_y):
-    global combined_mesh, delta_x, delta_y, cell_stats, rects
+    global combined_mesh, delta_x, delta_y, cell_stats, rects_top, building_prism_cells
 
     progress_bar = create_progress_bar()
 
     # Actualizar la barra de progreso
     update_progress_bar(progress_bar, 10)
+
+    if combined_mesh is not None:
+        del combined_mesh
+    if cell_stats is not None:
+        del cell_stats
+    rects_top = []
+    building_prism_cells = []
+
+    import gc
+    gc.collect()
 
     las = las_object
 
@@ -526,7 +537,7 @@ def grid(las_object, pixels_x, pixels_y):
     cell_stats = np.empty((pixels_y, pixels_x), dtype=object)
     for i in range(pixels_y):
         for j in range(pixels_x):
-            cell_stats[i, j] = {'z_values': [], 'colors': [], 'classes': [], 'tree_classes': []}
+            cell_stats[i, j] = {'z_values': [], 'colors': [], 'classes': [], 'tree_classes': [], 'building': None}
 
     update_progress_bar(progress_bar, 40)
 
@@ -582,6 +593,10 @@ def grid(las_object, pixels_x, pixels_y):
 
     # Create a list to hold all the prisms
     prisms = []
+    prisms_building = []
+    building_prism_cells = []  # Vector con las celdas (i, j) de cada prism_building
+
+    count_6 = 0
 
     # Draw horizontal cells and vertical surfaces
     for i in range(pixels_y):
@@ -613,7 +628,14 @@ def grid(las_object, pixels_x, pixels_y):
                     cell_stats[i][j]['majority_class'] = majority_class
                     cell_stats[i][j]['majority_tree_class'] = majority_tree_class
 
+                    if majority_class == 6:
+                        count_6 += 1
+                        prisms_building.append(prism)
+                        building_prism_cells.append((i, j))
+
                     prisms.append(prism)
+
+    print("Cantidad de prismas con clase 6:", count_6)
 
     update_progress_bar(progress_bar, 80)
 
@@ -622,37 +644,25 @@ def grid(las_object, pixels_x, pixels_y):
     for prism in prisms:
         combined_mesh += prism
 
-    building_prisms = []
+    rects_top = []
 
-    for i in range(cell_stats.shape[0]):
-        for j in range(cell_stats.shape[1]):
-            stats = cell_stats[i, j]
-            z_vals = stats['z_values']
-            color = stats.get('color', [0.5, 0.5, 0.5])  # Color por defecto si no existe
-
-            if z_vals:
-                majority_class = stats.get('majority_class')
-                if majority_class == 6:
-                    z_final = np.mean(z_vals) + 2 * np.std(z_vals)
-                    z_min = np.min(z_vals)
-                    height = z_final - z_min
-                    if height > 0:
-                        prism = o3d.geometry.TriangleMesh.create_box(width=delta_x, height=delta_y, depth=height)
-                        prism.translate((min_x + j * delta_x, min_y + i * delta_y, z_min))
-                        prism.paint_uniform_color(color)
-                        building_prisms.append(prism)
-
-    rects = []
-
-    for prism in building_prisms:
+    for prism in prisms_building:
         vertices = np.asarray(prism.vertices)
-        top_z = np.max(vertices[:, 2])
-        top_face = vertices[np.isclose(vertices[:, 2], top_z)]
+        top_z = np.max(vertices[:, 2])  # Z de la cara superior
+        top_face_vertices = vertices[np.isclose(vertices[:, 2], top_z)]
 
-        if len(top_face) >= 4:
-            x_min, y_min = np.min(top_face[:, :2], axis=0)
-            x_max, y_max = np.max(top_face[:, :2], axis=0)
-            rects.append((x_min, y_min, x_max, y_max))
+        if top_face_vertices.shape[0] >= 4:
+            pts = top_face_vertices[:4, :2]  # tomar solo x,y de los primeros 4 puntos
+
+            # Calcular centroide
+            center = np.mean(pts, axis=0)
+            # Calcular ángulos respecto al centroide
+            angles = np.arctan2(pts[:, 1] - center[1], pts[:, 0] - center[0])
+            # Ordenar índices por ángulo ascendente (horario o antihorario)
+            idx_sorted = np.argsort(angles)
+            pts_ordered = pts[idx_sorted]
+
+            rects_top.append(pts_ordered)
 
     #building_mesh = o3d.geometry.TriangleMesh()
     #for prism in building_prisms:
@@ -664,9 +674,9 @@ def grid(las_object, pixels_x, pixels_y):
 
     print ("acabado")
 
-    panel_left_frame(xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels_y)
+    panel_left_frame(xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels_y, building_prism_cells)
 
-def tree_obstacles(las_object, entry_latitude, entry_longitude, entry_zone, entry_easting, entry_northing, latlon_set, utm_set, combined_mesh, pixels_x, pixels_y, delta_x, delta_y, cell_stats):
+def tree_obstacles(las_object, entry_latitude, entry_longitude, entry_zone, entry_easting, entry_northing, latlon_set, utm_set, combined_mesh, pixels_x, pixels_y, delta_x, delta_y, cell_stats, selected_rect_indices, building_prism_cells):
     def run():
         global vis
         try:
@@ -757,6 +767,13 @@ def tree_obstacles(las_object, entry_latitude, entry_longitude, entry_zone, entr
             # Actualizar la barra de progreso
             update_progress_bar(progress_bar, 10)
 
+            # Asignar número de edificio por grupo
+            for building_number, index_group in enumerate(selected_rect_indices, start=1):
+                for idx in index_group:
+                    if idx < len(building_prism_cells):  # Asegurarse que el índice esté en rango
+                        i, j = building_prism_cells[idx]
+                        cell_stats[i][j]['building'] = building_number
+
             # Añadir altura posiciones dron
             posiciones_con_altura = []
             for (x, y, alt) in selected_positions:
@@ -822,6 +839,7 @@ def tree_obstacles(las_object, entry_latitude, entry_longitude, entry_zone, entr
             update_progress_bar(progress_bar, 95)
 
             total_arboles_cruzados = []
+            total_edificios_cruzados = []
 
             if posiciones_con_altura and posiciones_latlonh:
                 # Junta todos los puntos: los seleccionados + el punto lat/lon (este será el último)
@@ -835,10 +853,10 @@ def tree_obstacles(las_object, entry_latitude, entry_longitude, entry_zone, entr
 
                     linea = LineString([start_point[:2], end_point[:2]])
                     clases_cruzadas = []
+                    edificios_cruzados = []
 
                     for i in range(pixels_y):
                         for j in range(pixels_x):
-                            # Coordenadas de la celda
                             x0 = min_x + j * delta_x
                             y0 = min_y + i * delta_y
                             x1 = x0 + delta_x
@@ -848,21 +866,29 @@ def tree_obstacles(las_object, entry_latitude, entry_longitude, entry_zone, entr
 
                             if linea.intersects(celda):
                                 tree_class = cell_stats[i][j].get('majority_tree_class')
+                                building_num = cell_stats[i][j].get('building')
+
                                 if tree_class and tree_class != 0:
                                     clases_cruzadas.append(tree_class)
 
+                                if building_num:
+                                    edificios_cruzados.append(building_num)
+
                     print(f"Línea desde punto {idx + 1} cruza clases de árbol: {clases_cruzadas}")
+                    print(f"Línea desde punto {idx + 1} cruza edificios: {set(edificios_cruzados)}")
 
                     total_arboles_cruzados.append(len(set(clases_cruzadas)))
+                    total_edificios_cruzados.append(len(set(edificios_cruzados)))
 
                 print(f"Total de clases de árbol cruzadas por cada línea: {total_arboles_cruzados}")
+                print(f"Total de edificios cruzados por cada línea: {total_edificios_cruzados}")
 
             update_progress_bar(progress_bar, 100)
 
             # Eliminar la barra de progreso
             progress_bar.grid_forget()
 
-            mostrar_resumen_lineas(colores_puntos, total_arboles_cruzados)
+            mostrar_resumen_lineas(colores_puntos, total_arboles_cruzados, total_edificios_cruzados)
 
             vis = o3d.visualization.Visualizer()
 
@@ -922,8 +948,15 @@ def tree_obstacles(las_object, entry_latitude, entry_longitude, entry_zone, entr
 
                 if not vis.poll_events():
                     print("Ventana Cerrada")
-
+                    entry_latitude.configure(state='normal')
+                    entry_longitude.configure(state='normal')
                     enable_left_frame()
+
+                    # Resetear los edificios
+                    for i in range(pixels_y):
+                        for j in range(pixels_x):
+                            cell_stats[i][j]['building'] = None
+
                     break
 
         except Exception as e:
@@ -1014,8 +1047,8 @@ def legend_left_frame(counts=None, color_map=None):
         count_label = CTkLabel(item_frame, text=f"({count})", text_color="#A0A0A0", font=("Arial", 12))
         count_label.pack(side="left")
 
-def panel_left_frame (xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels_y):
-        global panel_canvas, button_seg, seg_frame, button_from, from_frame, button_to, to_frame, button_visualize, button_return, progress_bar, posiciones, selected_positions, build_seg, from_set, to_set, latlon_set, utm_set
+def panel_left_frame (xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels_y, building_prism_cells):
+        global panel_canvas, button_seg, seg_frame, button_from, from_frame, button_to, to_frame, button_visualize, button_return, progress_bar, posiciones, selected_positions, build_seg, from_set, to_set, latlon_set, utm_set, rects_top
 
         enable_left_frame()
 
@@ -1095,19 +1128,63 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels
         canvas_2d = CTkCanvas(panel_building, bg="white", width=250, height=150, highlightthickness=0)
         canvas_2d.pack(fill="both", expand=True)
 
-        # Variables de estado
         start_x = start_y = None
         selection_rect = None
-        drag_threshold = 5  # Para distinguir clic de arrastre
+        drag_threshold = 5
 
-        current_building = 1  # Contador de grupo
+        # Escalar los rectángulos para que quepan en el canvas
+        all_points = np.vstack(rects_top)
+        min_x, min_y = np.min(all_points[:, :2], axis=0)
+        max_x, max_y = np.max(all_points[:, :2], axis=0)
+        scale_x = canvas_2d.winfo_reqwidth() / (max_x - min_x)
+        scale_y = canvas_2d.winfo_reqheight() / (max_y - min_y)
+        scale = min(scale_x, scale_y)
 
-        def random_color(exclude=("pink", "#FFC0CB")):
-            while True:
-                color = "#{:06x}".format(random.randint(0, 0xFFFFFF))
-                if color.lower() not in [c.lower() for c in exclude]:
-                    return color
+        x_center_geom = (min_x + max_x) / 2
+        y_center_geom = (min_y + max_y) / 2
 
+        # Crear lista de edificios (cada uno es un rectángulo visual)
+        buildings_canvas = []
+
+        for i, rect in enumerate(rects_top):
+            # Rotación y reflexión horizontal como en panel_dronPos
+            rotated_reflected_points = []
+            for x, y in rect[:, :2]:
+                # Rotar 180° alrededor del centro
+                x_rot = 2 * x_center_geom - x
+                y_rot = 2 * y_center_geom - y
+
+                # Reflejar horizontalmente
+                x_final = 2 * x_center_geom - x_rot
+
+                # Escalar para que quepan en el canvas
+                x_scaled = scale * (x_final - min_x)
+                y_scaled = scale * (y_rot - min_y)
+
+                rotated_reflected_points.append((x_scaled, y_scaled))
+
+            flat_coords = [coord for point in rotated_reflected_points for coord in point]
+            fill_color = "#3A86FF"
+            rect_id = canvas_2d.create_polygon(flat_coords, fill=fill_color, outline="black")
+
+            bbox = (
+                min(p[0] for p in rotated_reflected_points),
+                min(p[1] for p in rotated_reflected_points),
+                max(p[0] for p in rotated_reflected_points),
+                max(p[1] for p in rotated_reflected_points)
+            )
+
+            buildings_canvas.append({
+                "id": rect_id,
+                "bbox": bbox,
+                "color": fill_color,
+                "selected": False,
+                "building": None,
+                "real_coords": rect,  # ← guarda els vèrtexs reals
+                "index": i,
+            })
+
+        # Eventos del mouse
         def on_mouse_down(event):
             nonlocal start_x, start_y, selection_rect
             start_x, start_y = event.x, event.y
@@ -1115,7 +1192,6 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels
                                                         outline="red", dash=(2, 2))
 
         def on_mouse_drag(event):
-            nonlocal selection_rect
             canvas_2d.coords(selection_rect, start_x, start_y, event.x, event.y)
 
         def on_mouse_up(event):
@@ -1124,54 +1200,95 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels
             dx, dy = abs(end_x - start_x), abs(end_y - start_y)
 
             if dx < drag_threshold and dy < drag_threshold:
-                for edificio in edificios:
-                    x0, y0, x1, y1 = edificio["bbox"]
+                for b in buildings_canvas:
+                    x0, y0, x1, y1 = b["bbox"]
                     if x0 <= end_x <= x1 and y0 <= end_y <= y1:
-                        if edificio.get("building") is None:  # <- Solo si aún no fue asignado
-                            edificio["selected"] = not edificio["selected"]
-                            color = "pink" if edificio["selected"] else edificio.get("color", "#3A86FF")
-                            canvas_2d.itemconfig(edificio["id"], fill=color)
+                        if b["building"] is None:
+                            b["selected"] = not b["selected"]
+                            new_color = "pink" if b["selected"] else b.get("color", "#3A86FF")
+                            canvas_2d.itemconfig(b["id"], fill=new_color)
                         break
             else:
-                # Es un arrastre: seleccionar todos los edificios que toquen el rectángulo
                 x0_sel, y0_sel = min(start_x, end_x), min(start_y, end_y)
                 x1_sel, y1_sel = max(start_x, end_x), max(start_y, end_y)
 
-                for edificio in edificios:
-                    ex0, ey0, ex1, ey1 = edificio["bbox"]
-                    if (ex1 >= x0_sel and ex0 <= x1_sel and ey1 >= y0_sel and ey0 <= y1_sel):
-                        if edificio.get("building") is None:  # <- Solo si aún no fue asignado
-                            edificio["selected"] = True
-                            canvas_2d.itemconfig(edificio["id"], fill="pink")
+                for b in buildings_canvas:
+                    bx0, by0, bx1, by1 = b["bbox"]
+                    if bx1 >= x0_sel and bx0 <= x1_sel and by1 >= y0_sel and by0 <= y1_sel:
+                        if b["building"] is None:
+                            b["selected"] = True
+                            canvas_2d.itemconfig(b["id"], fill="pink")
 
-            # Limpiar el rectángulo de selección
             if selection_rect is not None:
                 canvas_2d.delete(selection_rect)
                 selection_rect = None
 
-        def confirm_selection():
-            nonlocal current_building
-            group_color = random_color()
-
-            for edificio in edificios:
-                if edificio.get("selected"):
-                    edificio["building"] = f"Building {current_building}"
-                    edificio["selected"] = False
-                    edificio["color"] = group_color  # Guardamos el color asignado
-                    canvas_2d.itemconfig(edificio["id"], fill=group_color)
-
-            current_building += 1
-
-        # Bindings
         canvas_2d.bind("<ButtonPress-1>", on_mouse_down)
         canvas_2d.bind("<B1-Motion>", on_mouse_drag)
         canvas_2d.bind("<ButtonRelease-1>", on_mouse_up)
 
-        ok_button = CTkButton(panel_building_frame, text="OK", text_color="white", width=70, fg_color="#1E3A5F", command=confirm_selection)
+        ok_button = CTkButton(panel_building_frame, text="OK", text_color="white", width=70, fg_color="#1E3A5F")#,command=confirm_selection)
         ok_button.grid(row=0, column=1, padx=(0, 10), pady=(10, 5), sticky="s")
 
-        reset_button = CTkButton(panel_building_frame, text="Reset", text_color="white", width=70, fg_color="#1E3A5F")
+        selected_rects_real_coords = []
+        selected_rect_indices = []
+
+        def get_random_color(exclude=["pink"]):
+            while True:
+                r = lambda: random.randint(0, 255)
+                color = f'#{r():02x}{r():02x}{r():02x}'
+                if color.lower() not in [c.lower() for c in exclude]:
+                    return color
+
+        def confirm_selection():
+            new_color = get_random_color(exclude=["pink"])
+            current_indices = []
+
+            for b in buildings_canvas:
+                if b["selected"]:
+                    selected_rects_real_coords.append(b["real_coords"].copy())
+                    current_indices.append(b["index"])  # ← Guardem l’índex original
+
+                    canvas_2d.itemconfig(b["id"], fill=new_color)
+                    b["building"] = "locked"
+                    b["selected"] = False
+                    b["color"] = new_color
+
+            if current_indices:
+                selected_rect_indices.append(tuple(current_indices))  # ← Afegim el grup com a tu vols
+
+            print("Seleccionats i desactivats:", len(current_indices))
+            print("Històric d'índexs:", selected_rect_indices)
+
+        ok_button.configure(command=confirm_selection)
+
+        reset_button = CTkButton(panel_building_frame, text="Undo", text_color="white", width=70, fg_color="#1E3A5F")
         reset_button.grid(row=1, column=1, padx=(0, 10), pady=(5, 10), sticky="n")
+
+        def reset_selection():
+            if not selected_rect_indices:
+                print("No quedan selecciones para borrar.")
+                return  # Nada que borrar
+
+            # Sacamos el último grupo de índices (última selección)
+            last_group = selected_rect_indices.pop()
+
+            # Para cada índice de ese grupo, revertimos el estado del edificio
+            for idx in last_group:
+                # Buscar el edificio correspondiente
+                for b in buildings_canvas:
+                    if b["index"] == idx and b["building"] == "locked":
+                        # Volver a color original
+                        b["building"] = None
+                        b["selected"] = False
+                        b["color"] = "#3A86FF"
+                        canvas_2d.itemconfig(b["id"], fill=b["color"])
+                        break
+
+            print(f"Última selección eliminada: {last_group}")
+            print(f"Selecciones restantes: {selected_rect_indices}")
+
+        reset_button.configure(command=reset_selection)
 
         # Configurar weights para que filas y columnas se distribuyan bien
         panel_building_frame.grid_rowconfigure(0, weight=1)
@@ -1428,7 +1545,7 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels
                                      command=lambda: tree_obstacles(las_object, entry_lat, entry_lon, entry_zone, entry_easting,
                                                                     entry_northing, latlon_set, utm_set,
                                                                     combined_mesh, pixels_x, pixels_y, delta_x,
-                                                                    delta_y, cell_stats))
+                                                                    delta_y, cell_stats, selected_rect_indices, building_prism_cells))
         button_visualize.pack(side="bottom", padx=(0, 0), pady=(5, 0))
 
         left_frame.update_idletasks()
@@ -1469,54 +1586,8 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels
             btn.place(x=x, y=y, anchor="center")
             botones.append(btn)
 
-
-        # Unifica todos los valores para calcular el rango global
-        x_all = [x0 for x0, _, x1, _ in rects] + [x1 for _, _, x1, _ in rects]
-        y_all = [y0 for _, y0, _, y1 in rects] + [y1 for _, _, _, y1 in rects]
-
-        x_min_global, x_max_global = min(x_all), max(x_all)
-        y_min_global, y_max_global = min(y_all), max(y_all)
-
-        x_center_geom = (x_min_global + x_max_global) / 2
-        y_center_geom = (y_min_global + y_max_global) / 2
-
-        def escalar(val, min_val, max_val, new_min, new_max):
-            return new_min + (val - min_val) / (max_val - min_val) * (new_max - new_min)
-
-        edificios = []
-
-        for x0, y0, x1, y1 in rects:
-            # Reflejo horizontal si lo necesitas (como en tu otro código)
-            x0_rot = 2 * x_center_geom - x0
-            x1_rot = 2 * x_center_geom - x1
-
-            y0_rot = 2 * y_center_geom - y0
-            y1_rot = 2 * y_center_geom - y1
-
-            # Escalar al rango del canvas (por ejemplo, 10 a 240 de ancho y 10 a 140 de alto)
-            x0_canvas = escalar(x0_rot, x_min_global, x_max_global, 10, 240)
-            x1_canvas = escalar(x1_rot, x_min_global, x_max_global, 10, 240)
-            y0_canvas = escalar(y0_rot, y_min_global, y_max_global, 10, 140)
-            y1_canvas = escalar(y1_rot, y_min_global, y_max_global, 10, 140)
-
-            # Ordenar coordenadas por si están invertidas
-            x_left = min(x0_canvas, x1_canvas)
-            x_right = max(x0_canvas, x1_canvas)
-            y_top = min(y0_canvas, y1_canvas)
-            y_bottom = max(y0_canvas, y1_canvas)
-
-            id_rect = canvas_2d.create_rectangle(x_left, y_top, x_right, y_bottom, fill="#3A86FF", outline="black")
-            edificios.append({
-                "id": id_rect,
-                "bbox": (x_left, y_top, x_right, y_bottom),
-                "selected": False,
-                "color": "#3A86FF",  # color inicial
-                "building": None  # sin grupo al inicio
-            })
-
-
-
 def btn_return():
+    global root
     if 'panel_canvas' in globals() and panel_canvas.winfo_exists():
         panel_canvas.place_forget()
 
@@ -1543,6 +1614,9 @@ def btn_return():
 
     if 'button_visualize' in globals() and button_visualize.winfo_exists():
         button_visualize.pack_forget()
+
+    root.num_pixeles_x_entry.configure(state="normal")
+    root.num_pixeles_y_entry.configure(state="normal")
 
 def toggle_color(boton, index):
     global selected_positions, posiciones, botones
@@ -1572,7 +1646,7 @@ def latlon_a_utm(lat, lon, zone):
     x, y = transform(wgs84, utm, lon, lat)
     return x, y
 
-def mostrar_resumen_lineas(colores_puntos, total_arboles_cruzados):
+def mostrar_resumen_lineas(colores_puntos, total_arboles_cruzados, total_edificios_cruzados):
     def ventana():
         resumen = CTkToplevel()
         resumen.title("Obstacle Detection")
@@ -1582,7 +1656,7 @@ def mostrar_resumen_lineas(colores_puntos, total_arboles_cruzados):
         scroll = CTkScrollableFrame(resumen, fg_color="#1E1E1E")
         scroll.pack(expand=True, fill="both", padx=10, pady=10)
 
-        for idx, (color, num_arboles) in enumerate(zip(colores_puntos, total_arboles_cruzados)):
+        for idx, (color, num_arboles, num_edificios) in enumerate(zip(colores_puntos, total_arboles_cruzados, total_edificios_cruzados)):
             item_frame = CTkFrame(scroll, fg_color="#1E1E1E")
             item_frame.pack(anchor="w", padx=10, pady=5)
 
@@ -1595,8 +1669,12 @@ def mostrar_resumen_lineas(colores_puntos, total_arboles_cruzados):
             circle.create_oval(2, 2, 18, 18, fill=hex_color, outline=hex_color)
             circle.pack(side="left")
 
-            label = CTkLabel(item_frame, text=f"{num_arboles} trees",
-                                 text_color="#F0F0F0", font=("Arial", 12))
+            label = CTkLabel(
+                item_frame,
+                text=f"{num_arboles} trees, {num_edificios} buildings",
+                text_color="#F0F0F0",
+                font=("Arial", 12)
+            )
             label.pack(side="left", padx=8)
 
     threading.Thread(target=ventana, daemon=True).start()
@@ -2235,7 +2313,7 @@ def plot_three_color_heatmap(heatmap, xcenter, ycenter, Hcenter, lonmin, lonmax,
 
 def set_run_prueba_flag(xcenter, ycenter, FAltcenter, pixels_x_str, pixels_y_str):
     # Check if xcenter or ycenter is None or empty
-    global las_object, mi_set, pixels_x, pixels_y, combined_mesh_pixels_x, combined_mesh_pixels_y, las
+    global las_object, mi_set, pixels_x, pixels_y, combined_mesh_pixels_x, combined_mesh_pixels_y, las, building_prism_cells, combined_mesh
 
     if xcenter is None or len(xcenter) == 0 or ycenter is None or len(ycenter) == 0:
         messagebox.showerror("Error", "Please process the N42 files first.")
@@ -2246,6 +2324,9 @@ def set_run_prueba_flag(xcenter, ycenter, FAltcenter, pixels_x_str, pixels_y_str
         messagebox.showerror("Invalid Input", "Num Pixels X and Y must be integers.")
         return
 
+    root.num_pixeles_x_entry.configure(state="disabled")
+    root.num_pixeles_y_entry.configure(state="disabled")
+
     # Convertir a int una vez validados
     pixels_x = int(pixels_x_str)
     pixels_y = int(pixels_y_str)
@@ -2253,6 +2334,9 @@ def set_run_prueba_flag(xcenter, ycenter, FAltcenter, pixels_x_str, pixels_y_str
     if las_object is None:
         mi_set = False
         segmentationPlus(mi_set, pixels_x, pixels_y)
+
+        combined_mesh_pixels_x = pixels_x
+        combined_mesh_pixels_y = pixels_y
 
     else:
         if (combined_mesh is None or combined_mesh_pixels_x != pixels_x or combined_mesh_pixels_y != pixels_y):
@@ -2263,7 +2347,7 @@ def set_run_prueba_flag(xcenter, ycenter, FAltcenter, pixels_x_str, pixels_y_str
             combined_mesh_pixels_y = pixels_y
 
         else:
-            panel_left_frame(xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels_y)
+            panel_left_frame(xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels_y, building_prism_cells)
 
 def set_trees():
     global mi_set, las
