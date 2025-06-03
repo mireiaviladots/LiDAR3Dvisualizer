@@ -2,7 +2,6 @@ import numpy as np
 import open3d as o3d
 import csv
 from scipy.spatial import cKDTree
-from pathlib import Path
 from customtkinter import *
 from tkinter import filedialog
 import xml.etree.ElementTree as ET
@@ -26,8 +25,9 @@ from skimage.segmentation import watershed
 import scipy.ndimage as ndi
 from collections import Counter
 import json
-from pyproj import Proj, transform
+from pyproj import CRS, Transformer
 from shapely.geometry import LineString, box
+import gc
 
 source_location = None
 pc_filepath = None
@@ -102,35 +102,31 @@ min_x_las = max_x_las = min_y_las = max_y_las = None
 rects_top = None
 building_prism_cells = None
 
-def mostrar_nube_no_vox(show_dose_layer, pc_filepath, downsample, xml_filepath, csv_filepath, high_dose_rgb, medium_dose_rgb,
+
+# Displays a point cloud without voxelization, optionally applying dose layer visualization
+def point_cloud_no_vox(show_dose_layer, pc_filepath, downsample, xml_filepath, csv_filepath, high_dose_rgb, medium_dose_rgb,
                         low_dose_rgb, dose_min_csv, low_max, medium_min, medium_max, high_min, altura_extra, show_source, source_location, point_size, progress_bar):
     def run():
         global vis
         try:
-            print(f"Show Dose Layer: {show_dose_layer}")
-            # Cargar la nube de puntos PCD
             pcd = o3d.io.read_point_cloud(pc_filepath)
 
-            # Downsamplear la nube de puntos si se ha especificado un porcentaje
             if downsample is not None:
                 if not (1 <= downsample <= 100):
-                    messagebox.showerror("Error", "El valor de downsample debe estar entre 1 y 100.")
+                    messagebox.showerror("Error", "The downsample value must be between 1 and 100.")
                     return
                 downsample_value = float(downsample) / 100.0
                 if 0 < downsample_value <= 1:
                     if downsample_value == 1:
-                        downsample_value = 0.99  # Evitar downsamplear a 0
+                        downsample_value = 0.99
                     voxel_size = 1 * downsample_value
                     downsampled_pcd = pcd.voxel_down_sample(voxel_size=voxel_size)
                     pcd = downsampled_pcd
 
-            # Obtener coordenadas XYZ
             nube_puntos = np.asarray(pcd.points)
 
-            # Actualizar la barra de progreso
             update_progress_bar(progress_bar, 20)
 
-            # Obtener colores si existen, de lo contrario, usar blanco
             if pcd.has_colors():
                 rgb = np.asarray(pcd.colors)
             else:
@@ -139,69 +135,48 @@ def mostrar_nube_no_vox(show_dose_layer, pc_filepath, downsample, xml_filepath, 
             if show_dose_layer:
                 origin = get_origin_from_xml(xml_filepath)
 
-                # Sumar el origen a las coordenadas locales
-                geo_points = nube_puntos + origin  # a utm
+                geo_points = nube_puntos + origin
 
                 utm_coords = np.genfromtxt(csv_filepath, delimiter=',', skip_header=1)
-                utm_points = utm_coords[:, :2]  # Sólo coordenadas [easting, northing]
-                dosis = utm_coords[:, 2]  # Dosis correspondiente
+                utm_points = utm_coords[:, :2]
+                dosis = utm_coords[:, 2]
 
-                # Actualizar la barra de progreso
                 update_progress_bar(progress_bar, 30)
 
-                # Construir el KD-Tree para los puntos UTM del CSV (BUSQUEDA EFICIENTE)
                 tree = cKDTree(utm_points)
 
-                # Actualizar la barra de progreso
                 update_progress_bar(progress_bar, 40)
 
-                # Determinar los límites del área del CSV con dosis
-                x_min, y_min = np.min(utm_points, axis=0)  # Mínimo de cada columna (lat, long)
-                x_max, y_max = np.max(utm_points, axis=0)  # Máximo de cada columna (lat, long)
-
-                # Filtrar puntos de la nube dentro del área de dosis
+                x_min, y_min = np.min(utm_points, axis=0)
+                x_max, y_max = np.max(utm_points, axis=0)
                 dentro_area = (
                     (geo_points[:, 0] >= x_min) & (geo_points[:, 0] <= x_max) &
                     (geo_points[:, 1] >= y_min) & (geo_points[:, 1] <= y_max)
                 )
 
-                # Actualizar la barra de progreso
                 update_progress_bar(progress_bar, 60)
 
-                # Solo los puntos dentro del área
                 puntos_dentro = geo_points[dentro_area]
-
-                # Crea vector de dosis como NaN
                 dosis_nube = np.full(len(puntos_dentro), np.nan)
-
-                # Encontrar el punto más cercano en el CSV para cada punto de la nube LAS (que está dentro)
                 distancias, indices_mas_cercanos = tree.query(puntos_dentro[:, :2])
-
-                # Asignar dosis correspondiente a los puntos dentro del área
-                dosis_nube[:] = dosis[indices_mas_cercanos]  # Dosis para cada punto en la nube
-
+                dosis_nube[:] = dosis[indices_mas_cercanos]
                 valid_points = ~np.isnan(dosis_nube)
                 puntos_dosis_elevados = puntos_dentro[valid_points]
                 dosis_filtrada = dosis_nube[valid_points]
 
-                # Actualizar la barra de progreso
                 update_progress_bar(progress_bar, 80)
 
                 colores_dosis = get_dose_color(dosis_filtrada, high_dose_rgb, medium_dose_rgb, low_dose_rgb, dose_min_csv, low_max, medium_min, medium_max, high_min)
+                puntos_dosis_elevados[:, 2] += altura_extra
 
-                puntos_dosis_elevados[:, 2] += altura_extra  # Aumentar Z
-
-                # Crear nube de puntos Open3D
                 pcd.points = o3d.utility.Vector3dVector(geo_points)
-                pcd.colors = o3d.utility.Vector3dVector(rgb)  # Asignar colores
+                pcd.colors = o3d.utility.Vector3dVector(rgb)
 
                 update_progress_bar(progress_bar, 90)
 
-                # Crear la nueva nube de puntos de dosis elevada
                 pcd_dosis = o3d.geometry.PointCloud()
                 pcd_dosis.points = o3d.utility.Vector3dVector(puntos_dosis_elevados)
-                pcd_dosis.colors = o3d.utility.Vector3dVector(colores_dosis)  # Asignar colores según dosis
-
+                pcd_dosis.colors = o3d.utility.Vector3dVector(colores_dosis)
             else:
                 update_progress_bar(progress_bar, 30)
                 update_progress_bar(progress_bar, 40)
@@ -210,41 +185,32 @@ def mostrar_nube_no_vox(show_dose_layer, pc_filepath, downsample, xml_filepath, 
                 update_progress_bar(progress_bar, 70)
                 update_progress_bar(progress_bar, 80)
 
-            # Actualizar la barra de progreso
             update_progress_bar(progress_bar, 100)
-
-            # Eliminar la barra de progreso
             progress_bar.grid_forget()
 
             vis = o3d.visualization.Visualizer()
 
-            # Obtener las dimensiones del right_frame
             right_frame.update_idletasks()
             right_frame_width = right_frame.winfo_width()
             right_frame_height = right_frame.winfo_height()
-
-            # Obtener las dimensiones del left_frame
             left_frame.update_idletasks()
             left_frame_width = left_frame.winfo_width()
-
-            # Calcular tittle bar
             title_bar_height = ctypes.windll.user32.GetSystemMetrics(4)
 
             vis.create_window(window_name='Open3D', width=right_frame_width, height=right_frame_height, left=left_frame_width, top=title_bar_height)
-
-            vis.clear_geometries()  # Ahora estamos seguros de que self.vis no es None
+            vis.clear_geometries()
             vis.add_geometry(pcd)
+
             if show_dose_layer:
                 vis.add_geometry(pcd_dosis)
 
             if show_dose_layer and show_source and source_location is not None:
                 source_point = [source_location[0], source_location[1], np.max(puntos_dosis_elevados[:, 2])]
-                sphere = o3d.geometry.TriangleMesh.create_sphere(radius=1)  # Create a sphere with a radius of 5
-                sphere.translate(source_point)  # Move the sphere to the source location
+                sphere = o3d.geometry.TriangleMesh.create_sphere(radius=1)
+                sphere.translate(source_point)
                 sphere.paint_uniform_color([0, 0, 0])
                 vis.add_geometry(sphere)
 
-            # Cambiar el tamaño de los puntos (ajustar para evitar cuadrados)
             render_option = vis.get_render_option()
             render_option.point_size = point_size
 
@@ -253,7 +219,6 @@ def mostrar_nube_no_vox(show_dose_layer, pc_filepath, downsample, xml_filepath, 
                 vis.update_renderer()
 
                 if not vis.poll_events():
-                    print("Ventana Cerrada")
                     enable_left_frame()
                     break
 
@@ -263,23 +228,22 @@ def mostrar_nube_no_vox(show_dose_layer, pc_filepath, downsample, xml_filepath, 
 
     threading.Thread(target=run, daemon=True).start()
 
-def mostrar_nube_si_vox(show_dose_layer, pc_filepath, xml_filepath, csv_filepath, high_dose_rgb, medium_dose_rgb, low_dose_rgb, dose_min_csv, low_max,
+
+# Displays a point cloud with voxelization, optionally applying dose layer visualization
+def point_cloud_vox(show_dose_layer, pc_filepath, xml_filepath, csv_filepath, high_dose_rgb, medium_dose_rgb, low_dose_rgb, dose_min_csv, low_max,
             medium_min, medium_max, high_min, altura_extra, progress_bar):
     def run():
         global vis
         try:
-            print(f"Show Dose Layer: {show_dose_layer}")
             pcd = o3d.io.read_point_cloud(pc_filepath)
             xyz = np.asarray(pcd.points)
 
-            # Actualizar la barra de progreso
             update_progress_bar(progress_bar, 20)
 
-            # Obtener colores si existen, de lo contrario usar blanco
             if pcd.has_colors():
                 rgb = np.asarray(pcd.colors)
             else:
-                rgb = np.ones_like(xyz)  # Blanco por defecto
+                rgb = np.ones_like(xyz)
 
             if not show_dose_layer:
                 pcd.points = o3d.utility.Vector3dVector(xyz)
@@ -287,31 +251,19 @@ def mostrar_nube_si_vox(show_dose_layer, pc_filepath, xml_filepath, csv_filepath
 
             if show_dose_layer:
                 origin = get_origin_from_xml (xml_filepath)
-
                 geo_points = xyz + origin
-
                 pcd.points = o3d.utility.Vector3dVector(geo_points)
                 pcd.colors = o3d.utility.Vector3dVector(rgb)
 
-            # Defining the voxel size
             vsize = vox_size
-
-            # Creating the voxel grid
             voxel_grid = o3d.geometry.VoxelGrid.create_from_point_cloud(pcd, voxel_size=vsize)
 
-            # Extracting the bounds
-            bounds = voxel_grid.get_max_bound() - voxel_grid.get_min_bound()
-            # o3d.visualization.draw_geometries([voxel_grid])
-
-            # Generating a single box entity
             cube = o3d.geometry.TriangleMesh.create_box(width=1, height=1, depth=1)
-            cube.paint_uniform_color([1, 0, 0])  # Red
+            cube.paint_uniform_color([1, 0, 0])
             cube.compute_vertex_normals()
-            # o3d.visualization.draw_geometries([cube])
 
-            # Automate and Loop to cerate one voxel Dataset (efficient)
-            voxels = voxel_grid.get_voxels()  # Cada voxel con su grid index (posicion desde el centro, 0) y color, hay que hacer offset y translate
-            vox_mesh = o3d.geometry.TriangleMesh()  # Creamos un mesh para ir colocando cada voxel
+            voxels = voxel_grid.get_voxels()
+            vox_mesh = o3d.geometry.TriangleMesh()
 
             for v in voxels:
                 cube = o3d.geometry.TriangleMesh.create_box(width=1, height=1, depth=1)
@@ -319,83 +271,55 @@ def mostrar_nube_si_vox(show_dose_layer, pc_filepath, xml_filepath, csv_filepath
                 cube.translate(v.grid_index, relative=False)
                 vox_mesh += cube
 
-            # To align to the center of a cube of dimension 1
             vox_mesh.translate([0.5, 0.5, 0.5], relative=True)
-
-            # To scale
             vox_mesh.scale(vsize, [0, 0, 0])
-
-            # To translate
             vox_mesh.translate(voxel_grid.origin, relative=True)
 
-            # Export
-            output_file = Path("voxelize.ply")  # Puntos --> .las / Malla --> .obj, .ply
-            o3d.io.write_triangle_mesh(str(output_file), vox_mesh)
-
-            # Actualizar la barra de progreso
             update_progress_bar(progress_bar, 30)
 
             if show_dose_layer:
                 utm_coords = np.genfromtxt(csv_filepath, delimiter=',', skip_header=1)
-                utm_points = utm_coords[:, :2]  # Sólo coordenadas [easting, northing]
-                dosis = utm_coords[:, 2]  # Dosis correspondiente
+                utm_points = utm_coords[:, :2]
+                dosis = utm_coords[:, 2]
 
-                # Construir el KD-Tree para los puntos UTM del CSV (BUSQUEDA EFICIENTE)
                 tree = cKDTree(utm_points)
 
-                # Actualizar la barra de progreso
                 update_progress_bar(progress_bar, 40)
 
-                # Determinar los límites del área del CSV con dosis
-                x_min, y_min = np.min(utm_points, axis=0)  # Mínimo de cada columna (lat, long)
-                x_max, y_max = np.max(utm_points, axis=0)  # Máximo de cada columna (lat, long)
-
-                # Filtrar puntos de la nube dentro del área de dosis
+                x_min, y_min = np.min(utm_points, axis=0)
+                x_max, y_max = np.max(utm_points, axis=0)
                 dentro_area = (
                         (geo_points[:, 0] >= x_min) & (geo_points[:, 0] <= x_max) &
                         (geo_points[:, 1] >= y_min) & (geo_points[:, 1] <= y_max)
                 )
-
-                # Solo los puntos dentro del área
                 puntos_dentro = geo_points[dentro_area]
-
-                # Crea vector de dosis como NaN
                 dosis_nube = np.full(len(puntos_dentro), np.nan)
+                distancias, indices_mas_cercanos = tree.query(puntos_dentro[:,:2])
 
-                # Encontrar el punto más cercano en el CSV para cada punto de la nube LAS (que está dentro)
-                distancias, indices_mas_cercanos = tree.query(puntos_dentro[:,
-                                                              :2])  # Devuelve distancia entre punto CSV y punto cloud; para cada nube_puntos[i] índice del punto del csv mas cercano
-
-                # Actualizar la barra de progreso
                 update_progress_bar(progress_bar, 60)
 
-                # Asignar dosis correspondiente a los puntos dentro del área
-                dosis_nube[:] = dosis[indices_mas_cercanos]  # Dosis para cada punto en la nube
-
+                dosis_nube[:] = dosis[indices_mas_cercanos]
                 valid_points = ~np.isnan(dosis_nube)
                 puntos_dosis_elevados = puntos_dentro[valid_points]
                 dosis_filtrada = dosis_nube[valid_points]
-
                 colores_dosis = get_dose_color(dosis_filtrada, high_dose_rgb, medium_dose_rgb,
                                                     low_dose_rgb, dose_min_csv, low_max,
                                                     medium_min, medium_max, high_min)
 
-                puntos_dosis_elevados[:, 2] += altura_extra  # Aumentar Z
+                puntos_dosis_elevados[:, 2] += altura_extra
 
                 pcd_dosis = o3d.geometry.PointCloud()
                 pcd_dosis.points = o3d.utility.Vector3dVector(puntos_dosis_elevados)
                 pcd_dosis.colors = o3d.utility.Vector3dVector(colores_dosis)
 
                 voxel_grid_dosis = o3d.geometry.VoxelGrid.create_from_point_cloud(pcd_dosis, voxel_size=vsize)
-
                 voxels_dosis = voxel_grid_dosis.get_voxels()
                 vox_mesh_dosis = o3d.geometry.TriangleMesh()
 
-                # Actualizar la barra de progreso
                 update_progress_bar(progress_bar, 80)
 
                 cube = o3d.geometry.TriangleMesh.create_box(width=1, height=1, depth=1)
-                cube.paint_uniform_color([1, 0, 0])  # Red
+                cube.paint_uniform_color([1, 0, 0])
                 cube.compute_vertex_normals()
 
                 for v in voxels_dosis:
@@ -407,14 +331,8 @@ def mostrar_nube_si_vox(show_dose_layer, pc_filepath, xml_filepath, csv_filepath
                 update_progress_bar(progress_bar, 90)
 
                 vox_mesh_dosis.translate([0.5, 0.5, 0.5], relative=True)
-
                 vox_mesh_dosis.scale(vsize, [0, 0, 0])
-
                 vox_mesh_dosis.translate(voxel_grid_dosis.origin, relative=True)
-
-                output_file = Path("voxelize_dosis.ply")  # Puntos --> .las / Malla --> .obj, .ply
-                o3d.io.write_triangle_mesh(str(output_file), vox_mesh_dosis)
-
             else:
                 update_progress_bar(progress_bar, 40)
                 update_progress_bar(progress_bar, 50)
@@ -423,31 +341,23 @@ def mostrar_nube_si_vox(show_dose_layer, pc_filepath, xml_filepath, csv_filepath
                 update_progress_bar(progress_bar, 80)
                 update_progress_bar(progress_bar, 90)
 
-            # Actualizar la barra de progreso
             update_progress_bar(progress_bar, 100)
-
-            # Eliminar la barra de progreso
             progress_bar.grid_forget()
 
             vis = o3d.visualization.Visualizer()
 
-            # Obtener las dimensiones del right_frame
             right_frame.update_idletasks()
             right_frame_width = right_frame.winfo_width()
             right_frame_height = right_frame.winfo_height()
-
-            # Obtener las dimensiones del left_frame
             left_frame.update_idletasks()
             left_frame_width = left_frame.winfo_width()
-
-            # Calcular tittle bar
             title_bar_height = ctypes.windll.user32.GetSystemMetrics(4)
 
             vis.create_window(window_name='Open3D', width=right_frame_width, height=right_frame_height,
                               left=left_frame_width, top=title_bar_height)
-
             vis.clear_geometries()
             vis.add_geometry(vox_mesh)
+
             if show_dose_layer:
                 vis.add_geometry(vox_mesh_dosis)
 
@@ -455,7 +365,7 @@ def mostrar_nube_si_vox(show_dose_layer, pc_filepath, xml_filepath, csv_filepath
                 source_point = [[source_location[0], source_location[1], np.max(puntos_dosis_elevados[:, 2])]]
                 source_pcd = o3d.geometry.PointCloud()
                 source_pcd.points = o3d.utility.Vector3dVector(source_point)
-                source_pcd.paint_uniform_color([0, 0, 0])  # Color negro para el punto de la fuente
+                source_pcd.paint_uniform_color([0, 0, 0])
                 vis.add_geometry(source_pcd)
 
             while True:
@@ -463,7 +373,6 @@ def mostrar_nube_si_vox(show_dose_layer, pc_filepath, xml_filepath, csv_filepath
                 vis.update_renderer()
 
                 if not vis.poll_events():
-                    print("Ventana Cerrada")
                     enable_left_frame()
                     break
 
@@ -473,12 +382,13 @@ def mostrar_nube_si_vox(show_dose_layer, pc_filepath, xml_filepath, csv_filepath
 
     threading.Thread(target=run, daemon=True).start()
 
+
+# Generates a 3D grid from a LAS object, creating prisms for each cell and extracting statistics.
+# Also identifies rooftops of buildings and stores their coordinates.
 def grid(las_object, pixels_x, pixels_y):
     global combined_mesh, delta_x, delta_y, cell_stats, rects_top, building_prism_cells
 
     progress_bar = create_progress_bar()
-
-    # Actualizar la barra de progreso
     update_progress_bar(progress_bar, 10)
 
     if combined_mesh is not None:
@@ -488,15 +398,12 @@ def grid(las_object, pixels_x, pixels_y):
     rects_top = []
     building_prism_cells = []
 
-    import gc
     gc.collect()
 
     las = las_object
-
     las_points = np.vstack((las.x, las.y, las.z)).T
     if hasattr(las, "red"):
         colors = np.vstack((las.red, las.green, las.blue)).T
-        # Normalizar si vienen en 16-bit
         if colors.max() > 1.0:
             colors = colors / 65535.0
     else:
@@ -506,33 +413,18 @@ def grid(las_object, pixels_x, pixels_y):
 
     update_progress_bar(progress_bar, 20)
 
-    # Get unique classifications
-    unique_classifications = np.unique(classifications)
-    unique_classificationtree = np.unique(classificationtree)
-
-    # Print the unique classifications
-    print("Unique classifications:", unique_classifications)
-    print("Unique classificationtree values:", unique_classificationtree)
-
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(las_points)
     pcd.colors = o3d.utility.Vector3dVector(colors)
-
-    # Extract point data
     points = np.asarray(pcd.points)
     colors = np.asarray(pcd.colors) if pcd.has_colors() else np.zeros_like(points)
-
-    # Determine the bounds of the data
     min_x, min_y = np.min(points[:, :2], axis=0)
     max_x, max_y = np.max(points[:, :2], axis=0)
 
     update_progress_bar(progress_bar, 30)
 
-    # Calculate pixel sizes
     delta_x = (max_x - min_x) / pixels_x
     delta_y = (max_y - min_y) / pixels_y
-
-    # Initialize structures for statistics
     z_values = np.full((pixels_y, pixels_x), np.nan)
     cell_stats = np.empty((pixels_y, pixels_x), dtype=object)
     for i in range(pixels_y):
@@ -541,40 +433,29 @@ def grid(las_object, pixels_x, pixels_y):
 
     update_progress_bar(progress_bar, 40)
 
-    # Asignar puntos a celdas
     x_idx = ((points[:, 0] - min_x) / delta_x).astype(int)
     y_idx = ((points[:, 1] - min_y) / delta_y).astype(int)
-
     valid_mask = (
             (x_idx >= 0) & (x_idx < pixels_x) &
             (y_idx >= 0) & (y_idx < pixels_y)
     )
 
-    for xi, yi, z, color in zip(x_idx[valid_mask], y_idx[valid_mask], points[valid_mask][:, 2],
-                                colors[valid_mask]):
+    for xi, yi, z, color in zip(x_idx[valid_mask], y_idx[valid_mask], points[valid_mask][:, 2], colors[valid_mask]):
         cell_stats[yi, xi]['z_values'].append(z)
         cell_stats[yi, xi]['colors'].append(color)
 
-    # Asignar puntos del LAS a celdas
     x_idx_las = ((las_points[:, 0] - min_x) / delta_x).astype(int)
     y_idx_las = ((las_points[:, 1] - min_y) / delta_y).astype(int)
     valid_mask_las = (
             (x_idx_las >= 0) & (x_idx_las < pixels_x) &
-            (y_idx_las >= 0) & (y_idx_las < pixels_y)
-    )
+            (y_idx_las >= 0) & (y_idx_las < pixels_y))
 
     update_progress_bar(progress_bar, 50)
 
-    for xi, yi, cls, cls_tree in zip(
-            x_idx_las[valid_mask_las],
-            y_idx_las[valid_mask_las],
-            classifications[valid_mask_las],
-            classificationtree[valid_mask_las]
-    ):
+    for xi, yi, cls, cls_tree in zip(x_idx_las[valid_mask_las], y_idx_las[valid_mask_las], classifications[valid_mask_las], classificationtree[valid_mask_las]):
         cell_stats[yi, xi]['classes'].append(cls)
         cell_stats[yi, xi]['tree_classes'].append(cls_tree)
 
-    # Calculate mean Z values and predominant colors for each cell
     for i in range(pixels_y):
         for j in range(pixels_x):
             z_vals = cell_stats[i][j]['z_values']
@@ -582,8 +463,6 @@ def grid(las_object, pixels_x, pixels_y):
                 z_vals = np.array(z_vals)
                 z_mean = np.mean(z_vals)
                 z_std = np.std(z_vals)
-
-                # Filtrar valores atípicos por el criterio z_mean + 2*sigma
                 mask = z_vals <= z_mean + 2 * z_std
                 filtered_z_vals = z_vals[mask]
                 z_values[i, j] = np.mean(filtered_z_vals) + 2 * np.std(filtered_z_vals)
@@ -591,14 +470,10 @@ def grid(las_object, pixels_x, pixels_y):
 
     update_progress_bar(progress_bar, 60)
 
-    # Create a list to hold all the prisms
     prisms = []
     prisms_building = []
-    building_prism_cells = []  # Vector con las celdas (i, j) de cada prism_building
-
+    building_prism_cells = []
     count_6 = 0
-
-    # Draw horizontal cells and vertical surfaces
     for i in range(pixels_y):
         for j in range(pixels_x):
             if not np.isnan(z_values[i, j]):
@@ -609,8 +484,6 @@ def grid(las_object, pixels_x, pixels_y):
                     prism = o3d.geometry.TriangleMesh.create_box(width=delta_x, height=delta_y, depth=height)
                     prism.translate((min_x + j * delta_x, min_y + i * delta_y, z_min))
                     prism.paint_uniform_color(cell_stats[i][j]['color'])
-
-                    # Obtener clase mayoritaria
                     classes = cell_stats[i][j]['classes']
                     tree_classes = cell_stats[i][j]['tree_classes']
 
@@ -624,7 +497,6 @@ def grid(las_object, pixels_x, pixels_y):
                     else:
                         majority_tree_class = None
 
-                    # Guardar
                     cell_stats[i][j]['majority_class'] = majority_class
                     cell_stats[i][j]['majority_tree_class'] = majority_tree_class
 
@@ -635,11 +507,8 @@ def grid(las_object, pixels_x, pixels_y):
 
                     prisms.append(prism)
 
-    print("Cantidad de prismas con clase 6:", count_6)
-
     update_progress_bar(progress_bar, 80)
 
-    # Combine all prisms into a single mesh
     combined_mesh = o3d.geometry.TriangleMesh()
     for prism in prisms:
         combined_mesh += prism
@@ -648,34 +517,24 @@ def grid(las_object, pixels_x, pixels_y):
 
     for prism in prisms_building:
         vertices = np.asarray(prism.vertices)
-        top_z = np.max(vertices[:, 2])  # Z de la cara superior
+        top_z = np.max(vertices[:, 2])
         top_face_vertices = vertices[np.isclose(vertices[:, 2], top_z)]
 
         if top_face_vertices.shape[0] >= 4:
-            pts = top_face_vertices[:4, :2]  # tomar solo x,y de los primeros 4 puntos
-
-            # Calcular centroide
+            pts = top_face_vertices[:4, :2]
             center = np.mean(pts, axis=0)
-            # Calcular ángulos respecto al centroide
             angles = np.arctan2(pts[:, 1] - center[1], pts[:, 0] - center[0])
-            # Ordenar índices por ángulo ascendente (horario o antihorario)
             idx_sorted = np.argsort(angles)
             pts_ordered = pts[idx_sorted]
-
             rects_top.append(pts_ordered)
 
-    #building_mesh = o3d.geometry.TriangleMesh()
-    #for prism in building_prisms:
-        #building_mesh += prism
-
     update_progress_bar(progress_bar, 100)
-
     progress_bar.grid_forget()
-
-    print ("acabado")
 
     panel_left_frame(xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels_y, building_prism_cells)
 
+
+# Detects obstacles (trees and buildings) between a selected point and a point defined by latitude and longitude or UTM coordinates.
 def tree_obstacles(las_object, entry_latitude, entry_longitude, entry_zone, entry_easting, entry_northing, latlon_set, utm_set, combined_mesh, pixels_x, pixels_y, delta_x, delta_y, cell_stats, selected_rect_indices, building_prism_cells):
     def run():
         global vis
@@ -715,9 +574,7 @@ def tree_obstacles(las_object, entry_latitude, entry_longitude, entry_zone, entr
                     messagebox.showerror("Error", "Longitude must be between -180 and 180.")
                     return
 
-                # Convert to UTM
-                utm_x, utm_y = latlon_a_utm(lat, lon, zone)
-                print(f"UTM coordinates from lat/lon: X={utm_x}, Y={utm_y}")
+                utm_x, utm_y = latlon_to_utm(lat, lon, zone)
 
             elif utm_set == 1:
                 try:
@@ -742,18 +599,15 @@ def tree_obstacles(las_object, entry_latitude, entry_longitude, entry_zone, entr
 
                 utm_x = easting
                 utm_y = northing
-                print(f"UTM coordinates from UTM input: X={utm_x}, Y={utm_y}")
             else:
                 messagebox.showerror("Error", "Please select either Lat/Lon or UTM input mode.")
                 return
 
-            # Load the LAS file
             las = las_object
 
             min_x, max_x = np.min(las.x), np.max(las.x)
             min_y, max_y = np.min(las.y), np.max(las.y)
 
-            # Check if the input point is within bounds
             if not (min_x <= utm_x <= max_x and min_y <= utm_y <= max_y):
                 messagebox.showerror("Error", "The entered position is outside the bounds of the point cloud.")
                 return
@@ -764,68 +618,48 @@ def tree_obstacles(las_object, entry_latitude, entry_longitude, entry_zone, entr
             entry_latitude.configure(state='disabled')
             entry_longitude.configure(state='disabled')
 
-            # Actualizar la barra de progreso
             update_progress_bar(progress_bar, 10)
 
-            # Asignar número de edificio por grupo
             for building_number, index_group in enumerate(selected_rect_indices, start=1):
                 for idx in index_group:
-                    if idx < len(building_prism_cells):  # Asegurarse que el índice esté en rango
+                    if idx < len(building_prism_cells):
                         i, j = building_prism_cells[idx]
                         cell_stats[i][j]['building'] = building_number
 
-            # Añadir altura posiciones dron
             posiciones_con_altura = []
             for (x, y, alt) in selected_positions:
-                # Convertir (x, y) a índice de celda
                 col = int((x - min_x) / delta_x)
                 row = int((y - min_y) / delta_y)
 
-                # Verificar si el índice es válido
                 if 0 <= col < pixels_x and 0 <= row < pixels_y:
                     cell_z_vals = cell_stats[row][col]['z_values']
                     if cell_z_vals:
                         altitud_nivel_mar = np.mean(cell_z_vals)
-                        print(f"Altitud nivel mar: {altitud_nivel_mar}")
                         z_dron = altitud_nivel_mar + alt
                         posiciones_con_altura.append((x, y, z_dron))
-                    else:
-                        print(f"No hay datos de elevación en la celda para ({x}, {y})")
-                else:
-                    print(f"Punto fuera de límites: ({x}, {y})")
 
             update_progress_bar(progress_bar, 40)
 
-            #Añadir altura lat,lon
             posiciones_latlonh = []
-
             col = int((utm_x - min_x) / delta_x)
             row = int((utm_y - min_y) / delta_y)
 
             update_progress_bar(progress_bar, 50)
 
-            # Verificar si el índice es válido
             if 0 <= col < pixels_x and 0 <= row < pixels_y:
                 cell_z_vals = cell_stats[row][col]['z_values']
                 if cell_z_vals:
                     altitud_nivel_mar = np.mean(cell_z_vals)
                     posiciones_latlonh.append((utm_x, utm_y, altitud_nivel_mar))
-                else:
-                    print(f"No hay datos de elevación en la celda para ({utm_x}, {utm_y})")
-            else:
-                print(f"Punto fuera de límites: ({utm_x}, {utm_y})")
 
             update_progress_bar(progress_bar, 70)
 
-            print("Posicion introducida lat,lon:")
-            for pos in posiciones_latlonh:
-                print(pos)
-
+            # Function to generate a random color avoiding pink
             def generar_color_aleatorio_no_rosa():
                 while True:
                     color = [random.random(), random.random(), random.random()]
                     if not (abs(color[0] - 1.0) < 0.1 and abs(color[1] - 0.0) < 0.1 and abs(
-                            color[2] - 1.0) < 0.1):  # evitar rosa
+                            color[2] - 1.0) < 0.1):
                         return color
 
             update_progress_bar(progress_bar, 80)
@@ -835,22 +669,17 @@ def tree_obstacles(las_object, entry_latitude, entry_longitude, entry_zone, entr
                 color = generar_color_aleatorio_no_rosa()
                 colores_puntos.append(color)
 
-            # Actualizar la barra de progreso
             update_progress_bar(progress_bar, 95)
 
             total_arboles_cruzados = []
             total_edificios_cruzados = []
 
             if posiciones_con_altura and posiciones_latlonh:
-                # Junta todos los puntos: los seleccionados + el punto lat/lon (este será el último)
                 puntos_linea = posiciones_con_altura + posiciones_latlonh
-
-                # Crea un índice de línea para cada punto → conecta a la última posición (lat/lon)
                 line_indices = [[i, len(puntos_linea) - 1] for i in range(len(posiciones_con_altura))]
 
                 for idx, (start_point, _) in enumerate(zip(posiciones_con_altura, line_indices)):
-                    end_point = posiciones_latlonh[0]  # Solo hay un punto final
-
+                    end_point = posiciones_latlonh[0]
                     linea = LineString([start_point[:2], end_point[:2]])
                     clases_cruzadas = []
                     edificios_cruzados = []
@@ -861,75 +690,74 @@ def tree_obstacles(las_object, entry_latitude, entry_longitude, entry_zone, entr
                             y0 = min_y + i * delta_y
                             x1 = x0 + delta_x
                             y1 = y0 + delta_y
-
                             celda = box(x0, y0, x1, y1)
-
                             if linea.intersects(celda):
-                                tree_class = cell_stats[i][j].get('majority_tree_class')
-                                building_num = cell_stats[i][j].get('building')
+                                x_celda = (x0 + x1) / 2
+                                y_celda = (y0 + y1) / 2
 
-                                if tree_class and tree_class != 0:
-                                    clases_cruzadas.append(tree_class)
+                                x_start, y_start, z_start = start_point
+                                x_end, y_end, z_end = end_point
+                                dx = x_end - x_start
+                                dy = y_end - y_start
+                                dz = z_end - z_start
 
-                                if building_num:
-                                    edificios_cruzados.append(building_num)
+                                denom = dx ** 2 + dy ** 2
+                                if denom > 0:
+                                    t = ((x_celda - x_start) * dx + (y_celda - y_start) * dy) / denom
+                                    t = max(0, min(1, t))
+                                    z_rayo = z_start + t * dz
+                                else:
+                                    z_rayo = z_start
 
-                    print(f"Línea desde punto {idx + 1} cruza clases de árbol: {clases_cruzadas}")
-                    print(f"Línea desde punto {idx + 1} cruza edificios: {set(edificios_cruzados)}")
+                                cell_z_vals = cell_stats[i][j].get('z_values', [])
+
+                                if cell_z_vals:
+                                    z_max = max(cell_z_vals)
+                                else:
+                                    z_max = -np.inf
+
+                                if z_max >= z_rayo:
+                                    tree_class = cell_stats[i][j].get('majority_tree_class')
+                                    building_num = cell_stats[i][j].get('building')
+
+                                    if tree_class and tree_class != 0:
+                                        clases_cruzadas.append(tree_class)
+
+                                    if building_num:
+                                        edificios_cruzados.append(building_num)
 
                     total_arboles_cruzados.append(len(set(clases_cruzadas)))
                     total_edificios_cruzados.append(len(set(edificios_cruzados)))
 
-                print(f"Total de clases de árbol cruzadas por cada línea: {total_arboles_cruzados}")
-                print(f"Total de edificios cruzados por cada línea: {total_edificios_cruzados}")
-
             update_progress_bar(progress_bar, 100)
-
-            # Eliminar la barra de progreso
             progress_bar.grid_forget()
 
-            mostrar_resumen_lineas(colores_puntos, total_arboles_cruzados, total_edificios_cruzados)
+            summary_lines(colores_puntos, total_arboles_cruzados, total_edificios_cruzados)
 
             vis = o3d.visualization.Visualizer()
 
-            # Obtener las dimensiones del right_frame
             right_frame.update_idletasks()
             right_frame_width = right_frame.winfo_width()
             right_frame_height = right_frame.winfo_height()
-
-            # Obtener las dimensiones del left_frame
             left_frame.update_idletasks()
             left_frame_width = left_frame.winfo_width()
-
-            # Calcular tittle bar
             title_bar_height = ctypes.windll.user32.GetSystemMetrics(4)
 
             vis.create_window(window_name='Open3D', width=right_frame_width, height=right_frame_height,
                               left=left_frame_width, top=title_bar_height)
-
             vis.clear_geometries()
-
             vis.add_geometry(combined_mesh)
 
             if posiciones_con_altura and posiciones_latlonh:
-                # Junta todos los puntos: los seleccionados + el punto lat/lon (este será el último)
                 puntos_linea = posiciones_con_altura + posiciones_latlonh
-
-                # Crea un índice de línea para cada punto → conecta a la última posición (lat/lon)
                 line_indices = [[i, len(puntos_linea) - 1] for i in range(len(posiciones_con_altura))]
-
-                # Crea las líneas con Open3D
                 lines = o3d.geometry.LineSet()
                 lines.points = o3d.utility.Vector3dVector(puntos_linea)
                 lines.lines = o3d.utility.Vector2iVector(line_indices)
-
-                # Color rosa para todas las líneas
                 lines.colors = o3d.utility.Vector3dVector([[0, 0, 0]] * len(line_indices))
 
-                # Añade al visor
                 vis.add_geometry(lines)
 
-            # Crear nubes de punto individuales para cada punto y agregar
             for punto, color in zip(posiciones_con_altura, colores_puntos):
                 pc = o3d.geometry.PointCloud()
                 pc.points = o3d.utility.Vector3dVector([punto])
@@ -939,7 +767,7 @@ def tree_obstacles(las_object, entry_latitude, entry_longitude, entry_zone, entr
             if posiciones_latlonh:
                 puntos_rosas = o3d.geometry.PointCloud()
                 puntos_rosas.points = o3d.utility.Vector3dVector(posiciones_latlonh)
-                puntos_rosas.paint_uniform_color([1.0, 0, 1.0])  # rosa
+                puntos_rosas.paint_uniform_color([1.0, 0, 1.0])
                 vis.add_geometry(puntos_rosas)
 
             while True:
@@ -947,16 +775,12 @@ def tree_obstacles(las_object, entry_latitude, entry_longitude, entry_zone, entr
                 vis.update_renderer()
 
                 if not vis.poll_events():
-                    print("Ventana Cerrada")
                     entry_latitude.configure(state='normal')
                     entry_longitude.configure(state='normal')
                     enable_left_frame()
-
-                    # Resetear los edificios
                     for i in range(pixels_y):
                         for j in range(pixels_x):
                             cell_stats[i][j]['building'] = None
-
                     break
 
         except Exception as e:
@@ -965,12 +789,18 @@ def tree_obstacles(las_object, entry_latitude, entry_longitude, entry_zone, entr
 
     threading.Thread(target=run, daemon=True).start()
 
+
+# Disables the left frame to prevent user interaction
 def disable_left_frame():
     root.attributes('-disabled', True)
 
+
+# Enables the left frame to allow user interaction
 def enable_left_frame():
     root.attributes('-disabled', False)
 
+
+# Creates a legend frame on the left side of the application for the Segmentation function
 def legend_left_frame(counts=None, color_map=None):
     global legend_frame, legend_canvas
 
@@ -978,19 +808,16 @@ def legend_left_frame(counts=None, color_map=None):
     width = left_frame.winfo_width()
     height = left_frame.winfo_height()
 
-    # Lienzo de fondo
     legend_canvas = CTkCanvas(left_frame, bg="#2E2E2E", highlightthickness=0, width=width, height=height)
     legend_canvas.place(x=0, y=0)
     legend_canvas.create_rectangle(0, 0, width, height, fill="#2E2E2E", outline="")
 
-    # Frame de la leyenda
     legend_frame = CTkFrame(left_frame, fg_color="#2E2E2E", corner_radius=0, width=width, height=height, border_width=10, border_color="#2E2E2E")
     legend_frame.place(x=0, y=0)
 
     for widget in legend_frame.winfo_children():
         widget.destroy()
 
-    # Si no se pasa color_map, cargar desde JSON
     if color_map is None:
         try:
             script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -998,13 +825,12 @@ def legend_left_frame(counts=None, color_map=None):
 
             with open(json_path, "r") as f:
                 color_map_raw = json.load(f)["classifications"]
-                # Convertir claves a int y colores a lista de floats
                 color_map = {int(k): v for k, v in color_map_raw.items()}
+
         except Exception as e:
-            print("Error cargando clasificación desde JSON:", e)
+            messagebox.showerror("Error", f"Failed to load color map: {e}")
             color_map = {}
 
-    # Descripciones por clase LAS
     class_labels = {
         0: "Created, never classified",
         1: "Unclassified",
@@ -1025,11 +851,8 @@ def legend_left_frame(counts=None, color_map=None):
         18: "High Noise"
     }
 
-    # Crear leyenda con los colores y etiquetas
     for class_id, rgb in color_map.items():
-        hex_color = "#{:02x}{:02x}{:02x}".format(
-            int(rgb[0] * 255), int(rgb[1] * 255), int(rgb[2] * 255)
-        )
+        hex_color = "#{:02x}{:02x}{:02x}".format(int(rgb[0] * 255), int(rgb[1] * 255), int(rgb[2] * 255))
 
         label = class_labels.get(class_id, f"Customized Class ({class_id})")
         count = counts.get(class_id, 0) if counts else 0
@@ -1047,6 +870,8 @@ def legend_left_frame(counts=None, color_map=None):
         count_label = CTkLabel(item_frame, text=f"({count})", text_color="#A0A0A0", font=("Arial", 12))
         count_label.pack(side="left")
 
+
+# Creates a left frame for the Obstacle Detection function
 def panel_left_frame (xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels_y, building_prism_cells):
         global panel_canvas, button_seg, seg_frame, button_from, from_frame, button_to, to_frame, button_visualize, button_return, progress_bar, posiciones, selected_positions, build_seg, from_set, to_set, latlon_set, utm_set, rects_top
 
@@ -1062,11 +887,7 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels
 
         panel_canvas = CTkCanvas(left_frame, bg="#2E2E2E", highlightthickness=0, width=width, height=height)
         panel_canvas.place(x=0, y=0)
-
-        # Fondo amarillo
         panel_canvas.create_rectangle(0, 0, width, height, fill="#2E2E2E", outline="")
-
-        # Crear título (texto centrado en X, en la parte superior)
         title = "OBSTACLE DETECTION"
         panel_canvas.create_text(width//2, 40, text=title, font=("Arial", 18, "bold"), fill="white")
         panel_canvas.pack_propagate(False)
@@ -1097,7 +918,6 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels
                     from_set = False
                     button_from.configure(text=" ▼ FROM")
                     from_frame.pack_forget()
-
             else:
                 button_seg.configure(text=" ▼ Building Segmentation")
                 seg_frame.pack_forget()
@@ -1110,7 +930,6 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels
                 button_to.configure(text=" ▼ TO")
                 to_frame.pack_forget()
 
-        # Parameters Button
         button_seg = CTkButton(panel_canvas, text=" ▼ Building Segmentation", text_color="#F0F0F0", fg_color="#3E3E3E",
                                            anchor="w", corner_radius=0, command=toggle_parameters)
         button_seg.pack(fill="x", padx=(0, 0), pady=(50, 0))
@@ -1131,36 +950,25 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels
         start_x = start_y = None
         selection_rect = None
         drag_threshold = 5
-
-        # Escalar los rectángulos para que quepan en el canvas
         all_points = np.vstack(rects_top)
         min_x, min_y = np.min(all_points[:, :2], axis=0)
         max_x, max_y = np.max(all_points[:, :2], axis=0)
         scale_x = canvas_2d.winfo_reqwidth() / (max_x - min_x)
         scale_y = canvas_2d.winfo_reqheight() / (max_y - min_y)
         scale = min(scale_x, scale_y)
-
         x_center_geom = (min_x + max_x) / 2
         y_center_geom = (min_y + max_y) / 2
 
-        # Crear lista de edificios (cada uno es un rectángulo visual)
         buildings_canvas = []
 
         for i, rect in enumerate(rects_top):
-            # Rotación y reflexión horizontal como en panel_dronPos
             rotated_reflected_points = []
             for x, y in rect[:, :2]:
-                # Rotar 180° alrededor del centro
                 x_rot = 2 * x_center_geom - x
                 y_rot = 2 * y_center_geom - y
-
-                # Reflejar horizontalmente
                 x_final = 2 * x_center_geom - x_rot
-
-                # Escalar para que quepan en el canvas
                 x_scaled = scale * (x_final - min_x)
                 y_scaled = scale * (y_rot - min_y)
-
                 rotated_reflected_points.append((x_scaled, y_scaled))
 
             flat_coords = [coord for point in rotated_reflected_points for coord in point]
@@ -1180,16 +988,14 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels
                 "color": fill_color,
                 "selected": False,
                 "building": None,
-                "real_coords": rect,  # ← guarda els vèrtexs reals
+                "real_coords": rect,
                 "index": i,
             })
 
-        # Eventos del mouse
         def on_mouse_down(event):
             nonlocal start_x, start_y, selection_rect
             start_x, start_y = event.x, event.y
-            selection_rect = canvas_2d.create_rectangle(start_x, start_y, start_x, start_y,
-                                                        outline="red", dash=(2, 2))
+            selection_rect = canvas_2d.create_rectangle(start_x, start_y, start_x, start_y, outline="red", dash=(2, 2))
 
         def on_mouse_drag(event):
             canvas_2d.coords(selection_rect, start_x, start_y, event.x, event.y)
@@ -1227,7 +1033,7 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels
         canvas_2d.bind("<B1-Motion>", on_mouse_drag)
         canvas_2d.bind("<ButtonRelease-1>", on_mouse_up)
 
-        ok_button = CTkButton(panel_building_frame, text="OK", text_color="white", width=70, fg_color="#1E3A5F")#,command=confirm_selection)
+        ok_button = CTkButton(panel_building_frame, text="OK", text_color="white", width=70, fg_color="#1E3A5F")
         ok_button.grid(row=0, column=1, padx=(0, 10), pady=(10, 5), sticky="s")
 
         selected_rects_real_coords = []
@@ -1243,22 +1049,16 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels
         def confirm_selection():
             new_color = get_random_color(exclude=["pink"])
             current_indices = []
-
             for b in buildings_canvas:
                 if b["selected"]:
                     selected_rects_real_coords.append(b["real_coords"].copy())
-                    current_indices.append(b["index"])  # ← Guardem l’índex original
-
+                    current_indices.append(b["index"])
                     canvas_2d.itemconfig(b["id"], fill=new_color)
                     b["building"] = "locked"
                     b["selected"] = False
                     b["color"] = new_color
-
             if current_indices:
-                selected_rect_indices.append(tuple(current_indices))  # ← Afegim el grup com a tu vols
-
-            print("Seleccionats i desactivats:", len(current_indices))
-            print("Històric d'índexs:", selected_rect_indices)
+                selected_rect_indices.append(tuple(current_indices))
 
         ok_button.configure(command=confirm_selection)
 
@@ -1267,30 +1067,19 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels
 
         def reset_selection():
             if not selected_rect_indices:
-                print("No quedan selecciones para borrar.")
-                return  # Nada que borrar
-
-            # Sacamos el último grupo de índices (última selección)
+                return
             last_group = selected_rect_indices.pop()
-
-            # Para cada índice de ese grupo, revertimos el estado del edificio
             for idx in last_group:
-                # Buscar el edificio correspondiente
                 for b in buildings_canvas:
                     if b["index"] == idx and b["building"] == "locked":
-                        # Volver a color original
                         b["building"] = None
                         b["selected"] = False
                         b["color"] = "#3A86FF"
                         canvas_2d.itemconfig(b["id"], fill=b["color"])
                         break
 
-            print(f"Última selección eliminada: {last_group}")
-            print(f"Selecciones restantes: {selected_rect_indices}")
-
         reset_button.configure(command=reset_selection)
 
-        # Configurar weights para que filas y columnas se distribuyan bien
         panel_building_frame.grid_rowconfigure(0, weight=1)
         panel_building_frame.grid_rowconfigure(1, weight=1)
         panel_building_frame.grid_columnconfigure(0, weight=1)
@@ -1301,7 +1090,6 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels
         def toggle_dose_layer_b():
             global from_set, build_seg, to_set, button_from, from_frame
             from_set = not from_set
-
             if from_set:
                 button_from.configure(text=" ▲ FROM")
                 from_frame.pack(pady=(5, 0), fill="x")
@@ -1312,7 +1100,6 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels
                     button_to.pack(fill="x", padx=(0, 0), pady=(10, 0))
                     to_frame.pack_forget()
                     to_frame.pack(pady=(10, 0), fill="x")
-
                 if build_seg:
                     build_seg = False
                     button_seg.configure(text=" ▼ Building Segmentation")
@@ -1323,7 +1110,6 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels
                     from_frame.pack(pady=(5, 0), fill="x")
                     button_to.pack_forget()
                     button_to.pack(fill="x", padx=(0, 0), pady=(10, 0))
-
             else:
                 button_from.configure(text=" ▼ FROM")
                 from_frame.pack_forget()
@@ -1351,11 +1137,9 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels
         def toggle_extra_computations():
             global to_set, build_seg
             to_set = not to_set
-
             if to_set:
                 button_to.configure(text=" ▲ TO")
                 to_frame.pack(pady=(10, 0), fill="x")
-
                 if build_seg:
                     build_seg = False
                     button_seg.configure(text=" ▼ Building Segmentation")
@@ -1370,9 +1154,7 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels
                 button_to.configure(text=" ▼ TO")
                 to_frame.pack_forget()
 
-        button_to = CTkButton(panel_canvas, text=" ▼ TO", text_color="#F0F0F0",
-                                                   fg_color="#666666",
-                                                   anchor="w", corner_radius=0, command=toggle_extra_computations)
+        button_to = CTkButton(panel_canvas, text=" ▼ TO", text_color="#F0F0F0", fg_color="#666666", anchor="w", corner_radius=0, command=toggle_extra_computations)
         button_to.pack(fill="x", padx=(0, 0), pady=(10, 0))
 
         to_frame = CTkFrame(panel_canvas, fg_color="#2E2E2E", height=140, corner_radius=0)
@@ -1387,7 +1169,6 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels
         def toggle_latlon():
             global latlon_set, utm_set, show_latlon, show_utm
             show_latlon = not show_latlon
-
             if show_latlon:
                 latlon_set = 1
                 button_coordLatLng.configure(text="▲ Geographic coordinates")
@@ -1396,15 +1177,12 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels
                 zone_frame.pack(pady=(5, 0), anchor='center')
                 lat_frame.pack(pady=(5, 0), anchor='center')
                 lon_frame.pack(pady=(5, 0), anchor='center')
-
-                # Si UTM está abierto, lo cerramos
                 if show_utm:
                     utm_set = 0
                     show_utm = False
                     button_coordUTM.configure(text="▼ UTM coordinates")
                     easting_frame.pack_forget()
                     northing_frame.pack_forget()
-
             else:
                 latlon_set = 0
                 button_coordLatLng.configure(text="▼ Geographic coordinates")
@@ -1417,7 +1195,6 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels
         def toggle_utm():
             global latlon_set, utm_set, show_latlon, show_utm
             show_utm = not show_utm
-
             if show_utm:
                 utm_set = 1
                 button_coordUTM.configure(text="▲ UTM coordinates")
@@ -1425,8 +1202,6 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels
                 label_hint_left.pack_forget()
                 easting_frame.pack(pady=(5, 0), anchor='center')
                 northing_frame.pack(pady=(5, 0), anchor='center')
-
-                # Si Lat/Lon está abierto, lo cerramos
                 if show_latlon:
                     latlon_set = 0
                     show_latlon = False
@@ -1434,7 +1209,6 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels
                     zone_frame.pack_forget()
                     lat_frame.pack_forget()
                     lon_frame.pack_forget()
-
             else:
                 utm_set = 0
                 button_coordUTM.configure(text="▼ UTM coordinates")
@@ -1459,9 +1233,7 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels
         left_to_frame_container.pack(padx=(0, 0), pady=(0, 0))
         left_to_frame_container.pack_propagate(False)
 
-        button_coordLatLng = CTkButton(left_to_frame_container, text="▼ Geographic coordinates", text_color="#F0F0F0",
-                                       fg_color="#3E3E3E",
-                                       corner_radius=0, height=10, command=toggle_latlon)
+        button_coordLatLng = CTkButton(left_to_frame_container, text="▼ Geographic coordinates", text_color="#F0F0F0", fg_color="#3E3E3E", corner_radius=0, height=10, command=toggle_latlon)
         button_coordLatLng.pack(fill='x', padx=0, pady=0)
 
         label_hint_left = CTkLabel(
@@ -1535,9 +1307,7 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels
         entry_northing = CTkEntry(northing_frame, width=50, text_color="black", state="normal", font=("Arial", 12))
         entry_northing.pack(side='left')
 
-        button_return = CTkButton(left_frame, text="Return", text_color="#F0F0F0", fg_color="#B71C1C",
-                                  hover_color="#C62828", corner_radius=0, border_color="#D3D3D3", border_width=2,
-                                  command=btn_return)
+        button_return = CTkButton(left_frame, text="Return", text_color="#F0F0F0", fg_color="#B71C1C", hover_color="#C62828", corner_radius=0, border_color="#D3D3D3", border_width=2, command=btn_return)
         button_return.pack(side="bottom", padx=(0, 0), pady=(5, 0))
 
         button_visualize = CTkButton(left_frame, text="Visualize", text_color="#F0F0F0", fg_color="#1E3A5F",
@@ -1551,14 +1321,10 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels
         left_frame.update_idletasks()
         entry_lat.focus_set()
 
-        # Normalizar coordenadas
         x_array = np.array(xcenter)
         y_array = np.array(ycenter)
-
         x_min, x_max = x_array.min(), x_array.max()
         y_min, y_max = y_array.min(), y_array.max()
-
-        # Centro geométrico
         x_center_geom = (x_min + x_max) / 2
         y_center_geom = (y_min + y_max) / 2
 
@@ -1566,26 +1332,18 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels
             return new_min + (val - min_val) / (max_val - min_val) * (new_max - new_min)
 
         for i in range(len(xcenter)):
-            # Rotar los puntos 180° alrededor del centro
             x_rotado = 2 * x_center_geom - xcenter[i]
             y_rotado = 2 * y_center_geom - ycenter[i]
-
-            # Reflejar horizontalmente (invertir en eje X)
             x_rotado = 2 * x_center_geom - x_rotado
-
-            # Escalar después de rotar
             x = escalar(x_rotado, x_min, x_max, 10, 290)
             y = escalar(y_rotado, y_min, y_max, 10, 190)
-
             posiciones.append((xcenter[i], ycenter[i], FAltcenter[i]))
-            print({posiciones[-1]})
-
-            btn = CTkButton(panel_dronPos, text="", width=6, height=6,
-                            fg_color="blue", hover_color="darkblue", corner_radius=3,
-                            command=lambda b=i: toggle_color(botones[b], b))
+            btn = CTkButton(panel_dronPos, text="", width=6, height=6, fg_color="blue", hover_color="darkblue", corner_radius=3, command=lambda b=i: toggle_color(botones[b], b))
             btn.place(x=x, y=y, anchor="center")
             botones.append(btn)
 
+
+# Function to return to the main menu
 def btn_return():
     global root
     if 'panel_canvas' in globals() and panel_canvas.winfo_exists():
@@ -1618,6 +1376,8 @@ def btn_return():
     root.num_pixeles_x_entry.configure(state="normal")
     root.num_pixeles_y_entry.configure(state="normal")
 
+
+# Function to toggle the color of the button and manage selection
 def toggle_color(boton, index):
     global selected_positions, posiciones, botones
 
@@ -1625,28 +1385,24 @@ def toggle_color(boton, index):
 
     if boton.cget("fg_color") == "blue":
         if not selected_positions:
-            # No hay selección actual → permitir marcar
             boton.configure(fg_color="pink", hover_color="#ff69b4")
             selected_positions.append((x, y, alt))
-            print(f"Seleccionado: ({x}, {y}, {alt})")
-        else:
-            print("Ya hay una posición seleccionada. Deselecciona antes de elegir otra.")
     else:
-        # El botón ya estaba seleccionado → desmarcar
         boton.configure(fg_color="blue", hover_color="darkblue")
         selected_positions = [pos for pos in selected_positions if pos != (x, y, alt)]
-        print(f"Eliminado: ({x}, {y}, {alt})")
 
-def latlon_a_utm(lat, lon, zone):
-    # Define projections
-    wgs84 = Proj(proj='latlong', datum='WGS84')
-    utm = Proj(proj='utm', zone=zone, datum='WGS84', units='m')
 
-    # Transform coordinates
-    x, y = transform(wgs84, utm, lon, lat)
+# Function to convert latitude and longitude to UTM coordinates
+def latlon_to_utm(lat, lon, zone):
+    wgs84_crs = CRS.from_epsg(4326)
+    utm_crs = CRS.from_proj4(f"+proj=utm +zone={zone} +datum=WGS84 +units=m +no_defs")
+    transformer = Transformer.from_crs(wgs84_crs, utm_crs, always_xy=True)
+    x, y = transformer.transform(lon, lat)
     return x, y
 
-def mostrar_resumen_lineas(colores_puntos, total_arboles_cruzados, total_edificios_cruzados):
+
+# Function to display a summary of the lines detected
+def summary_lines(colores_puntos, total_arboles_cruzados, total_edificios_cruzados):
     def ventana():
         resumen = CTkToplevel()
         resumen.title("Obstacle Detection")
@@ -1660,10 +1416,7 @@ def mostrar_resumen_lineas(colores_puntos, total_arboles_cruzados, total_edifici
             item_frame = CTkFrame(scroll, fg_color="#1E1E1E")
             item_frame.pack(anchor="w", padx=10, pady=5)
 
-            # Convertir color float a HEX
-            hex_color = "#{:02x}{:02x}{:02x}".format(
-                int(color[0]*255), int(color[1]*255), int(color[2]*255)
-            )
+            hex_color = "#{:02x}{:02x}{:02x}".format(int(color[0]*255), int(color[1]*255), int(color[2]*255))
 
             circle = CTkCanvas(item_frame, width=20, height=20, bg="#1E1E1E", highlightthickness=0)
             circle.create_oval(2, 2, 18, 18, fill=hex_color, outline=hex_color)
@@ -1679,7 +1432,8 @@ def mostrar_resumen_lineas(colores_puntos, total_arboles_cruzados, total_edifici
 
     threading.Thread(target=ventana, daemon=True).start()
 
-# Crear la barra de progreso
+
+# Function to create a progress bar
 def create_progress_bar():
     progress_bar = ttk.Progressbar(right_frame, orient="horizontal", length=300, mode="determinate", style="TProgressbar")
     right_frame.grid_rowconfigure(0, weight=1)
@@ -1689,29 +1443,33 @@ def create_progress_bar():
     progress_bar.grid(row=1, column=0, pady=10)
     return progress_bar
 
-# Función para actualizar la barra de progreso
+
+# Function to update the progress bar
 def update_progress_bar(progress_bar, value):
     progress_bar['maximum'] = 100
     progress_bar['value'] = value
     root.update_idletasks()
 
+
+# Function to load a point cloud file
 def load_point_cloud():
     global pc_filepath
     root.point_size_entry.delete(0, "end")
     filepath = filedialog.askopenfilename(filetypes=[("PCD Files", "*.pcd")])
     if filepath:
         pc_filepath = filepath
-        print("Point Cloud Selected:", pc_filepath)
         root.point_size_entry.configure(state="normal")
         root.point_size_entry.insert(0, 2)
         root.voxelizer_switch.configure(state="normal")
 
+
+# Function to load an XML metadata file
 def load_xml_metadata():
     global xml_filepath
     xml_filepath = filedialog.askopenfilename(filetypes=[("XML Files", "*.xml")])
-    if xml_filepath:
-        print("XML Selected:", xml_filepath)
 
+
+# Function to process .n42 files
 def process_n42_files():
     global dose_min_csv, dose_max_csv, csv_filepath, heatmap, xcenter, ycenter, FAltcenter, Hcenter, lonmin, lonmax, latmin, latmax
     fp = filedialog.askdirectory(title="Select Folder with .n42 Files")
@@ -1726,7 +1484,7 @@ def process_n42_files():
     Dose_int = 0.0
     H10_int = 0.0
 
-    # cosmic dose measured by the instrument. This should be determined in a lake platform or in the sea after the internal background has already beenn determined
+    # Cosmic dose measured by the instrument. This should be determined in a lake platform or in the sea after the internal background has already beenn determined
     # current values are obtained in Banyoles lake
     Dose_cosmic = 0.0
     H10_cosmic = 0.0
@@ -1738,43 +1496,22 @@ def process_n42_files():
     # low_ROI_counts/high_ROI_counts when no artifical source is present
     R = 13.5  # SiPM 50 mm
 
-    pose = 0
-
-    # define lists with none values with a maximum of 4096 bin in each spectrum
+    # Define lists with none values with a maximum of 4096 bin in each spectrum
     En_ch = [None] * 4096
     Conv_coeff = [None] * 4096
     F = [None] * 4096
 
-    x = [None] * 100000
-    y = [None] * 100000
-
     xcenter = [None] * 100000
     ycenter = [None] * 100000
-
-    intx = [None] * 100000
-    inty = [None] * 100000
-    Hmax = [None] * 100000
     Hcenter = [None] * 100000
-
     FAltcenter = [None] * 100000
 
-    # Total_LTime = 0
-
     sys.path.insert(0, pathN42)
-
-    os.chdir(
-        pathN42)  # Change according to where  are the *.42 files for calculations, i.e., just rebinned or rebinned and summed
+    os.chdir(pathN42)
     listOfFiles = os.listdir(pathN42)
-
-    # If the program is in the same directory than the data .n42 uncomment the following line and comment lines 80-82
-    # listOfFiles = os.listdir()
-
     f_name = fnmatch.filter(listOfFiles, '*.n42')
 
-    # print head of output.dat file
-    # print('Meas_number ', 'Dose_(nGy/h) ', 'H*(10)_nSv/h ', 'H*(10)_1m_(nSv/h) ', 'MMGC ', 'uMMGC ')
-
-    # loop for each *.n42 spectrum
+    # Loop for each *.n42 spectrum
     cont = 0
     for idx, file in enumerate(f_name):
         cont = cont + 1
@@ -1785,61 +1522,48 @@ def process_n42_files():
 
         # Read Start Date Time, LiveTime, DeadTime, ChannelData
         for each in roots.findall('.//RadMeasurement'):
-            # read LiveTime
+            # Read LiveTime
             rating = each.find('.//LiveTimeDuration')
             LiveTime = rating.text
-            # print('LiveTime = ',LiveTime)
 
             # Find substring and convert to float
             LTime = LiveTime[LiveTime.find("T") + 1:LiveTime.find("S")]
             FLTime = float(LTime)
-
-            # FLTime=float(LiveTime)
-            # print('FLTime = ',FLTime)
             LTime = FLTime
 
             # Read counts in each energy bin
             rating = each.find('.//ChannelData')
             ChannelData = rating.text
-            # print('ChannelData = ',ChannelData)
 
             # Convert string of counts in a list of integers
             Split_channels = ChannelData.split()
 
-            # print('Split_channels: ', Split_channels)
             icounts = list(map(float, Split_channels))
 
             # The channel index starts with 0 up to n_channels-1
             n_channels = len(icounts)
-        #         print('number of channels = ',n_channels)
 
         # Read Energy calibration
         for each in roots.findall('.//EnergyCalibration'):
             rating = each.find('.//CoefficientValues')
             Ecal = rating.text
-            #    print('energy_CoefficientValues = ',Ecal)
+
             # Convert string of counts in a list of integers
             Split_coeff = Ecal.split()
             float_coeff = list(map(float, Split_coeff))
-        # The first coefficient is 0
-        #         print('Energy_coeff = ',float_coeff[0],float_coeff[1],float_coeff[2])
-        #         float_coeff[1]=float_coeff[1]*1461./1480.
 
         # Read altitude a.g.l.
         for each in roots.findall('.//GeographicPoint'):
             rating = each.find('.//ElevationValue')
             Altitude = rating.text
-            #         print('Altitude = ',Altitude)
             FAltitude = float(Altitude)
 
             rating = each.find('.//LongitudeValue')
             Longitude = rating.text
-            #         print('Longitud = ',Longitud)
             FLongitude = float(Longitude)
 
             rating = each.find('.//LatitudeValue')
             Latitude = rating.text
-            #         print('Latitude = ',Latitude)
             FLatitude = float(Latitude)
 
         # Calculation of absorbed Dose and H10 using band method function
@@ -1847,19 +1571,15 @@ def process_n42_files():
         H10_conv_meas = 0
         low_ROI = 0
         high_ROI = 0
-
         for i in range(0, n_channels):
-            En_ch[i] = float_coeff[0] + float_coeff[1] * (i + 1)  # HAT QYE VERIFUCAR SI ES i+1 o i
-            #         print ('energia canal ',i,' es: ',En_ch[i])
-            #         print ('cuentas canal ',i,' son: ',int_channel[i])
+            En_ch[i] = float_coeff[0] + float_coeff[1] * (i + 1)
 
             # Calculate Man Made Gross Count MMGC
             if ((En_ch[i] > 200) and (En_ch[i] <= 1340)):
                 low_ROI = low_ROI + int(icounts[i])
-                # print('low_ROI: ',low_ROI)
+
             if ((En_ch[i] > 1340) and (En_ch[i] <= 2980)):
                 high_ROI = high_ROI + int(icounts[i])
-                # print('high_ROI: ',high_ROI)
 
             # Calculate de conversion coefficent for the energy nGy/h per cps WITH capsule and total surface 30 keV   50 mmm
             Conv_coeff[i] = 0
@@ -1871,9 +1591,7 @@ def process_n42_files():
                     i] ** 4 - 1.997841663E-07 * En_ch[i] ** 3 + 4.123346655E-05 * En_ch[i] ** 2 - 0.0035372218034 * \
                                 En_ch[i] + 0.1532763827
             if ((En_ch[i] > 350) and (En_ch[i] <= 3000)):
-                #             Conv_coeff[i]=7.994448817E-20*En_ch[i]**6-8.688859196E-16*En_ch[i]**5+3.673134977E-12*En_ch[i]**4-7.579115501E-09*En_ch[i]**3+7.387567866E-06*En_ch[i]**2-0.0006714962472*En_ch[i]-0.0454215177
                 Conv_coeff[i] = -4.434768244E-07 * En_ch[i] ** 2 + 0.003033563589 * En_ch[i] - 0.6528052087
-                # print ('E = ',En_ch[i], 'w = ',Conv_coeff[i])
 
             # Calculate the conversion coefcient Gy --> Sv
             F[i] = 1
@@ -1883,9 +1601,6 @@ def process_n42_files():
 
             Dose_conv_meas = Dose_conv_meas + icounts[i] / FLTime * Conv_coeff[i]
             H10_conv_meas = H10_conv_meas + (icounts[i] / FLTime * Conv_coeff[i]) * F[i]
-
-            # print('Energy channel: ',En_ch[i], 'wi: ',Conv_coeff[i],'counts: ',icounts[i],'Live_time: ',FLTime, 'Count rate: ',icounts[i]/FLTime,'Dose rate contribution: ',icounts[i]/FLTime*Conv_coeff[i])
-            # print('accumulatgerd dose rate: ',Dose_conv_meas)
 
         # H*(10) conversion factor at reference altitude 1 m
         # using the attenuation coefficient from H*(10) at pla del vent: 0.007
@@ -1900,34 +1615,24 @@ def process_n42_files():
         H10_conv_1m = "%.2f" % H10_conv_1m
         MMGC = "%.2f" % MMGC
         u_MMGC = "%.2f" % u_MMGC
-        # print(cont, file, Dose_conv_meas, H10_conv_meas, H10_conv_1m, MMGC, u_MMGC)
 
         for dose in roots.iter('DoseRateValue'):
-            # giving the value.
             dose.text = str(Dose_conv_meas)
-            # dose.set('unit','nGy/h')
 
         for Ader in roots.iter('AmbientDoseEquivalentRateValue'):
-            # giving the value.
             Ader.text = str(H10_conv_meas)
-        #       Ader.set('unit','nSv/h')
 
         for Ader1m in roots.iter('AmbientDoseEquivalentRateValue_1m'):
-            # giving the value.
             Ader1m.text = str(H10_conv_1m)
-        #       dose.set('unit','nSv/h')
 
         for Man_Made in roots.iter('MMGC'):
-            # giving the value.
             Man_Made.text = str(MMGC)
 
         for uMan_Made in roots.iter('uncertainty_MMGC'):
-            # giving the value.
             uMan_Made.text = str(u_MMGC)
 
-        # tranform x,y
+        # Tranform x,y
         x0, y0, zone_number, zone_letter = utm.from_latlon(FLatitude, FLongitude, )
-        # print('center projection in utm (meters): ', x0, y0)
 
         xcenter[cont] = x0
         ycenter[cont] = y0
@@ -1939,8 +1644,6 @@ def process_n42_files():
             latmax = y0
             lonmin = x0
             lonmax = x0
-
-        # looking for max and min lat l
 
         if x0 < lonmin:
             lonmin = x0
@@ -1959,11 +1662,6 @@ def process_n42_files():
     latmin = latmin - 50
     latmax = latmax + 50
 
-    # Verifica si hay NaN en los datos
-    # print(type(xcenter))
-    # print(type(ycenter))
-    # print(type(Hcenter))
-
     xcenter = np.array(xcenter, dtype=float)
     ycenter = np.array(ycenter, dtype=float)
     Hcenter = np.array(Hcenter, dtype=float)
@@ -1974,47 +1672,25 @@ def process_n42_files():
     Hcenter = np.array([float(i) for i in Hcenter if str(i).replace('.', '', 1).isdigit()])
     FAltcenter = np.array([float(i) for i in FAltcenter if str(i).replace('.', '', 1).isdigit()])
 
-    # print('latmin, latmax,lonmin, lonmax: ', latmin, latmax, lonmin, lonmax)
-    # print('minx,maxx,miny,maxy', min(xcenter), max(xcenter), min(ycenter), max(ycenter))
-    # print('minAlt,maxAlt: ', min(FAltcenter), max(FAltcenter))
-    # print('minH*(10),maxH*(10): ', min(Hcenter), max(Hcenter))
-
-    # print(np.isnan(xcenter).any())  # True si hay algún NaN en x
-    # print(np.isnan(ycenter).any())  # True si hay algún NaN en y
-    # print(np.isnan(Hcenter).any())  # True si hay algún NaN en Hmax
-
-    # print(len(xcenter), len(ycenter), len(Hcenter))
-    # print(xcenter.shape, ycenter.shape, Hcenter.shape)
-
-    # Encuentra el valor máximo en Hcenter
-    max_value = max(Hcenter)
-
-    # Encuentra el índice correspondiente al valor máximo
-    # cont_max = Hcenter.index(max_value)
-    cont_max = np.argmax(Hcenter)
-
-    # Calculo del maximo valor de H*(10) suponiento que es firnte puntual
-    HmaxP = Hcenter[cont_max] * FAltcenter[cont_max] * FAltcenter[cont_max]
-
-    # Define una cuadrícula para el área de interés
+    # Define a grid for the area of interest
     Resolution = 50
     ygrid = np.linspace(latmin, latmax, Resolution)
     xgrid = np.linspace(lonmin, lonmax, Resolution)
     xmesh, ymesh = np.meshgrid(xgrid, ygrid)
 
-    # Inicializar el mapa con valores muy bajos
+    # Initialize the map with very low values
     heatmap = np.full(xmesh.shape, -np.inf)
 
-    # Iterar sobre cada circunferencia
+    # Iterate over each circle
     for xc, yc, radius, hval in zip(xcenter, ycenter, FAltcenter, Hcenter):
-        # Distancia de cada punto de la cuadrícula al centro de la circunferencia
+        # Distance from each grid point to the center of the circle
         distance = np.sqrt((xmesh - xc) ** 2 + (ymesh - yc) ** 2)
-        # Máscara para identificar puntos dentro del círculo
+        # Mask to identify points inside the circle
         mask = distance <= radius
-        # Actualizar el valor máximo en el mapa
+        # Update the maximum value on the map
         heatmap[mask] = np.maximum(heatmap[mask], hval)
 
-    # Configurar los valores mínimos para que sean visibles (si es necesario)
+    # Set minimum values to be visible (if necessary)
     heatmap[heatmap == -np.inf] = np.nan
 
     # Write to CSV
@@ -2022,23 +1698,19 @@ def process_n42_files():
     csv_filepath = output_filename
     with open(output_filename, mode='w', newline='') as csv_file:
         writer = csv.writer(csv_file)
-        writer.writerow(["Latitude", "Longitude", "Dose"])  # Header row
+        writer.writerow(["Latitude", "Longitude", "Dose"])
 
         # Flatten the arrays for iteration
         for i in range(xmesh.shape[0]):
             for j in range(xmesh.shape[1]):
                 writer.writerow([xmesh[i, j], ymesh[i, j], heatmap[i, j]])
 
-    # print('------------------------------------', '\n')
-    # print('Total number of analysed spectra : ', cont, '\n')
-
-    # Procesar el CSV existente
+    # Process the existing CSV
     dosis_values = np.genfromtxt(csv_filepath, delimiter=',', skip_header=1, usecols=2)
-    dosis_values = dosis_values[~np.isnan(dosis_values)]  # Eliminar NaN
+    dosis_values = dosis_values[~np.isnan(dosis_values)]
     dose_min_csv, dose_max_csv = np.min(dosis_values), np.max(dosis_values)
-    # print(f"Dosis Range: Min={self.dose_min_csv}, Max={self.dose_max_csv}")
 
-    # Asignar valores a los campos de Min y Max y deshabilitarlos
+    # Assign values to the Min and Max fields and disable them
     root.low_dose_min.configure(state="normal")
     root.low_dose_min.delete(0, "end")
     root.low_dose_min.insert(0, str(dose_min_csv))
@@ -2064,36 +1736,34 @@ def process_n42_files():
 
     root.dose_layer_switch.configure(state="normal")
 
-    # print('****END PROGRAM *****')
 
-def get_dose_color(dosis_nube, high_dose_rgb, medium_dose_rgb, low_dose_rgb, dose_min_csv, low_max,
-                   medium_min, medium_max, high_min):
-    """ Asigna colores a los puntos según la dosis usando los valores actualizados. """
-
+# Function to assign colors based on dose values
+def get_dose_color(dosis_nube, high_dose_rgb, medium_dose_rgb, low_dose_rgb, dose_min_csv, low_max, medium_min, medium_max, high_min):
     colores_dosis = np.zeros((len(dosis_nube), 3))
     colores_dosis[(dosis_nube >= dose_min_csv) & (dosis_nube < low_max)] = low_dose_rgb
     colores_dosis[(dosis_nube >= medium_min) & (dosis_nube < medium_max)] = medium_dose_rgb
     colores_dosis[dosis_nube >= high_min] = high_dose_rgb
-
     return colores_dosis
 
+
+# Function to extract the origin from an XML file
 def get_origin_from_xml(xml_filepath):
-    """Extrae el origen georeferenciado del archivo metadatos.xml."""
     try:
         tree = ET.parse(xml_filepath)
         roots = tree.getroot()
         srs_origin = roots.find("SRSOrigin")
 
         if srs_origin is None or not srs_origin.text:
-            print("Error: No se encontró la etiqueta <SRSOrigin> en el XML.")
             return None
 
         return np.array([float(coord) for coord in srs_origin.text.split(",")])
 
     except Exception as e:
-        print(f"Error leyendo el archivo XML: {e}")
+        messagebox.showerror("Error", f"Failed to read XML file: {e}")
         return None
 
+
+# Function to toggle the voxel size input
 def toggle_voxel_size():
     global previous_point_value, previous_voxel_value, previous_downsample_value
     if root.voxelizer_var.get():
@@ -2123,6 +1793,8 @@ def toggle_voxel_size():
         if previous_downsample_value != "":
             root.downsample_entry.insert(0, previous_downsample_value)
 
+
+# Function to toggle the dose layer visibility
 def toggle_dose_layer(source_location):
     global show_dose_layer
     if root.dose_layer_switch.get() == 1:
@@ -2151,23 +1823,25 @@ def toggle_dose_layer(source_location):
         root.medium_dose_cb.configure(state="disabled")
         root.high_dose_cb.configure(state="disabled")
 
+
+# Function to find the radioactive source using a genetic algorithm
 def find_radioactive_source(csv_filepath):
     global source_location
+
     if not csv_filepath:
         messagebox.showwarning("Warning", "Please select a N42 file.")
         return
 
     utm_coords = np.genfromtxt(csv_filepath, delimiter=',', skip_header=1)
-    # Filter out rows with NaN values in the dose column
     utm_coords = utm_coords[~np.isnan(utm_coords[:, 2])]
     ga = GeneticAlgorithm(utm_coords)
     source_location = ga.run()
     source_location = source_location
-    print(f"Estimated source location: Easting = {source_location[0]}, Northing = {source_location[1]}")
-    messagebox.showinfo("Source Location",
-                        f"Estimated source location: Easting = {source_location[0]}, Northing = {source_location[1]}")
+    messagebox.showinfo("Source Location",f"Estimated source location: Easting = {source_location[0]}, Northing = {source_location[1]}")
     root.show_source_switch.configure(state="normal")
 
+
+# Function to toggle the source visibility
 def toggle_source():
     global show_source
     if root.show_source_switch.get() == 1:
@@ -2175,11 +1849,11 @@ def toggle_source():
     else:
         show_source = False
 
+
+# Function to validate dose ranges
 def validate_dose_ranges(show_dose_layer, dose_min_csv, dose_max_csv):
     global low_max, medium_min, medium_max, high_min
-    """
-    Validates that the dose ranges have logical values.
-    """
+
     if not show_dose_layer:
         return
 
@@ -2188,6 +1862,7 @@ def validate_dose_ranges(show_dose_layer, dose_min_csv, dose_max_csv):
         medium_min = float(root.medium_dose_min.get())
         medium_max = float(root.medium_dose_max.get())
         high_min = float(root.high_dose_min.get())
+
     except ValueError:
         messagebox.showerror("Error", "Dose range values must be numeric.")
         raise ValueError("Dose range values must be numeric.")
@@ -2196,7 +1871,10 @@ def validate_dose_ranges(show_dose_layer, dose_min_csv, dose_max_csv):
         messagebox.showerror("Error","Dose ranges are not logical. Ensure: min < low_max < medium_min < medium_max < high_min < max.")
         raise ValueError("Dose ranges are not logical.")
 
+
+# Function to plot the heatmap
 def plot_heatmap(heatmap, xcenter, ycenter, Hcenter, lonmin, lonmax, latmin, latmax):
+
     if heatmap is None or xcenter is None or ycenter is None or Hcenter is None:
         messagebox.showerror("Error", "Please process the N42 files first.")
         return
@@ -2204,7 +1882,6 @@ def plot_heatmap(heatmap, xcenter, ycenter, Hcenter, lonmin, lonmax, latmin, lat
     disable_left_frame()
 
     fig, ax = plt.subplots()
-
     cax = ax.imshow(
         heatmap,
         extent=(lonmin, lonmax, latmin, latmax),
@@ -2212,23 +1889,13 @@ def plot_heatmap(heatmap, xcenter, ycenter, Hcenter, lonmin, lonmax, latmin, lat
         cmap='viridis',
         alpha=0.8
     )
-
     fig.colorbar(cax, label='H*(10) rate nSv/h', ax=ax)
-
     ax.set_title('Heatmap H*(10) rate')
     ax.set_xlabel('LONGITUDE')
     ax.set_ylabel('LATITUDE')
-
-    scatter = ax.scatter(
-        xcenter, ycenter,
-        c=Hcenter, cmap='viridis',
-        edgecolor='black', s=50, label='Measurement'
-    )
-
     ax.grid(visible=True, color='black', linestyle='--', linewidth=0.5)
     ax.legend()
 
-    # Conectar el evento de cierre
     def on_close(event):
         enable_left_frame()
 
@@ -2236,12 +1903,15 @@ def plot_heatmap(heatmap, xcenter, ycenter, Hcenter, lonmin, lonmax, latmin, lat
 
     plt.show()
 
+
+# Function to plot a three-color heatmap
 def plot_three_color_heatmap(heatmap, xcenter, ycenter, Hcenter, lonmin, lonmax, latmin, latmax):
+
     if heatmap is None or xcenter is None or ycenter is None or Hcenter is None:
         messagebox.showerror("Error", "Please process the N42 files first.")
         return
 
-    disable_left_frame()  # Desactiva la interfaz al comenzar
+    disable_left_frame()
 
     if root.dose_layer_switch.get() == 1:
         low_dose_color = root.low_dose_cb.get() if root.low_dose_cb.get() else 'green'
@@ -2259,6 +1929,7 @@ def plot_three_color_heatmap(heatmap, xcenter, ycenter, Hcenter, lonmin, lonmax,
             R2 = float(root.medium_dose_max.get()) if root.medium_dose_max.get() else 120
         except ValueError:
             R2 = 120
+
     else:
         colors = ['green', 'yellow', 'red']
         R0, R1, R2 = 0, 80, 120
@@ -2268,7 +1939,6 @@ def plot_three_color_heatmap(heatmap, xcenter, ycenter, Hcenter, lonmin, lonmax,
     cmap = ListedColormap(colors)
     norm = BoundaryNorm(bounds, cmap.N)
 
-    # Crear figura para conectar evento de cierre
     fig, ax = plt.subplots()
 
     im = ax.imshow(
@@ -2311,15 +1981,15 @@ def plot_three_color_heatmap(heatmap, xcenter, ycenter, Hcenter, lonmin, lonmax,
 
     plt.show()
 
-def set_run_prueba_flag(xcenter, ycenter, FAltcenter, pixels_x_str, pixels_y_str):
-    # Check if xcenter or ycenter is None or empty
+
+# Function to set the flag
+def set_flag(xcenter, ycenter, FAltcenter, pixels_x_str, pixels_y_str):
     global las_object, mi_set, pixels_x, pixels_y, combined_mesh_pixels_x, combined_mesh_pixels_y, las, building_prism_cells, combined_mesh
 
     if xcenter is None or len(xcenter) == 0 or ycenter is None or len(ycenter) == 0:
         messagebox.showerror("Error", "Please process the N42 files first.")
         return
 
-    # Validar que sean números enteros
     if not pixels_x_str.isdigit() or not pixels_y_str.isdigit():
         messagebox.showerror("Invalid Input", "Num Pixels X and Y must be integers.")
         return
@@ -2327,13 +1997,12 @@ def set_run_prueba_flag(xcenter, ycenter, FAltcenter, pixels_x_str, pixels_y_str
     root.num_pixeles_x_entry.configure(state="disabled")
     root.num_pixeles_y_entry.configure(state="disabled")
 
-    # Convertir a int una vez validados
     pixels_x = int(pixels_x_str)
     pixels_y = int(pixels_y_str)
 
     if las_object is None:
         mi_set = False
-        segmentationPlus(mi_set, pixels_x, pixels_y)
+        tree_segmentation(mi_set, pixels_x, pixels_y)
 
         combined_mesh_pixels_x = pixels_x
         combined_mesh_pixels_y = pixels_y
@@ -2342,20 +2011,24 @@ def set_run_prueba_flag(xcenter, ycenter, FAltcenter, pixels_x_str, pixels_y_str
         if (combined_mesh is None or combined_mesh_pixels_x != pixels_x or combined_mesh_pixels_y != pixels_y):
             grid(las_object, pixels_x, pixels_y)
 
-            # Guardamos los nuevos valores
             combined_mesh_pixels_x = pixels_x
             combined_mesh_pixels_y = pixels_y
 
         else:
             panel_left_frame(xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels_y, building_prism_cells)
 
+
+# Function to set the function Tree Segemntation
 def set_trees():
     global mi_set, las
     mi_set = True
-    segmentationPlus(mi_set, pixels_x, pixels_y)
+    tree_segmentation(mi_set, pixels_x, pixels_y)
 
+
+# Function to visualize the point cloud and dose layer
 def visualize(pc_filepath, csv_filepath, xml_filepath, show_dose_layer, dose_min_csv, dose_max_csv):
     global altura_extra, point_size, vox_size, high_dose_rgb, medium_dose_rgb, low_dose_rgb, downsample, progress_bar
+
     if not pc_filepath:
         messagebox.showwarning("Warning", "Please select a Point Cloud.")
         return
@@ -2371,11 +2044,7 @@ def visualize(pc_filepath, csv_filepath, xml_filepath, show_dose_layer, dose_min
     validate_dose_ranges(show_dose_layer, dose_min_csv, dose_max_csv)
 
     disable_left_frame()
-
-    # Crear y mostrar la barra de progreso
     progress_bar = create_progress_bar()
-
-    # Actualizar la barra de progreso
     update_progress_bar(progress_bar, 1)
 
     use_voxelization = root.voxelizer_switch.get() == 1
@@ -2409,7 +2078,6 @@ def visualize(pc_filepath, csv_filepath, xml_filepath, show_dose_layer, dose_min
         high_dose_color = root.high_dose_cb.get()
         medium_dose_color = root.medium_dose_cb.get()
         low_dose_color = root.low_dose_cb.get()
-
         high_dose_rgb = np.array(mcolors.to_rgb(high_dose_color))
         medium_dose_rgb = np.array(mcolors.to_rgb(medium_dose_color))
         low_dose_rgb = np.array(mcolors.to_rgb(low_dose_color))
@@ -2423,45 +2091,35 @@ def visualize(pc_filepath, csv_filepath, xml_filepath, show_dose_layer, dose_min
     else:
         downsample = None
 
-    # Actualizar la barra de progreso
     update_progress_bar(progress_bar, 10)
 
     if use_voxelization:
-        mostrar_nube_si_vox(show_dose_layer, pc_filepath, xml_filepath, csv_filepath, high_dose_rgb, medium_dose_rgb, low_dose_rgb, dose_min_csv, low_max,
+        point_cloud_vox(show_dose_layer, pc_filepath, xml_filepath, csv_filepath, high_dose_rgb, medium_dose_rgb, low_dose_rgb, dose_min_csv, low_max,
             medium_min, medium_max, high_min, altura_extra, progress_bar)
     else:
-        mostrar_nube_no_vox(show_dose_layer, pc_filepath, downsample, xml_filepath, csv_filepath, high_dose_rgb, medium_dose_rgb,
+        point_cloud_no_vox(show_dose_layer, pc_filepath, downsample, xml_filepath, csv_filepath, high_dose_rgb, medium_dose_rgb,
             low_dose_rgb, dose_min_csv, low_max, medium_min, medium_max, high_min, altura_extra, show_source, source_location, point_size, progress_bar)
 
 
+# Segmentation function
 def segmentation():
     def run():
         fp = filedialog.askopenfilename(filetypes=[("LAS Files", "*.las")])
         if fp:
-            print("Point Cloud Selected:", fp)
-
             disable_left_frame()
 
-            # Crear y mostrar la barra de progreso
             progress_bar = create_progress_bar()
-
-            # Actualizar la barra de progreso
             update_progress_bar(progress_bar, 1)
 
-            # Read the LAS file
             las = laspy.read(fp)
 
-            # Extract points and classifications
             points = np.vstack((las.x, las.y, las.z)).transpose()
             classifications = np.array(las.classification)
 
-            # Actualizar la barra de progreso
             update_progress_bar(progress_bar, 10)
 
-            # Conteo de cada clasificación
             counts = dict(Counter(classifications))
 
-            # Actualizar la barra de progreso
             update_progress_bar(progress_bar, 20)
 
             script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -2470,64 +2128,47 @@ def segmentation():
             with open(json_path, "r") as f:
                 color_map = json.load(f)["classifications"]
 
-            # Convertir claves a int y valores a np.array
             color_map = {int(k): np.array(v) for k, v in color_map.items()}
 
             unique_classes = np.unique(classifications)
             for cls in unique_classes:
                 if cls not in color_map:
                     color_map[cls] = np.random.rand(3)
-                    print(f"Clase adicional detectada: {cls}, color asignado: {color_map[cls]}")
 
-            # Actualizar la barra de progreso
             update_progress_bar(progress_bar, 40)
 
-            # Create an Open3D PointCloud
             pcd = o3d.geometry.PointCloud()
             pcd.points = o3d.utility.Vector3dVector(points)
 
-            # Actualizar la barra de progreso
             update_progress_bar(progress_bar, 50)
 
             colors = np.zeros((points.shape[0], 3))
 
-            # Actualizar la barra de progreso
             update_progress_bar(progress_bar, 60)
 
             for classification, color in color_map.items():
                 colors[classifications == classification] = color
 
-            # Actualizar la barra de progreso
             update_progress_bar(progress_bar, 80)
 
             pcd.colors = o3d.utility.Vector3dVector(colors)
 
-            # Actualizar la barra de progreso
             update_progress_bar(progress_bar, 100)
-
-            # Eliminar la barra de progreso
             progress_bar.grid_forget()
 
             legend_left_frame(counts, color_map)
 
-            # Visualize the point cloud
             vis = o3d.visualization.Visualizer()
 
-            # Obtener las dimensiones del right_frame
             right_frame.update_idletasks()
             right_frame_width = right_frame.winfo_width()
             right_frame_height = right_frame.winfo_height()
-
-            # Obtener las dimensiones del left_frame
             left_frame.update_idletasks()
             left_frame_width = left_frame.winfo_width()
-
-            # Calcular tittle bar
             title_bar_height = ctypes.windll.user32.GetSystemMetrics(4)
 
             vis.create_window(window_name='Open3D', width=right_frame_width, height=right_frame_height,
                               left=left_frame_width, top=title_bar_height)
-
             vis.clear_geometries()
             vis.add_geometry(pcd)
 
@@ -2536,8 +2177,6 @@ def segmentation():
                 vis.update_renderer()
 
                 if not vis.poll_events():
-                    print("Ventana Cerrada")
-                    #Elimina el legend
                     if 'legend_frame' in globals() and legend_frame.winfo_exists():
                         legend_frame.place_forget()
 
@@ -2547,17 +2186,14 @@ def segmentation():
                     enable_left_frame()
                     break
 
-            # Verificar si la nube de puntos tiene atributos
             if not pcd.has_points():
-                print("La nube de puntos no tiene puntos.")
                 return
-
-        else:
-            print("No file selected.")
 
     threading.Thread(target=run, daemon=True).start()
 
-def segmentationPlus(mi_set, pixels_x, pixels_y):
+
+# Tree segmentation function
+def tree_segmentation(mi_set, pixels_x, pixels_y):
     def run():
         global las_object, progress_bar, classificationtree, labels_clean, chm, rows, cols, pcd, xmin, ymax, resolution, las
 
@@ -2568,7 +2204,6 @@ def segmentationPlus(mi_set, pixels_x, pixels_y):
                     return
                 else:
                     las = fp
-
             else:
                 fp = las
 
@@ -2576,32 +2211,20 @@ def segmentationPlus(mi_set, pixels_x, pixels_y):
             fp = las
 
         if fp is None:
-            print("No file selected.")
             return
 
         if las_object is None:
-            print("Point Cloud Selected:", fp)
-
             disable_left_frame()
 
-            # Crear y mostrar la barra de progreso
             progress_bar = create_progress_bar()
-
-            # Actualizar la barra de progreso
             update_progress_bar(progress_bar, 1)
 
-            # Read the LAS file
             las_r = laspy.read(fp)
 
-            # Extract points and classifications
             points = np.vstack((las_r.x, las_r.y, las_r.z)).transpose()
             classifications = np.array(las_r.classification)
 
-            # Actualizar la barra de progreso
             update_progress_bar(progress_bar, 5)
-
-            # Conteo de cada clasificación
-            counts = dict(Counter(classifications))
 
             script_dir = os.path.dirname(os.path.abspath(__file__))
             json_path = os.path.join(script_dir, "classification_colors_sp.json")
@@ -2609,7 +2232,6 @@ def segmentationPlus(mi_set, pixels_x, pixels_y):
             with open(json_path, "r") as f:
                 color_map = json.load(f)["classifications"]
 
-            # Convertir claves a int y valores a np.array
             color_map = {int(k): np.array(v) for k, v in color_map.items()}
 
             unique_classes = np.unique(classifications)
@@ -2617,9 +2239,7 @@ def segmentationPlus(mi_set, pixels_x, pixels_y):
                 if cls not in color_map:
                     gray = np.random.uniform(0.3, 0.8)
                     color_map[cls] = [gray, gray, gray]
-                    print(f"Clase adicional detectada: {cls}, color asignado: {color_map[cls]}")
 
-            # Actualizar la barra de progreso
             update_progress_bar(progress_bar, 10)
 
             pcd = o3d.geometry.PointCloud()
@@ -2629,94 +2249,68 @@ def segmentationPlus(mi_set, pixels_x, pixels_y):
             for classification, color in color_map.items():
                 colors[classifications == classification] = color
 
-            # Actualizar la barra de progreso
             update_progress_bar(progress_bar, 15)
 
             pcd.colors = o3d.utility.Vector3dVector(colors)
 
-            # === Filtrar clasificación 4 (Medium Vegetation) ===
             medium_veg_points = points[classifications == 4]
             if medium_veg_points.shape[0] == 0:
-                print("No hay puntos con clasificación 4 en esta nube.")
                 return
 
-            # Actualizar la barra de progreso
             update_progress_bar(progress_bar, 20)
 
-            # === Filtrar por altura mínima ===
             min_medium_veg_height = np.min(medium_veg_points[:, 2])
-            max_medium_veg_height = np.max(medium_veg_points[:, 2])
-
-            print(f"Altura mínima de la medium vegetation: {min_medium_veg_height}")
-            print(f"Altura max de la medium vegetation: {max_medium_veg_height}")
-
             medium_veg_points = medium_veg_points[medium_veg_points[:, 2] >= min_medium_veg_height + 2.3]
 
-            # Actualizar la barra de progreso
             update_progress_bar(progress_bar, 25)
 
-            # Crear un Canopy Height Model (CHM) rasterizado
-            resolution = 0.55  # tamaño de celda en metros
-            xmin, ymin = medium_veg_points[:, 0].min(), medium_veg_points[:, 1].min() #Obtiene el área de la nube.
+            resolution = 0.55
+            xmin, ymin = medium_veg_points[:, 0].min(), medium_veg_points[:, 1].min()
             xmax, ymax = medium_veg_points[:, 0].max(), medium_veg_points[:, 1].max()
 
-            # Actualizar la barra de progreso
             update_progress_bar(progress_bar, 30)
 
             cols = int(np.ceil((xmax - xmin) / resolution))
             rows = int(np.ceil((ymax - ymin) / resolution))
-            chm = np.full((rows, cols), -999.0) #Crea la matriz CHM vacía.
+            chm = np.full((rows, cols), -999.0)
 
             for x, y, z in medium_veg_points:
                 col = int((x - xmin) / resolution)
-                row = int((ymax - y) / resolution)  # Y invertido
+                row = int((ymax - y) / resolution)
                 if 0 <= row < rows and 0 <= col < cols:
-                    if z > chm[row, col]:   #Llena el CHM con la altura máxima en cada celda.
+                    if z > chm[row, col]:
                         chm[row, col] = z
 
-            # Actualizar la barra de progreso
             update_progress_bar(progress_bar, 40)
 
-            chm[chm == -999.0] = np.nan  # Celda vacía = NaN
+            chm[chm == -999.0] = np.nan
             chm_smooth = np.nan_to_num(chm)
-            chm_smooth = gaussian_filter(chm_smooth, sigma=2) #Elimina ruido y micro-picos para mejorar la detección.
-
-            # Detectar máximos locales: posibles copas de árboles
+            chm_smooth = gaussian_filter(chm_smooth, sigma=2)
             coordinates = peak_local_max(chm_smooth, min_distance=2, exclude_border=False)
 
-            # Actualizar la barra de progreso
             update_progress_bar(progress_bar, 50)
 
-            # Crear marcadores para Watershed
             markers = np.zeros_like(chm_smooth, dtype=int)
-            for i, (r, c) in enumerate(coordinates, 1): #Cada máximo local recibe un número.
+            for i, (r, c) in enumerate(coordinates, 1):
                 markers[r, c] = i
 
-            # Actualizar la barra de progreso
             update_progress_bar(progress_bar, 60)
 
-            # Aplicar Watershed sobre CHM invertido
-            elevation = -chm_smooth #Invierte la altura (Watershed trabaja buscando valles)
-            labels = watershed(elevation, markers, mask=~np.isnan(chm)) #Segmenta el CHM en árboles. Asigna cada celda a un árbol específico.
-
-            # Conteo de píxeles por árbol
+            elevation = -chm_smooth
+            labels = watershed(elevation, markers, mask=~np.isnan(chm))
             label_sizes = ndi.sum(~np.isnan(chm), labels, index=np.arange(1, labels.max() + 1))
 
-            # Define un mínimo de celdas, por ejemplo 20 celdas
             min_size = 20
             mask = np.zeros_like(labels, dtype=bool)
 
-            # Actualizar la barra de progreso
             update_progress_bar(progress_bar, 70)
 
             for i, size in enumerate(label_sizes, 1):
               if size >= min_size:
                     mask |= labels == i
 
-            # Filtrar etiquetas pequeñas
             labels_clean = labels * mask
 
-            # Crear una nueva columna `classificationtree`
             classificationtree = np.zeros(len(points), dtype=int)
             for i, (x, y, z) in enumerate(points):
                 col = int((x - xmin) / resolution)
@@ -2726,7 +2320,6 @@ def segmentationPlus(mi_set, pixels_x, pixels_y):
                     if tree_id > 0:
                         classificationtree[i] = tree_id
 
-            # Agregar la nueva columna al archivo LAS
             las_r.add_extra_dim(
                 laspy.ExtraBytesParams(name="classificationtree", type=np.int32)
             )
@@ -2740,40 +2333,21 @@ def segmentationPlus(mi_set, pixels_x, pixels_y):
                 grid(las_object, pixels_x, pixels_y)
 
             if mi_set == True:
-                # Contar las ocurrencias de cada clasificación
                 classifications = np.array(las_r.classificationtree)
-                counts = Counter(classifications)
-                print("Clasificación de puntos en el archivo LAS:")
-                for classification, count in counts.items():
-                    print(f"Categoría {classification}: {count} puntos")
+                num_arboles = len(np.unique(labels_clean)) - 1
+                filtered_chm = np.where((labels_clean > 0), chm, np.nan)
 
-                unique_classificationtree = np.unique(classificationtree)
-                print("Unique classifications 1:", unique_classificationtree)
-
-                num_arboles = len(np.unique(labels_clean)) - 1  # Restar 1 para no contar el fondo
-                print(f"Número de árboles detectados: {num_arboles}")
-
-                # Filtrar el CHM y las etiquetas usando labels_clean
-                filtered_chm = np.where((labels_clean > 0), chm, np.nan)  # Mantén solo celdas válidas
-
-                # Actualizar la barra de progreso
                 update_progress_bar(progress_bar, 80)
 
-                # Get the maximum label value
                 max_label = np.max(labels_clean)
+                colors = np.random.rand(max_label + 1, 3)
 
-                # Generate random colors for each label, including the background (label 0)
-                colors = np.random.rand(max_label + 1, 3)  # Ensure the size matches the maximum label
-
-                # Assign colors to each tree
                 tree_colors = np.zeros((labels_clean.shape[0], labels_clean.shape[1], 3))
                 for label in range(max_label + 1):
                     tree_colors[labels_clean == label] = colors[label]
 
-                # Actualizar la barra de progreso
                 update_progress_bar(progress_bar, 90)
 
-                # Crear una nube de puntos coloreada
                 pcd_points = []
                 pcd_colors = []
 
@@ -2791,27 +2365,18 @@ def segmentationPlus(mi_set, pixels_x, pixels_y):
                 pcd_tree.points = o3d.utility.Vector3dVector(np.array(pcd_points))
                 pcd_tree.colors = o3d.utility.Vector3dVector(np.array(pcd_colors))
 
-                # Actualizar la barra de progreso
                 update_progress_bar(progress_bar, 100)
-
-                # Eliminar la barra de progreso
                 progress_bar.grid_forget()
 
                 messagebox.showinfo("Segmentation Complete", f"Number of detected trees: {num_arboles}")
 
-                # Visualizar la nube de puntos
                 vis = o3d.visualization.Visualizer()
 
-                # Obtener las dimensiones del right_frame
                 right_frame.update_idletasks()
                 right_frame_width = right_frame.winfo_width()
                 right_frame_height = right_frame.winfo_height()
-
-                # Obtener las dimensiones del left_frame
                 left_frame.update_idletasks()
                 left_frame_width = left_frame.winfo_width()
-
-                # Calcular tittle bar
                 title_bar_height = ctypes.windll.user32.GetSystemMetrics(4)
 
                 vis.create_window(window_name='Open3D', width=right_frame_width + left_frame_width,
@@ -2826,15 +2391,11 @@ def segmentationPlus(mi_set, pixels_x, pixels_y):
                     vis.update_renderer()
 
                     if not vis.poll_events():
-                        print("Ventana Cerrada")
                         enable_left_frame()
                         break
 
-                # Verificar si la nube de puntos tiene atributos
                 if not pcd.has_points():
-                    print("La nube de puntos no tiene puntos.")
                     return
-
         else:
             progress_bar = create_progress_bar()
             update_progress_bar(progress_bar, 10)
@@ -2845,44 +2406,28 @@ def segmentationPlus(mi_set, pixels_x, pixels_y):
                 grid(las_object, pixels_x, pixels_y)
 
             if mi_set == True:
-                # Contar las ocurrencias de cada clasificación
                 classifications = np.array(las_object.classificationtree)
-                counts = Counter(classifications)
-                print("Clasificación de puntos en el archivo LAS:")
-                for classification, count in counts.items():
-                    print(f"Categoría {classification}: {count} puntos")
 
                 update_progress_bar(progress_bar, 20)
 
-                unique_classificationtree = np.unique(classificationtree)
-                print("Unique classifications 1:", unique_classificationtree)
-
-                num_arboles = len(np.unique(labels_clean)) - 1  # Restar 1 para no contar el fondo
-                print(f"Número de árboles detectados: {num_arboles}")
+                num_arboles = len(np.unique(labels_clean)) - 1
 
                 update_progress_bar(progress_bar, 40)
 
-                # Filtrar el CHM y las etiquetas usando labels_clean
-                filtered_chm = np.where((labels_clean > 0), chm, np.nan)  # Mantén solo celdas válidas
+                filtered_chm = np.where((labels_clean > 0), chm, np.nan)
 
-                # Actualizar la barra de progreso
                 update_progress_bar(progress_bar, 80)
 
-                # Get the maximum label value
                 max_label = np.max(labels_clean)
 
-                # Generate random colors for each label, including the background (label 0)
-                colors = np.random.rand(max_label + 1, 3)  # Ensure the size matches the maximum label
+                colors = np.random.rand(max_label + 1, 3)
 
-                # Assign colors to each tree
                 tree_colors = np.zeros((labels_clean.shape[0], labels_clean.shape[1], 3))
                 for label in range(max_label + 1):
                     tree_colors[labels_clean == label] = colors[label]
 
-                # Actualizar la barra de progreso
                 update_progress_bar(progress_bar, 90)
 
-                # Crear una nube de puntos coloreada
                 pcd_points = []
                 pcd_colors = []
 
@@ -2900,27 +2445,18 @@ def segmentationPlus(mi_set, pixels_x, pixels_y):
                 pcd_tree.points = o3d.utility.Vector3dVector(np.array(pcd_points))
                 pcd_tree.colors = o3d.utility.Vector3dVector(np.array(pcd_colors))
 
-                # Actualizar la barra de progreso
                 update_progress_bar(progress_bar, 100)
-
-                # Eliminar la barra de progreso
                 progress_bar.grid_forget()
 
                 messagebox.showinfo("Segmentation Complete", f"Number of detected trees: {num_arboles}")
 
-                # Visualizar la nube de puntos
                 vis = o3d.visualization.Visualizer()
 
-                # Obtener las dimensiones del right_frame
                 right_frame.update_idletasks()
                 right_frame_width = right_frame.winfo_width()
                 right_frame_height = right_frame.winfo_height()
-
-                # Obtener las dimensiones del left_frame
                 left_frame.update_idletasks()
                 left_frame_width = left_frame.winfo_width()
-
-                # Calcular tittle bar
                 title_bar_height = ctypes.windll.user32.GetSystemMetrics(4)
 
                 vis.create_window(window_name='Open3D', width=right_frame_width + left_frame_width,
@@ -2935,58 +2471,57 @@ def segmentationPlus(mi_set, pixels_x, pixels_y):
                     vis.update_renderer()
 
                     if not vis.poll_events():
-                        print("Ventana Cerrada")
                         enable_left_frame()
                         break
 
     threading.Thread(target=run, daemon=True).start()
 
-# Crear la ventana de Tkinter
+
+# ----------- Main application window -----------
 root = CTk()
-root.title("Visor de Nube de Puntos")
 root.title("Point Cloud Viewer")
 root.configure(bg="#1E1E1E")
 
+# Set the window size and position
 def maximize_window():
     root.state("zoomed")
 
 root.after(0, maximize_window)
 
+# Disable the frame
 def disable_frame():
     root.attributes('-disabled', True)
 
+# Enable the frame
 def enable_frame():
     root.attributes('-disabled', False)
 
 disable_frame()
 
+# Show a message to the user
 def show_message():
     messagebox.showinfo("Information", "In this program, each time you want to edit the parameters, the Open3D window must be closed. Click the Accept button to start.")
     enable_frame()
 
 root.after(1000, show_message)
 
-# Configure the grid layout for the root window
 root.grid_rowconfigure(0, weight=1)
 root.grid_columnconfigure(0, weight=1)
 root.grid_columnconfigure(1, weight=4)
 
-# Create the left frame
 left_frame = CTkFrame(root, fg_color="#2E2E2E", corner_radius=0)
 left_frame.grid(row=0, column=0, sticky="nsew")
 left_frame.pack_propagate(False)
 
-# Create the right frame
 right_frame = CTkFrame(root, fg_color="white", corner_radius=0)
 right_frame.grid(row=0, column=1, sticky="nsew")
 
-# Frame para los botones del menú
 menu_frame = CTkFrame(left_frame, fg_color="#2E2E2E", corner_radius=0)
 menu_frame.pack(pady=(15, 0))
 
-# Open...
 root.menu_visible = False
 
+# Function to toggle the visibility of the menu buttons
 def toggle_menu():
     root.menu_visible = not root.menu_visible
 
@@ -3002,33 +2537,25 @@ def toggle_menu():
 root.btn_menu = CTkButton(menu_frame, text="Open ...", command=toggle_menu, fg_color="#3E3E3E")
 root.btn_menu.pack(pady=(5, 0))
 
-
+# Load Point Cloud, N42 File, and XML Metadata
 def load_point_cloud_and_toggle():
     load_point_cloud()
     toggle_menu()
 
-
+# Process N42 files and toggle the menu
 def process_n42_files_and_toggle():
     process_n42_files()
     toggle_menu()
 
-
+# Load XML metadata and toggle the menu
 def load_xml_metadata_and_toggle():
     load_xml_metadata()
     toggle_menu()
 
+root.btn_open_pc = CTkButton(menu_frame, text="Point Cloud", text_color="#2E2E2E", fg_color="#F0F0F0", border_color="#6E6E6E", border_width=1, font=("Arial", 12), command=load_point_cloud_and_toggle)
+root.btn_open_csv = CTkButton(menu_frame, text="N42 File", text_color="#2E2E2E", fg_color="#F0F0F0", border_color="#6E6E6E", border_width=2, font=("Arial", 12), command=process_n42_files_and_toggle)
+root.btn_open_xml = CTkButton(menu_frame, text="XML", text_color="#2E2E2E", fg_color="#F0F0F0", border_color="#6E6E6E", border_width=1, font=("Arial", 12), command=load_xml_metadata_and_toggle)
 
-root.btn_open_pc = CTkButton(menu_frame, text="Point Cloud", text_color="#2E2E2E", fg_color="#F0F0F0",
-                             border_color="#6E6E6E", border_width=1, font=("Arial", 12),
-                             command=load_point_cloud_and_toggle)
-root.btn_open_csv = CTkButton(menu_frame, text="N42 File", text_color="#2E2E2E", fg_color="#F0F0F0",
-                              border_color="#6E6E6E", border_width=2, font=("Arial", 12),
-                              command=process_n42_files_and_toggle)
-root.btn_open_xml = CTkButton(menu_frame, text="XML", text_color="#2E2E2E", fg_color="#F0F0F0",
-                              border_color="#6E6E6E", border_width=1, font=("Arial", 12),
-                              command=load_xml_metadata_and_toggle)
-
-# Downsample
 downsample_frame = CTkFrame(left_frame, fg_color="#2E2E2E", corner_radius=0)
 downsample_frame.pack(pady=(10, 0))
 label_downsample = CTkLabel(downsample_frame, text="Downsample:", text_color="#F0F0F0", font=("Arial", 12))
@@ -3038,10 +2565,9 @@ label_downsample.pack(side="left", padx=(0, 5))
 root.downsample_entry.pack(side="left", padx=(0, 5))
 label_percent.pack(side="left")
 
-# Parameters Button
 root.parameters_visible = False
 
-
+# Function to toggle the visibility of the parameters frame
 def toggle_parameters():
     root.parameters_visible = not root.parameters_visible
 
@@ -3077,15 +2603,12 @@ def toggle_parameters():
         root.btn_visualize.pack_forget()
         root.btn_visualize.pack(side="bottom", padx=(0, 0), pady=(10, 25))
 
-
-# Parameters Button
 root.button_parameters = CTkButton(left_frame, text=" ▼ Parameters", text_color="#F0F0F0", fg_color="#3E3E3E",
                               anchor="w", corner_radius=0, command=toggle_parameters)
 root.button_parameters.pack(fill="x", padx=(0, 0), pady=(10, 0))
 
 parameters_frame = CTkFrame(left_frame, fg_color="#2E2E2E", corner_radius=0)
 
-# Point Size
 point_size_frame = CTkFrame(parameters_frame, fg_color="#2E2E2E", corner_radius=0)
 point_size_frame.pack(fill="x", padx=(10, 10), pady=(0, 0))
 label_point_size = CTkLabel(point_size_frame, text="Point Size:", text_color="#F0F0F0", font=("Arial", 12))
@@ -3093,7 +2616,6 @@ root.point_size_entry = CTkEntry(point_size_frame, width=50, font=("Arial", 12),
 label_point_size.pack(side="left", padx=(10, 5))
 root.point_size_entry.pack(side="left", padx=(0, 5))
 
-# Voxelizer
 voxelizer_frame = CTkFrame(parameters_frame, fg_color="#252525", corner_radius=0)
 voxelizer_frame.pack(fill="x", padx=(10, 10), pady=(5, 0))
 voxelizer_frame.grid_columnconfigure(0, weight=1)
@@ -3103,8 +2625,7 @@ voxelizer_frame.grid_columnconfigure(3, weight=1)
 label_voxelizer = CTkLabel(voxelizer_frame, text="Voxelizer:", text_color="#F0F0F0", font=("Arial", 12))
 label_voxelizer.grid(row=0, column=1, padx=(10, 5), pady=(5, 0), sticky="e")
 root.voxelizer_var = BooleanVar()
-root.voxelizer_switch = CTkSwitch(voxelizer_frame, variable=root.voxelizer_var, command=toggle_voxel_size,
-                                  text="", state="disabled")
+root.voxelizer_switch = CTkSwitch(voxelizer_frame, variable=root.voxelizer_var, command=toggle_voxel_size, text="", state="disabled")
 root.voxelizer_switch.grid(row=0, column=2, padx=(0, 5), pady=(5, 0), sticky="w")
 voxelizerSize_frame = CTkFrame(parameters_frame, fg_color="#1E1E1E", corner_radius=0)
 voxelizerSize_frame.pack(fill="x", padx=(10, 10), pady=(0, 0))
@@ -3113,10 +2634,9 @@ label_vox_size.grid(row=1, column=0, padx=(10, 5), pady=(5, 5), sticky="w")
 root.vox_size_entry = CTkEntry(voxelizerSize_frame, width=50, font=("Arial", 12), state="disabled")
 root.vox_size_entry.grid(row=1, column=1, padx=(0, 5), pady=(5, 5), sticky="w")
 
-# Dose Layer
 root.dose_layer_visible = False
 
-
+# Function to toggle the visibility of the dose layer
 def toggle_dose_layer_b():
     root.dose_layer_visible = not root.dose_layer_visible
 
@@ -3144,7 +2664,6 @@ root.button_dose_layer = CTkButton(left_frame, text=" ▼ Dose Layer", text_colo
                               anchor="w", corner_radius=0, command=toggle_dose_layer_b)
 root.button_dose_layer.pack(fill="x", padx=(0, 0), pady=(10, 0))
 
-# Dose Layer
 dose_layer_frame = CTkFrame(left_frame, fg_color="#2E2E2E", corner_radius=0)
 
 yes_no_frame = CTkFrame(dose_layer_frame, fg_color="#2E2E2E", corner_radius=0)
@@ -3160,20 +2679,17 @@ root.dose_layer_switch.pack(side="left", padx=(5, 2))  # Menos espacio entre swi
 label_yes = CTkLabel(yes_no_frame, text="Yes", text_color="#F0F0F0", font=("Arial", 12))
 label_yes.pack(side="left", padx=(2, 5))  # Reducido el espacio antes de "Yes"
 
-# Dosis Elevation
 dosis_elevation_frame = CTkFrame(dose_layer_frame, fg_color="#2E2E2E", corner_radius=0)
 dosis_elevation_frame.pack(fill="x", pady=(5, 0), anchor="center")
 label_dosis_elevation = CTkLabel(dosis_elevation_frame, text="Dose Elevation:", text_color="#F0F0F0",
                                  font=("Arial", 12))
 label_dosis_elevation.pack(side="left", padx=(10, 5))
 
-
+# Function to update the slider label
 def update_slider_label(value):
     slider_label.configure(text=f"{value:.2f}", font=("Arial", 12))
 
-
-root.dosis_slider = CTkSlider(dosis_elevation_frame, from_=-100, to=100, command=update_slider_label,
-                              state="disabled")
+root.dosis_slider = CTkSlider(dosis_elevation_frame, from_=-100, to=100, command=update_slider_label, state="disabled")
 root.dosis_slider.set(1)
 root.dosis_slider.pack(side="left", padx=(0, 5))
 slider_label = CTkLabel(dosis_elevation_frame, text="1.00", text_color="#F0F0F0")
@@ -3187,48 +2703,39 @@ root.color_options = ["red", "yellow", "green", "blue", "purple", "orange", "cya
 root.high_min_medium_max = StringVar()
 root.medium_min_low_max = StringVar()
 
-# High Dose
 label_high_dose = CTkLabel(dose_sections_frame, text="High Dose:", text_color="#F0F0F0", font=("Arial", 12))
 label_high_dose.grid(row=0, column=0, padx=(10, 5), sticky="ew")
-root.high_dose_cb = CTkComboBox(dose_sections_frame, values=root.color_options, font=("Arial", 12), width=90,
-                                state="disabled")
+root.high_dose_cb = CTkComboBox(dose_sections_frame, values=root.color_options, font=("Arial", 12), width=90, state="disabled")
 root.high_dose_cb.set("red")
 root.high_dose_cb.grid(row=0, column=1, padx=(0, 5), sticky="ew")
 high_dose_rgb = np.array(mcolors.to_rgb("red"))
 label_min = CTkLabel(dose_sections_frame, text="Min:", text_color="#F0F0F0", font=("Arial", 12))
 label_min.grid(row=0, column=2, padx=(0, 5), sticky="ew")
-root.high_dose_min = CTkEntry(dose_sections_frame, width=50, font=("Arial", 11),
-                              textvariable=root.high_min_medium_max, state="disabled")
+root.high_dose_min = CTkEntry(dose_sections_frame, width=50, font=("Arial", 11), textvariable=root.high_min_medium_max, state="disabled")
 root.high_dose_min.grid(row=0, column=3, padx=(0, 5), sticky="ew")
 label_max = CTkLabel(dose_sections_frame, text="Max:", text_color="#F0F0F0", font=("Arial", 12))
 label_max.grid(row=0, column=4, padx=(0, 5), sticky="ew")
 root.high_dose_max = CTkEntry(dose_sections_frame, width=50, font=("Arial", 11), state="disabled")
 root.high_dose_max.grid(row=0, column=5, padx=(0, 5), sticky="ew")
 
-# Medium Dose
 label_medium_dose = CTkLabel(dose_sections_frame, text="Medium Dose:", text_color="#F0F0F0", font=("Arial", 12))
 label_medium_dose.grid(row=1, column=0, padx=(10, 5), sticky="ew")
-root.medium_dose_cb = CTkComboBox(dose_sections_frame, values=root.color_options, font=("Arial", 12), width=90,
-                                  state="disabled")
+root.medium_dose_cb = CTkComboBox(dose_sections_frame, values=root.color_options, font=("Arial", 12), width=90, state="disabled")
 root.medium_dose_cb.set("yellow")
 root.medium_dose_cb.grid(row=1, column=1, padx=(0, 5), sticky="ew")
 medium_dose_rgb = np.array(mcolors.to_rgb("yellow"))
 label_min_medium = CTkLabel(dose_sections_frame, text="Min:", text_color="#F0F0F0", font=("Arial", 12))
 label_min_medium.grid(row=1, column=2, padx=(0, 5), sticky="ew")
-root.medium_dose_min = CTkEntry(dose_sections_frame, width=50, font=("Arial", 11),
-                                textvariable=root.medium_min_low_max, state="disabled")
+root.medium_dose_min = CTkEntry(dose_sections_frame, width=50, font=("Arial", 11), textvariable=root.medium_min_low_max, state="disabled")
 root.medium_dose_min.grid(row=1, column=3, padx=(0, 5), sticky="ew")
 label_max_medium = CTkLabel(dose_sections_frame, text="Max:", text_color="#F0F0F0", font=("Arial", 12))
 label_max_medium.grid(row=1, column=4, padx=(0, 5), sticky="ew")
-root.medium_dose_max = CTkEntry(dose_sections_frame, width=50, font=("Arial", 11),
-                                textvariable=root.high_min_medium_max, state="disabled")
+root.medium_dose_max = CTkEntry(dose_sections_frame, width=50, font=("Arial", 11), textvariable=root.high_min_medium_max, state="disabled")
 root.medium_dose_max.grid(row=1, column=5, padx=(0, 5), sticky="ew")
 
-# Low Dose
 label_low_dose = CTkLabel(dose_sections_frame, text="Low Dose:", text_color="#F0F0F0", font=("Arial", 12))
 label_low_dose.grid(row=2, column=0, padx=(10, 5), sticky="ew")
-root.low_dose_cb = CTkComboBox(dose_sections_frame, values=root.color_options, font=("Arial", 12), width=90,
-                               state="disabled")
+root.low_dose_cb = CTkComboBox(dose_sections_frame, values=root.color_options, font=("Arial", 12), width=90, state="disabled")
 root.low_dose_cb.set("green")
 root.low_dose_cb.grid(row=2, column=1, padx=(0, 5), sticky="ew")
 low_dose_rgb = np.array(mcolors.to_rgb("green"))
@@ -3238,25 +2745,22 @@ root.low_dose_min = CTkEntry(dose_sections_frame, width=50, font=("Arial", 11), 
 root.low_dose_min.grid(row=2, column=3, padx=(0, 5), sticky="ew")
 label_max_low = CTkLabel(dose_sections_frame, text="Max:", text_color="#F0F0F0", font=("Arial", 12))
 label_max_low.grid(row=2, column=4, padx=(0, 5), sticky="ew")
-root.low_dose_max = CTkEntry(dose_sections_frame, width=50, font=("Arial", 11),
-                             textvariable=root.medium_min_low_max, state="disabled")
+root.low_dose_max = CTkEntry(dose_sections_frame, width=50, font=("Arial", 11), textvariable=root.medium_min_low_max, state="disabled")
 root.low_dose_max.grid(row=2, column=5, padx=(0, 5), sticky="ew")
 
-# Source
 source_frame = CTkFrame(dose_layer_frame, fg_color="#2E2E2E", corner_radius=0)
 source_frame.pack(fill="x", pady=(5, 0))
-root.btn_find_source = CTkButton(source_frame, text="Find Radioactive Source", fg_color="#3E3E3E",
-                                 text_color="#F0F0F0", font=("Arial", 12), command=lambda: find_radioactive_source(csv_filepath))
+root.btn_find_source = CTkButton(source_frame, text="Find Radioactive Source", fg_color="#3E3E3E", text_color="#F0F0F0", font=("Arial", 12), command=lambda: find_radioactive_source(csv_filepath))
 root.btn_find_source.grid(row=0, column=0, padx=(10, 5), pady=(5, 0), sticky="w")
 show_source_label = CTkLabel(source_frame, text="Show Source on Map:", text_color="#F0F0F0", font=("Arial", 12))
 show_source_label.grid(row=0, column=1, padx=(10, 5), pady=(5, 0), sticky="w")
 root.show_source_switch = CTkSwitch(source_frame, text="", command=toggle_source, state='disabled')
 root.show_source_switch.grid(row=0, column=2, padx=(10, 5), pady=(5, 0), sticky="w")
 
-# Extra Computations
 root.extra_computations_visible = False
 root.obstacle_detection_visible = False
 
+# Function to toggle the visibility of the extra computations frame
 def toggle_extra_computations():
     root.extra_computations_visible = not root.extra_computations_visible
 
@@ -3279,32 +2783,24 @@ def toggle_extra_computations():
         root.btn_visualize.pack_forget()
         root.btn_visualize.pack(side="bottom", padx=(0, 0), pady=(10, 25))
 
-
-root.button_extra_computations = CTkButton(left_frame, text=" ▼ Extra Computations", text_color="#F0F0F0",
-                                      fg_color="#3E3E3E",
-                                      anchor="w", corner_radius=0, command=toggle_extra_computations)
+root.button_extra_computations = CTkButton(left_frame, text=" ▼ Extra Computations", text_color="#F0F0F0", fg_color="#3E3E3E", anchor="w", corner_radius=0, command=toggle_extra_computations)
 root.button_extra_computations.pack(fill="x", padx=(0, 0), pady=(10, 0))
 
 extra_computations_frame = CTkFrame(left_frame, fg_color="#2E2E2E", corner_radius=0)
 
-root.btn_heatmap = CTkButton(extra_computations_frame, text="Heatmap H*(10) rate", fg_color="#3E3E3E",
-                             text_color="#F0F0F0", font=("Arial", 12), command=lambda: plot_heatmap(heatmap, xcenter, ycenter, Hcenter, lonmin, lonmax, latmin, latmax))
+root.btn_heatmap = CTkButton(extra_computations_frame, text="Heatmap H*(10) rate", fg_color="#3E3E3E", text_color="#F0F0F0", font=("Arial", 12), command=lambda: plot_heatmap(heatmap, xcenter, ycenter, Hcenter, lonmin, lonmax, latmin, latmax))
 root.btn_heatmap.pack(fill="x", padx=(80, 80), pady=(5, 0))
-root.btn_three_colors = CTkButton(extra_computations_frame, text="Heatmap with Three Color Range",
-                                  fg_color="#3E3E3E",
-                                  text_color="#F0F0F0", font=("Arial", 12),
-                                  command=lambda: plot_three_color_heatmap(heatmap, xcenter, ycenter, Hcenter, lonmin, lonmax, latmin, latmax))
+root.btn_three_colors = CTkButton(extra_computations_frame, text="Heatmap with Three Color Range", fg_color="#3E3E3E", text_color="#F0F0F0", font=("Arial", 12), command=lambda: plot_three_color_heatmap(heatmap, xcenter, ycenter, Hcenter, lonmin, lonmax, latmin, latmax))
 root.btn_three_colors.pack(fill="x", padx=(80, 80), pady=(5, 0))
 
 segmentation_frame = CTkFrame(extra_computations_frame, fg_color="#2E2E2E", corner_radius=0)
 segmentation_frame.pack(fill="x", padx=(80, 80), pady=(5, 0))
-root.segmentation = CTkButton(segmentation_frame, text="Segmentation", fg_color="#3E3E3E",
-                              text_color="#F0F0F0", font=("Arial", 12), width=105, command=segmentation)
+root.segmentation = CTkButton(segmentation_frame, text="Segmentation", fg_color="#3E3E3E", text_color="#F0F0F0", font=("Arial", 12), width=105, command=segmentation)
 root.segmentation.pack(side="left", padx=(0, 2.5))
-root.segmentation_with_trees = CTkButton(segmentation_frame, text="Segmentation\nwith trees", fg_color="#3E3E3E",
-                                         text_color="#F0F0F0", font=("Arial", 12), command=set_trees)
+root.segmentation_with_trees = CTkButton(segmentation_frame, text="Segmentation\nwith trees", fg_color="#3E3E3E", text_color="#F0F0F0", font=("Arial", 12), command=set_trees)
 root.segmentation_with_trees.pack(side="left", padx=(2.5, 0))
 
+# # Function to toggle the visibility of the obstacle detection frame
 def toggle_obstacle_detection():
     global las, min_x_las, max_x_las, min_y_las, max_y_las
     root.obstacle_detection_visible = not root.obstacle_detection_visible
@@ -3313,7 +2809,6 @@ def toggle_obstacle_detection():
         if las is None:
             fp = filedialog.askopenfilename(filetypes=[("LAS Files", "*.las")])
             if fp:
-                print("Point Cloud Selected:", fp)
                 las = fp
                 root.obstacle_detection.configure(text=" ▲ Obstacle detection")
                 frame_obstacle_detection.pack(fill="x", padx=(80, 80), pady=(0, 0))
@@ -3331,8 +2826,7 @@ def toggle_obstacle_detection():
         root.obstacle_detection.configure(text=" ▼ Obstacle detection")
         frame_obstacle_detection.pack_forget()
 
-root.obstacle_detection = CTkButton(extra_computations_frame, text=" ▼ Obstacle detection", fg_color="#3E3E3E",
-                                        text_color="#F0F0F0", font=("Arial", 12), command=toggle_obstacle_detection)
+root.obstacle_detection = CTkButton(extra_computations_frame, text=" ▼ Obstacle detection", fg_color="#3E3E3E", text_color="#F0F0F0", font=("Arial", 12), command=toggle_obstacle_detection)
 root.obstacle_detection.pack(fill="x", padx=(80, 80), pady=(5, 0))
 
 frame_obstacle_detection = CTkFrame(extra_computations_frame, fg_color="#666666", corner_radius=0)
@@ -3347,6 +2841,7 @@ for i in range(3):
 frame_pixels.columnconfigure(0, weight=1)
 frame_pixels.columnconfigure(1, weight=1)
 
+# Updates the prism size label based on the number of pixels
 def update_prism_size_label(*args):
     global min_x_las, max_x_las, min_y_las, max_y_las
     if None in (min_x_las, max_x_las, min_y_las, max_y_las):
@@ -3381,53 +2876,53 @@ root.prism_size_label.grid(row=2, column=0, padx=(10, 5), pady=(5, 5), sticky="e
 root.prism_size_label_entry = CTkLabel(frame_pixels, text="",text_color="#F0F0F0", font=("Arial", 12))
 root.prism_size_label_entry.grid(row=2, column=1, padx=(0, 10), pady=(5, 5), sticky="w")
 
-root.compute = CTkButton(frame_obstacle_detection, text="Compute", fg_color="#3E3E3E", text_color="#F0F0F0", font=("Arial", 12), command=lambda: set_run_prueba_flag(xcenter, ycenter, FAltcenter, root.num_pixeles_x_entry.get(),
-        root.num_pixeles_y_entry.get()))
+root.compute = CTkButton(frame_obstacle_detection, text="Compute", fg_color="#3E3E3E", text_color="#F0F0F0", font=("Arial", 12), command=lambda: set_flag(xcenter, ycenter, FAltcenter, root.num_pixeles_x_entry.get(), root.num_pixeles_y_entry.get()))
 root.compute.pack(fill="x", padx=(40, 40), pady=(5, 5))
 
-# Visualize
 root.btn_visualize = CTkButton(left_frame, text="Visualize", text_color="#F0F0F0", fg_color="#1E3A5F",
                                hover_color="#2E4A7F",
                                anchor="center", corner_radius=0, border_color="#D3D3D3", border_width=2,
                                command=lambda: visualize(pc_filepath, csv_filepath, xml_filepath, show_dose_layer, dose_min_csv, dose_max_csv))
 root.btn_visualize.pack(side="bottom", padx=(0, 0), pady=(10, 25))
 
-# Algoritmo genético para encontrar la ubicación de una fuente radiactiva
+# Genetic Algorithm for finding the best radioactive source location
 class GeneticAlgorithm:
     def __init__(self, utm_coords, population_size=500, generations=100, mutation_rate=0.01):
         self.utm_coords = utm_coords
-        self.population_size = population_size  # Define el tamaño de la población
-        self.generations = generations  # Define el número de generaciones
-        self.mutation_rate = mutation_rate  # Define la tasa de mutación
-        self.bounds = self.get_bounds()  # Obtiene los límites de las coordenadas UTM
+        self.population_size = population_size  # Define the size of the population
+        self.generations = generations  # Define the number of generations to evolve
+        self.mutation_rate = mutation_rate  # Define the mutation rate for genetic diversity
+        self.bounds = self.get_bounds()  # Get the bounds of the UTM coordinates
 
-    def get_bounds(self):  # Obtiene los límites de las coordenadas UTM
+    # Obtain the bounds of the UTM coordinates
+    def get_bounds(self):
         x_min, y_min = np.min(self.utm_coords[:, :2], axis=0)
         x_max, y_max = np.max(self.utm_coords[:, :2], axis=0)
         return (x_min, x_max), (y_min, y_max)
 
-    def fitness(self, candidate):  # Función de aptitud para evaluar la dosis en un punto candidato
+    # Calculate the fitness of a candidate point based on the dose at that point
+    def fitness(self, candidate):
         tree = cKDTree(self.utm_coords[:, :2])
-        dist, idx = tree.query(
-            candidate)  # Encuentra el punto más cercano en la nube de puntos a la ubicación candidata, devuelve la distancia y el índice del punto
-        return -self.utm_coords[
-            idx, 2]  # Dosis negativa porque queremos maximizar (no minimizar), el algoritmo maximiza la dosis porque minimiza el valor negativo (nos quedamos con el mas negativo que corresponde al valor de dosis mas alto cambiado de signo).
+        dist, idx = tree.query(candidate)  # Find the closest point in the point cloud to the candidate location, and return the distance and the index of the point
+        return -self.utm_coords[idx, 2]  # Negative dose because we want to maximize (not minimize); the algorithm maximizes the dose by minimizing the negative value (we keep the most negative, which corresponds to the highest dose value with its sign changed)
 
-    def initialize_population(
-            self):  # Genera la población inicial de posibles candidatos, tantos como el tamaño de la población establecido
+    # Initialize the population with random candidates within the bounds
+    def initialize_population(self):
         (x_min, x_max), (y_min, y_max) = self.bounds
         return np.array(
             [[random.uniform(x_min, x_max), random.uniform(y_min, y_max)] for _ in range(self.population_size)])
 
+    # Select parents based on their fitness values using a weighted random choice
     def select_parents(self, population, fitnesses):
-        idx = np.random.choice(np.arange(self.population_size), size=self.population_size, replace=True,
-                               p=fitnesses / fitnesses.sum())  # candidates with higher fitness values have a higher chance of being selected
+        idx = np.random.choice(np.arange(self.population_size), size=self.population_size, replace=True, p=fitnesses / fitnesses.sum())
         return population[idx]
 
+    # Perform crossover between two parents to create a new candidate
     def crossover(self, parent1, parent2):
         alpha = random.random()
         return alpha * parent1 + (1 - alpha) * parent2
 
+    # Mutate a candidate by randomly changing its coordinates within the bounds
     def mutate(self, candidate):
         (x_min, x_max), (y_min, y_max) = self.bounds
         if random.random() < self.mutation_rate:
@@ -3436,6 +2931,7 @@ class GeneticAlgorithm:
             candidate[1] = random.uniform(y_min, y_max)
         return candidate
 
+    # Run the genetic algorithm to find the best candidate location for the radioactive source
     def run(self):
         population = self.initialize_population()
         for generation in range(self.generations):
@@ -3451,5 +2947,4 @@ class GeneticAlgorithm:
         best_candidate = population[np.argmax(fitnesses)]
         return best_candidate
 
-# Ejecutar la aplicación
 root.mainloop()
