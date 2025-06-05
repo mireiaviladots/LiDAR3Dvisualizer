@@ -1,0 +1,10 @@
+customtkinter==5.2.2
+laspy==2.5.4
+matplotlib==3.5.3
+numpy==1.23.5
+open3d==0.19.0
+pyproj==3.7.1
+scipy==1.15.3
+Shapely==2.1.1
+skimage==0.0
+utm==0.8.1
