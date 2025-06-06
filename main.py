@@ -1,3 +1,4 @@
+# Importing all necessary libraries
 import numpy as np
 import open3d as o3d
 import csv
@@ -106,11 +107,14 @@ building_prism_cells = None
 # Displays a point cloud without voxelization, optionally applying dose layer visualization
 def point_cloud_no_vox(show_dose_layer, pc_filepath, downsample, xml_filepath, csv_filepath, high_dose_rgb, medium_dose_rgb,
                         low_dose_rgb, dose_min_csv, low_max, medium_min, medium_max, high_min, altura_extra, show_source, source_location, point_size, progress_bar):
-    def run():
+
+    def run():  # Inner function to be run in a separate thread
         global vis
         try:
+            # Load the point cloud file
             pcd = o3d.io.read_point_cloud(pc_filepath)
 
+            # Apply downsampling if specified (between 1% and 100%)
             if downsample is not None:
                 if not (1 <= downsample <= 100):
                     messagebox.showerror("Error", "The downsample value must be between 1 and 100.")
@@ -118,35 +122,39 @@ def point_cloud_no_vox(show_dose_layer, pc_filepath, downsample, xml_filepath, c
                 downsample_value = float(downsample) / 100.0
                 if 0 < downsample_value <= 1:
                     if downsample_value == 1:
-                        downsample_value = 0.99
+                        downsample_value = 0.99  # Avoid using full value
                     voxel_size = 1 * downsample_value
                     downsampled_pcd = pcd.voxel_down_sample(voxel_size=voxel_size)
                     pcd = downsampled_pcd
 
-            nube_puntos = np.asarray(pcd.points)
+            nube_puntos = np.asarray(pcd.points)  # Extract point coordinates
 
             update_progress_bar(progress_bar, 20)
 
+            # Get color data if available, else assign white
             if pcd.has_colors():
                 rgb = np.asarray(pcd.colors)
             else:
                 rgb = np.ones_like(nube_puntos)
 
             if show_dose_layer:
+                # Extract origin from XML for coordinate translation
                 origin = get_origin_from_xml(xml_filepath)
+                geo_points = nube_puntos + origin  # Convert local points to georeferenced
 
-                geo_points = nube_puntos + origin
-
+                # Read UTM coordinates and dose values from CSV
                 utm_coords = np.genfromtxt(csv_filepath, delimiter=',', skip_header=1)
                 utm_points = utm_coords[:, :2]
                 dosis = utm_coords[:, 2]
 
                 update_progress_bar(progress_bar, 30)
 
+                # Build a spatial index to speed up nearest-neighbor search
                 tree = cKDTree(utm_points)
 
                 update_progress_bar(progress_bar, 40)
 
+                # Filter points that lie within the bounds of the dose grid
                 x_min, y_min = np.min(utm_points, axis=0)
                 x_max, y_max = np.max(utm_points, axis=0)
                 dentro_area = (
@@ -156,40 +164,51 @@ def point_cloud_no_vox(show_dose_layer, pc_filepath, downsample, xml_filepath, c
 
                 update_progress_bar(progress_bar, 60)
 
+                # Compute closest dose values for each 3D point within bounds
                 puntos_dentro = geo_points[dentro_area]
                 dosis_nube = np.full(len(puntos_dentro), np.nan)
                 distancias, indices_mas_cercanos = tree.query(puntos_dentro[:, :2])
                 dosis_nube[:] = dosis[indices_mas_cercanos]
+
+                # Filter valid dose points
                 valid_points = ~np.isnan(dosis_nube)
                 puntos_dosis_elevados = puntos_dentro[valid_points]
                 dosis_filtrada = dosis_nube[valid_points]
 
                 update_progress_bar(progress_bar, 80)
 
-                colores_dosis = get_dose_color(dosis_filtrada, high_dose_rgb, medium_dose_rgb, low_dose_rgb, dose_min_csv, low_max, medium_min, medium_max, high_min)
+                # Assign color based on dose levels
+                colores_dosis = get_dose_color(
+                    dosis_filtrada, high_dose_rgb, medium_dose_rgb, low_dose_rgb,
+                    dose_min_csv, low_max, medium_min, medium_max, high_min
+                )
+
+                # Raise dose points vertically for visibility
                 puntos_dosis_elevados[:, 2] += altura_extra
 
+                # Restore original point cloud
                 pcd.points = o3d.utility.Vector3dVector(geo_points)
                 pcd.colors = o3d.utility.Vector3dVector(rgb)
 
                 update_progress_bar(progress_bar, 90)
 
+                # Create a new point cloud for dose layer
                 pcd_dosis = o3d.geometry.PointCloud()
                 pcd_dosis.points = o3d.utility.Vector3dVector(puntos_dosis_elevados)
                 pcd_dosis.colors = o3d.utility.Vector3dVector(colores_dosis)
+
             else:
-                update_progress_bar(progress_bar, 30)
-                update_progress_bar(progress_bar, 40)
-                update_progress_bar(progress_bar, 50)
-                update_progress_bar(progress_bar, 60)
-                update_progress_bar(progress_bar, 70)
-                update_progress_bar(progress_bar, 80)
+                # If dose layer not shown, still show progress
+                for v in [30, 40, 50, 60, 70, 80]:
+                    update_progress_bar(progress_bar, v)
 
             update_progress_bar(progress_bar, 100)
-            progress_bar.grid_forget()
+            progress_bar.grid_forget()  # Hide progress bar
 
+            # Initialize Open3D visualizer
             vis = o3d.visualization.Visualizer()
 
+            # Get dimensions of GUI layout
             right_frame.update_idletasks()
             right_frame_width = right_frame.winfo_width()
             right_frame_height = right_frame.winfo_height()
@@ -197,13 +216,20 @@ def point_cloud_no_vox(show_dose_layer, pc_filepath, downsample, xml_filepath, c
             left_frame_width = left_frame.winfo_width()
             title_bar_height = ctypes.windll.user32.GetSystemMetrics(4)
 
-            vis.create_window(window_name='Open3D', width=right_frame_width, height=right_frame_height, left=left_frame_width, top=title_bar_height)
+            # Create Open3D window inside the GUI
+            vis.create_window(window_name='Open3D',
+                              width=right_frame_width,
+                              height=right_frame_height,
+                              left=left_frame_width,
+                              top=title_bar_height)
             vis.clear_geometries()
-            vis.add_geometry(pcd)
+            vis.add_geometry(pcd)  # Add main point cloud
 
+            # Add dose layer visualization if available
             if show_dose_layer:
                 vis.add_geometry(pcd_dosis)
 
+            # If radiation source is enabled, draw a black sphere at its location
             if show_dose_layer and show_source and source_location is not None:
                 source_point = [source_location[0], source_location[1], np.max(puntos_dosis_elevados[:, 2])]
                 sphere = o3d.geometry.TriangleMesh.create_sphere(radius=1)
@@ -211,117 +237,143 @@ def point_cloud_no_vox(show_dose_layer, pc_filepath, downsample, xml_filepath, c
                 sphere.paint_uniform_color([0, 0, 0])
                 vis.add_geometry(sphere)
 
+            # Set render options such as point size
             render_option = vis.get_render_option()
             render_option.point_size = point_size
 
+            # Continuously update the 3D visualization
             while True:
                 vis.poll_events()
                 vis.update_renderer()
 
-                if not vis.poll_events():
-                    enable_left_frame()
+                if not vis.poll_events():  # If visualizer is closed
+                    enable_left_frame()  # Re-enable GUI frame
                     break
 
         except Exception as e:
+            # Show error message if anything goes wrong
             messagebox.showerror("Error", f"An error occurred: {e}")
-            enable_left_frame()
+            enable_left_frame()  # Restore GUI state even on error
 
+    # Run the visualization logic in a separate thread
     threading.Thread(target=run, daemon=True).start()
 
 
 # Displays a point cloud with voxelization, optionally applying dose layer visualization
 def point_cloud_vox(show_dose_layer, pc_filepath, xml_filepath, csv_filepath, high_dose_rgb, medium_dose_rgb, low_dose_rgb, dose_min_csv, low_max,
             medium_min, medium_max, high_min, altura_extra, progress_bar):
-    def run():
+
+    def run():  # Inner function to be run in a separate thread
         global vis
         try:
+            # Load the point cloud from file
             pcd = o3d.io.read_point_cloud(pc_filepath)
-            xyz = np.asarray(pcd.points)
+            xyz = np.asarray(pcd.points)  # Extract XYZ coordinates
 
             update_progress_bar(progress_bar, 20)
 
+            # Get colors if available, otherwise set all white
             if pcd.has_colors():
                 rgb = np.asarray(pcd.colors)
             else:
                 rgb = np.ones_like(xyz)
 
+            # If dose layer not shown, just assign original points and colors
             if not show_dose_layer:
                 pcd.points = o3d.utility.Vector3dVector(xyz)
                 pcd.colors = o3d.utility.Vector3dVector(rgb)
 
+            # If dose layer is shown, transform point coordinates using origin offset
             if show_dose_layer:
                 origin = get_origin_from_xml (xml_filepath)
                 geo_points = xyz + origin
                 pcd.points = o3d.utility.Vector3dVector(geo_points)
                 pcd.colors = o3d.utility.Vector3dVector(rgb)
 
+            # Create voxel grid from the point cloud with user-defined voxel size
             vsize = vox_size
             voxel_grid = o3d.geometry.VoxelGrid.create_from_point_cloud(pcd, voxel_size=vsize)
 
+            # Prepare a cube shape for voxel visualization
             cube = o3d.geometry.TriangleMesh.create_box(width=1, height=1, depth=1)
-            cube.paint_uniform_color([1, 0, 0])
+            cube.paint_uniform_color([1, 0, 0])  # Red color
             cube.compute_vertex_normals()
 
+            # Build voxel mesh geometry
             voxels = voxel_grid.get_voxels()
             vox_mesh = o3d.geometry.TriangleMesh()
-
             for v in voxels:
                 cube = o3d.geometry.TriangleMesh.create_box(width=1, height=1, depth=1)
                 cube.paint_uniform_color(v.color)
                 cube.translate(v.grid_index, relative=False)
                 vox_mesh += cube
 
+            # Scale and position voxel mesh
             vox_mesh.translate([0.5, 0.5, 0.5], relative=True)
             vox_mesh.scale(vsize, [0, 0, 0])
             vox_mesh.translate(voxel_grid.origin, relative=True)
 
             update_progress_bar(progress_bar, 30)
 
+            # If dose layer is enabled, match point cloud with dose values from CSV
             if show_dose_layer:
                 utm_coords = np.genfromtxt(csv_filepath, delimiter=',', skip_header=1)
-                utm_points = utm_coords[:, :2]
-                dosis = utm_coords[:, 2]
+                utm_points = utm_coords[:, :2]  # Extract XY UTM coordinates
+                dosis = utm_coords[:, 2]        # Extract dose values
 
-                tree = cKDTree(utm_points)
+                tree = cKDTree(utm_points)      # Build KDTree for spatial matching
 
                 update_progress_bar(progress_bar, 40)
 
+                # Define bounding box of the CSV data
                 x_min, y_min = np.min(utm_points, axis=0)
                 x_max, y_max = np.max(utm_points, axis=0)
+
+                # Filter cloud points that fall within CSV bounds
                 dentro_area = (
                         (geo_points[:, 0] >= x_min) & (geo_points[:, 0] <= x_max) &
                         (geo_points[:, 1] >= y_min) & (geo_points[:, 1] <= y_max)
                 )
                 puntos_dentro = geo_points[dentro_area]
                 dosis_nube = np.full(len(puntos_dentro), np.nan)
+
+                # Match closest CSV dose point to each point in cloud
                 distancias, indices_mas_cercanos = tree.query(puntos_dentro[:,:2])
 
                 update_progress_bar(progress_bar, 60)
 
+                # Assign dose values
                 dosis_nube[:] = dosis[indices_mas_cercanos]
                 valid_points = ~np.isnan(dosis_nube)
+
+                # Keep only valid points and corresponding dose values
                 puntos_dosis_elevados = puntos_dentro[valid_points]
                 dosis_filtrada = dosis_nube[valid_points]
+
+                # Get RGB colors based on dose levels
                 colores_dosis = get_dose_color(dosis_filtrada, high_dose_rgb, medium_dose_rgb,
                                                     low_dose_rgb, dose_min_csv, low_max,
                                                     medium_min, medium_max, high_min)
 
+                # Raise Z-axis for visualization if specified
                 puntos_dosis_elevados[:, 2] += altura_extra
 
+                # Build a new point cloud for dose visualization
                 pcd_dosis = o3d.geometry.PointCloud()
                 pcd_dosis.points = o3d.utility.Vector3dVector(puntos_dosis_elevados)
                 pcd_dosis.colors = o3d.utility.Vector3dVector(colores_dosis)
 
+                # Create voxel grid from dose point cloud
                 voxel_grid_dosis = o3d.geometry.VoxelGrid.create_from_point_cloud(pcd_dosis, voxel_size=vsize)
                 voxels_dosis = voxel_grid_dosis.get_voxels()
                 vox_mesh_dosis = o3d.geometry.TriangleMesh()
 
                 update_progress_bar(progress_bar, 80)
 
+                # Reuse cube to visualize dose voxels
                 cube = o3d.geometry.TriangleMesh.create_box(width=1, height=1, depth=1)
                 cube.paint_uniform_color([1, 0, 0])
                 cube.compute_vertex_normals()
-
                 for v in voxels_dosis:
                     cube = o3d.geometry.TriangleMesh.create_box(width=1, height=1, depth=1)
                     cube.paint_uniform_color(v.color)
@@ -330,22 +382,23 @@ def point_cloud_vox(show_dose_layer, pc_filepath, xml_filepath, csv_filepath, hi
 
                 update_progress_bar(progress_bar, 90)
 
+                # Adjust dose voxel mesh size and position
                 vox_mesh_dosis.translate([0.5, 0.5, 0.5], relative=True)
                 vox_mesh_dosis.scale(vsize, [0, 0, 0])
                 vox_mesh_dosis.translate(voxel_grid_dosis.origin, relative=True)
+
             else:
-                update_progress_bar(progress_bar, 40)
-                update_progress_bar(progress_bar, 50)
-                update_progress_bar(progress_bar, 60)
-                update_progress_bar(progress_bar, 70)
-                update_progress_bar(progress_bar, 80)
-                update_progress_bar(progress_bar, 90)
+                # If dose layer not shown, still show progress
+                for v in [30, 40, 50, 60, 70, 80]:
+                    update_progress_bar(progress_bar, v)
 
             update_progress_bar(progress_bar, 100)
-            progress_bar.grid_forget()
+            progress_bar.grid_forget()  # Hide progress bar
 
+            # Initialize Open3D visualizer
             vis = o3d.visualization.Visualizer()
 
+            # Get dimensions of GUI layout
             right_frame.update_idletasks()
             right_frame_width = right_frame.winfo_width()
             right_frame_height = right_frame.winfo_height()
@@ -353,14 +406,20 @@ def point_cloud_vox(show_dose_layer, pc_filepath, xml_filepath, csv_filepath, hi
             left_frame_width = left_frame.winfo_width()
             title_bar_height = ctypes.windll.user32.GetSystemMetrics(4)
 
-            vis.create_window(window_name='Open3D', width=right_frame_width, height=right_frame_height,
-                              left=left_frame_width, top=title_bar_height)
+            # Create Open3D window inside the GUI
+            vis.create_window(window_name='Open3D',
+                              width=right_frame_width,
+                              height=right_frame_height,
+                              left=left_frame_width,
+                              top=title_bar_height)
             vis.clear_geometries()
-            vis.add_geometry(vox_mesh)
+            vis.add_geometry(vox_mesh)  # Add voxel mesh to visualizer
 
+            # If dose mesh is present, add it too
             if show_dose_layer:
                 vis.add_geometry(vox_mesh_dosis)
 
+            # If radiation source is enabled, draw a black sphere at its location
             if show_dose_layer and show_source and source_location is not None:
                 source_point = [[source_location[0], source_location[1], np.max(puntos_dosis_elevados[:, 2])]]
                 source_pcd = o3d.geometry.PointCloud()
@@ -368,18 +427,21 @@ def point_cloud_vox(show_dose_layer, pc_filepath, xml_filepath, csv_filepath, hi
                 source_pcd.paint_uniform_color([0, 0, 0])
                 vis.add_geometry(source_pcd)
 
+            # Continuously update the 3D visualization
             while True:
                 vis.poll_events()
                 vis.update_renderer()
 
-                if not vis.poll_events():
-                    enable_left_frame()
+                if not vis.poll_events():  # If visualizer is closed
+                    enable_left_frame()  # Re-enable GUI frame
                     break
 
         except Exception as e:
+            # Show error message if anything goes wrong
             messagebox.showerror("Error", f"An error occurred: {e}")
-            enable_left_frame()
+            enable_left_frame()  # Restore GUI state even on error
 
+    # Run the visualization logic in a separate thread
     threading.Thread(target=run, daemon=True).start()
 
 
@@ -391,6 +453,7 @@ def grid(las_object, pixels_x, pixels_y):
     progress_bar = create_progress_bar()
     update_progress_bar(progress_bar, 10)
 
+    # Clear any previous mesh and statistics
     if combined_mesh is not None:
         del combined_mesh
     if cell_stats is not None:
@@ -398,33 +461,46 @@ def grid(las_object, pixels_x, pixels_y):
     rects_top = []
     building_prism_cells = []
 
-    gc.collect()
+    gc.collect()  # Free unused memory
 
+    # Load LAS points and prepare XYZ coordinates
     las = las_object
     las_points = np.vstack((las.x, las.y, las.z)).T
+
+    # Extract and normalize RGB colors if available
     if hasattr(las, "red"):
         colors = np.vstack((las.red, las.green, las.blue)).T
         if colors.max() > 1.0:
             colors = colors / 65535.0
     else:
         colors = np.zeros_like(las_points)
+
+    # Extract classification and tree-based classification data
     classifications = las.classification
     classificationtree = las['classificationtree']
 
     update_progress_bar(progress_bar, 20)
 
+    # Create Open3D point cloud
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(las_points)
     pcd.colors = o3d.utility.Vector3dVector(colors)
+
+    # Get point and color arrays
     points = np.asarray(pcd.points)
     colors = np.asarray(pcd.colors) if pcd.has_colors() else np.zeros_like(points)
+
+    # Calculate bounds for X and Y
     min_x, min_y = np.min(points[:, :2], axis=0)
     max_x, max_y = np.max(points[:, :2], axis=0)
 
     update_progress_bar(progress_bar, 30)
 
+    # Calculate cell size for the grid
     delta_x = (max_x - min_x) / pixels_x
     delta_y = (max_y - min_y) / pixels_y
+
+    # Initialize data structures for storing cell information
     z_values = np.full((pixels_y, pixels_x), np.nan)
     cell_stats = np.empty((pixels_y, pixels_x), dtype=object)
     for i in range(pixels_y):
@@ -433,6 +509,7 @@ def grid(las_object, pixels_x, pixels_y):
 
     update_progress_bar(progress_bar, 40)
 
+    # Compute cell indices for each point
     x_idx = ((points[:, 0] - min_x) / delta_x).astype(int)
     y_idx = ((points[:, 1] - min_y) / delta_y).astype(int)
     valid_mask = (
@@ -440,10 +517,12 @@ def grid(las_object, pixels_x, pixels_y):
             (y_idx >= 0) & (y_idx < pixels_y)
     )
 
+    # Fill in height and color information for each grid cell
     for xi, yi, z, color in zip(x_idx[valid_mask], y_idx[valid_mask], points[valid_mask][:, 2], colors[valid_mask]):
         cell_stats[yi, xi]['z_values'].append(z)
         cell_stats[yi, xi]['colors'].append(color)
 
+    # Also fill classification info per cell
     x_idx_las = ((las_points[:, 0] - min_x) / delta_x).astype(int)
     y_idx_las = ((las_points[:, 1] - min_y) / delta_y).astype(int)
     valid_mask_las = (
@@ -456,6 +535,7 @@ def grid(las_object, pixels_x, pixels_y):
         cell_stats[yi, xi]['classes'].append(cls)
         cell_stats[yi, xi]['tree_classes'].append(cls_tree)
 
+    # Calculate filtered average Z height for each grid cell
     for i in range(pixels_y):
         for j in range(pixels_x):
             z_vals = cell_stats[i][j]['z_values']
@@ -470,10 +550,11 @@ def grid(las_object, pixels_x, pixels_y):
 
     update_progress_bar(progress_bar, 60)
 
+    # Create 3D box (prism) geometry per cell
     prisms = []
     prisms_building = []
     building_prism_cells = []
-    count_6 = 0
+    count_6 = 0  # Track number of class 6 (building) cells
     for i in range(pixels_y):
         for j in range(pixels_x):
             if not np.isnan(z_values[i, j]):
@@ -481,9 +562,12 @@ def grid(las_object, pixels_x, pixels_y):
                 z_min = np.min(cell_stats[i][j]['z_values'])
                 height = z_final - z_min
                 if height > 0:
+                    # Create and place prism
                     prism = o3d.geometry.TriangleMesh.create_box(width=delta_x, height=delta_y, depth=height)
                     prism.translate((min_x + j * delta_x, min_y + i * delta_y, z_min))
                     prism.paint_uniform_color(cell_stats[i][j]['color'])
+
+                    # Compute majority class per cell
                     classes = cell_stats[i][j]['classes']
                     tree_classes = cell_stats[i][j]['tree_classes']
 
@@ -500,6 +584,7 @@ def grid(las_object, pixels_x, pixels_y):
                     cell_stats[i][j]['majority_class'] = majority_class
                     cell_stats[i][j]['majority_tree_class'] = majority_tree_class
 
+                    # If class is building (6), track separately
                     if majority_class == 6:
                         count_6 += 1
                         prisms_building.append(prism)
@@ -509,12 +594,14 @@ def grid(las_object, pixels_x, pixels_y):
 
     update_progress_bar(progress_bar, 80)
 
+    # Combine all prisms into one mesh
     combined_mesh = o3d.geometry.TriangleMesh()
     for prism in prisms:
         combined_mesh += prism
 
     rects_top = []
 
+    # Identify and store rooftop (top face) rectangles of buildings
     for prism in prisms_building:
         vertices = np.asarray(prism.vertices)
         top_z = np.max(vertices[:, 2])
@@ -531,19 +618,23 @@ def grid(las_object, pixels_x, pixels_y):
     update_progress_bar(progress_bar, 100)
     progress_bar.grid_forget()
 
+    # Call UI update panel with processed data
     panel_left_frame(xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels_y, building_prism_cells)
 
 
 # Detects obstacles (trees and buildings) between a selected point and a point defined by latitude and longitude or UTM coordinates.
 def tree_obstacles(las_object, entry_latitude, entry_longitude, entry_zone, entry_easting, entry_northing, latlon_set, utm_set, combined_mesh, pixels_x, pixels_y, delta_x, delta_y, cell_stats, selected_rect_indices, building_prism_cells):
+
     def run():
         global vis
         try:
+            # Ensure a start point (selected_positions) is available
             if not selected_positions:
                 messagebox.showwarning("Warning", "Please select one point before continuing.")
                 return
 
             if latlon_set == 1:
+                # Validate UTM zone input
                 try:
                     zone = int(entry_zone.get())
                 except (ValueError, AttributeError):
@@ -554,6 +645,7 @@ def tree_obstacles(las_object, entry_latitude, entry_longitude, entry_zone, entr
                     messagebox.showerror("Error", "UTM zone must be between 1 and 60.")
                     return
 
+                # Validate latitude input
                 try:
                     lat = float(entry_latitude.get())
                 except (ValueError, AttributeError):
@@ -564,6 +656,7 @@ def tree_obstacles(las_object, entry_latitude, entry_longitude, entry_zone, entr
                     messagebox.showerror("Error", "Latitude must be between -90 and 90.")
                     return
 
+                # Validate longitude input
                 try:
                     lon = float(entry_longitude.get())
                 except (ValueError, AttributeError):
@@ -574,9 +667,11 @@ def tree_obstacles(las_object, entry_latitude, entry_longitude, entry_zone, entr
                     messagebox.showerror("Error", "Longitude must be between -180 and 180.")
                     return
 
+                # Convert lat/lon to UTM coordinates
                 utm_x, utm_y = latlon_to_utm(lat, lon, zone)
 
             elif utm_set == 1:
+                # Validate UTM easting and northing input
                 try:
                     easting = float(entry_easting.get())
                 except (ValueError, AttributeError):
@@ -599,12 +694,14 @@ def tree_obstacles(las_object, entry_latitude, entry_longitude, entry_zone, entr
 
                 utm_x = easting
                 utm_y = northing
+
             else:
                 messagebox.showerror("Error", "Please select either Lat/Lon or UTM input mode.")
                 return
 
             las = las_object
 
+            # Check if the target point is within the point cloud bounds
             min_x, max_x = np.min(las.x), np.max(las.x)
             min_y, max_y = np.min(las.y), np.max(las.y)
 
@@ -614,18 +711,21 @@ def tree_obstacles(las_object, entry_latitude, entry_longitude, entry_zone, entr
 
             progress_bar = create_progress_bar()
 
+            # Disable UI inputs during processing
             disable_left_frame()
             entry_latitude.configure(state='disabled')
             entry_longitude.configure(state='disabled')
 
             update_progress_bar(progress_bar, 10)
 
+            # Mark building cells from selected rectangle indices
             for building_number, index_group in enumerate(selected_rect_indices, start=1):
                 for idx in index_group:
                     if idx < len(building_prism_cells):
                         i, j = building_prism_cells[idx]
                         cell_stats[i][j]['building'] = building_number
 
+            # Get drone start positions with estimated height above sea level
             posiciones_con_altura = []
             for (x, y, alt) in selected_positions:
                 col = int((x - min_x) / delta_x)
@@ -640,6 +740,7 @@ def tree_obstacles(las_object, entry_latitude, entry_longitude, entry_zone, entr
 
             update_progress_bar(progress_bar, 40)
 
+            # Get altitude of the target point (from UTM) using mean cell elevation
             posiciones_latlonh = []
             col = int((utm_x - min_x) / delta_x)
             row = int((utm_y - min_y) / delta_y)
@@ -671,18 +772,22 @@ def tree_obstacles(las_object, entry_latitude, entry_longitude, entry_zone, entr
 
             update_progress_bar(progress_bar, 95)
 
+            # Initialize lists to hold crossed obstacles
             total_arboles_cruzados = []
             total_edificios_cruzados = []
 
+            # If start and end points are valid, compute intersecting cells
             if posiciones_con_altura and posiciones_latlonh:
                 puntos_linea = posiciones_con_altura + posiciones_latlonh
                 line_indices = [[i, len(puntos_linea) - 1] for i in range(len(posiciones_con_altura))]
 
+                # For each start point, trace a 2D line to the target point
                 for idx, (start_point, _) in enumerate(zip(posiciones_con_altura, line_indices)):
                     end_point = posiciones_latlonh[0]
                     linea = LineString([start_point[:2], end_point[:2]])
-                    clases_cruzadas = []
-                    edificios_cruzados = []
+
+                    clases_cruzadas = []        # Tree classes intersected
+                    edificios_cruzados = []     # Buildings intersected
 
                     for i in range(pixels_y):
                         for j in range(pixels_x):
@@ -692,6 +797,7 @@ def tree_obstacles(las_object, entry_latitude, entry_longitude, entry_zone, entr
                             y1 = y0 + delta_y
                             celda = box(x0, y0, x1, y1)
                             if linea.intersects(celda):
+                                # Interpolate drone height at current cell (z_rayo)
                                 x_celda = (x0 + x1) / 2
                                 y_celda = (y0 + y1) / 2
 
@@ -716,6 +822,7 @@ def tree_obstacles(las_object, entry_latitude, entry_longitude, entry_zone, entr
                                 else:
                                     z_max = -np.inf
 
+                                # Compare cell elevation with drone height
                                 if z_max >= z_rayo:
                                     tree_class = cell_stats[i][j].get('majority_tree_class')
                                     building_num = cell_stats[i][j].get('building')
@@ -732,10 +839,13 @@ def tree_obstacles(las_object, entry_latitude, entry_longitude, entry_zone, entr
             update_progress_bar(progress_bar, 100)
             progress_bar.grid_forget()
 
+            # Show legend
             summary_lines(colores_puntos, total_arboles_cruzados, total_edificios_cruzados)
 
+            # Initialize Open3D visualizer
             vis = o3d.visualization.Visualizer()
 
+            # Get dimensions of GUI layout
             right_frame.update_idletasks()
             right_frame_width = right_frame.winfo_width()
             right_frame_height = right_frame.winfo_height()
@@ -743,11 +853,16 @@ def tree_obstacles(las_object, entry_latitude, entry_longitude, entry_zone, entr
             left_frame_width = left_frame.winfo_width()
             title_bar_height = ctypes.windll.user32.GetSystemMetrics(4)
 
-            vis.create_window(window_name='Open3D', width=right_frame_width, height=right_frame_height,
-                              left=left_frame_width, top=title_bar_height)
+            # Create Open3D window inside the GUI
+            vis.create_window(window_name='Open3D',
+                              width=right_frame_width,
+                              height=right_frame_height,
+                              left=left_frame_width,
+                              top=title_bar_height)
             vis.clear_geometries()
             vis.add_geometry(combined_mesh)
 
+            # Draw lines from each start point to destination
             if posiciones_con_altura and posiciones_latlonh:
                 puntos_linea = posiciones_con_altura + posiciones_latlonh
                 line_indices = [[i, len(puntos_linea) - 1] for i in range(len(posiciones_con_altura))]
@@ -755,38 +870,44 @@ def tree_obstacles(las_object, entry_latitude, entry_longitude, entry_zone, entr
                 lines.points = o3d.utility.Vector3dVector(puntos_linea)
                 lines.lines = o3d.utility.Vector2iVector(line_indices)
                 lines.colors = o3d.utility.Vector3dVector([[0, 0, 0]] * len(line_indices))
-
                 vis.add_geometry(lines)
 
+            # Draw colored point clouds for each drone start position
             for punto, color in zip(posiciones_con_altura, colores_puntos):
                 pc = o3d.geometry.PointCloud()
                 pc.points = o3d.utility.Vector3dVector([punto])
                 pc.paint_uniform_color(color)
                 vis.add_geometry(pc)
 
+            # Draw target point in pink
             if posiciones_latlonh:
                 puntos_rosas = o3d.geometry.PointCloud()
                 puntos_rosas.points = o3d.utility.Vector3dVector(posiciones_latlonh)
                 puntos_rosas.paint_uniform_color([1.0, 0, 1.0])
                 vis.add_geometry(puntos_rosas)
 
+            # Continuously update the 3D visualization
             while True:
                 vis.poll_events()
                 vis.update_renderer()
 
-                if not vis.poll_events():
+                if not vis.poll_events():  # If visualizer is closed
                     entry_latitude.configure(state='normal')
                     entry_longitude.configure(state='normal')
-                    enable_left_frame()
+                    enable_left_frame()  #Re-enable GUI frame
+
+                    # Clear building markers after visualization
                     for i in range(pixels_y):
                         for j in range(pixels_x):
                             cell_stats[i][j]['building'] = None
                     break
 
         except Exception as e:
+            # Show error message if anything goes wrong
             messagebox.showerror("Error", f"An error occurred: {e}")
-            enable_left_frame()
+            enable_left_frame()  # Restore GUI state even on error
 
+    # Run in a separate thread
     threading.Thread(target=run, daemon=True).start()
 
 
@@ -804,20 +925,33 @@ def enable_left_frame():
 def legend_left_frame(counts=None, color_map=None):
     global legend_frame, legend_canvas
 
+    # Get dimensions of the left frame
     left_frame.update_idletasks()
     width = left_frame.winfo_width()
     height = left_frame.winfo_height()
 
+    # Create and place a canvas as the background for the legend with a dark gray color
     legend_canvas = CTkCanvas(left_frame, bg="#2E2E2E", highlightthickness=0, width=width, height=height)
     legend_canvas.place(x=0, y=0)
     legend_canvas.create_rectangle(0, 0, width, height, fill="#2E2E2E", outline="")
 
-    legend_frame = CTkFrame(left_frame, fg_color="#2E2E2E", corner_radius=0, width=width, height=height, border_width=10, border_color="#2E2E2E")
+    # Create the main container for legend items
+    legend_frame = CTkFrame(
+        left_frame,
+        fg_color="#2E2E2E",
+        corner_radius=0,
+        width=width,
+        height=height,
+        border_width=10,
+        border_color="#2E2E2E"
+    )
     legend_frame.place(x=0, y=0)
 
+    # Remove any previously existing legend items
     for widget in legend_frame.winfo_children():
         widget.destroy()
 
+    # Load default classification colors from JSON
     if color_map is None:
         try:
             script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -831,6 +965,7 @@ def legend_left_frame(counts=None, color_map=None):
             messagebox.showerror("Error", f"Failed to load color map: {e}")
             color_map = {}
 
+    # Mapping from classification IDs
     class_labels = {
         0: "Created, never classified",
         1: "Unclassified",
@@ -851,40 +986,52 @@ def legend_left_frame(counts=None, color_map=None):
         18: "High Noise"
     }
 
+    # Create and display each legend item
     for class_id, rgb in color_map.items():
+        # Convert RGB float [0-1] values to hex string
         hex_color = "#{:02x}{:02x}{:02x}".format(int(rgb[0] * 255), int(rgb[1] * 255), int(rgb[2] * 255))
 
+        # Get the label name and the count for the class (if provided)
         label = class_labels.get(class_id, f"Customized Class ({class_id})")
         count = counts.get(class_id, 0) if counts else 0
 
+        # Create a container for the legend item
         item_frame = CTkFrame(legend_frame, fg_color="#2E2E2E")
         item_frame.pack(anchor="w", padx=10, pady=3)
 
+        # Draw a colored circle to represent the class
         circle = CTkCanvas(item_frame, width=20, height=20, bg="#2E2E2E", highlightthickness=0)
         circle.create_oval(2, 2, 18, 18, fill=hex_color, outline=hex_color)
         circle.pack(side="left")
 
+        # Add the class label next to the circle
         text_label = CTkLabel(item_frame, text=label, text_color="#F0F0F0", font=("Arial", 12))
         text_label.pack(side="left", padx=(8, 2))
 
+        # Add the point count in parentheses (if available)
         count_label = CTkLabel(item_frame, text=f"({count})", text_color="#A0A0A0", font=("Arial", 12))
         count_label.pack(side="left")
 
 
 # Creates a left frame for the Obstacle Detection function
 def panel_left_frame (xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels_y, building_prism_cells):
-        global panel_canvas, button_seg, seg_frame, button_from, from_frame, button_to, to_frame, button_visualize, button_return, progress_bar, posiciones, selected_positions, build_seg, from_set, to_set, latlon_set, utm_set, rects_top
+        global panel_canvas, button_seg, seg_frame, button_from, from_frame, button_to, to_frame
+        global button_visualize, button_return, progress_bar, posiciones, selected_positions
+        global build_seg, from_set, to_set, latlon_set, utm_set, rects_top
 
-        enable_left_frame()
+        enable_left_frame()  # Enable GUI frame
 
+        # Initialize lists for user interaction and selection
         botones = []
         posiciones = []
         selected_positions = []
 
+        # Get dimensions of the left frame
         left_frame.update_idletasks()
         width = left_frame.winfo_width()
         height = left_frame.winfo_height()
 
+        # Create and configure a canvas to draw
         panel_canvas = CTkCanvas(left_frame, bg="#2E2E2E", highlightthickness=0, width=width, height=height)
         panel_canvas.place(x=0, y=0)
         panel_canvas.create_rectangle(0, 0, width, height, fill="#2E2E2E", outline="")
@@ -892,11 +1039,11 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels
         panel_canvas.create_text(width//2, 40, text=title, font=("Arial", 18, "bold"), fill="white")
         panel_canvas.pack_propagate(False)
 
-        build_seg = False
+        build_seg = False  # Flag to track if building segmentation section is open
 
+        # Function to toggle the Building Segmentation section
         def toggle_parameters():
             global build_seg, from_set, to_set, button_from, from_frame
-
             build_seg = not build_seg
 
             if build_seg:
@@ -908,6 +1055,7 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels
                 button_to.pack_forget()
                 button_to.pack(fill="x", padx=(0, 0), pady=(10, 0))
 
+                # Reset FROM section if active
                 if from_set:
                     button_from.pack_forget()
                     button_from.pack(fill="x", padx=(0, 0), pady=(10, 0))
@@ -918,6 +1066,7 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels
                     from_set = False
                     button_from.configure(text=" ▼ FROM")
                     from_frame.pack_forget()
+
             else:
                 button_seg.configure(text=" ▼ Building Segmentation")
                 seg_frame.pack_forget()
@@ -930,23 +1079,26 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels
                 button_to.configure(text=" ▼ TO")
                 to_frame.pack_forget()
 
+        # Create the button to toggle Building Segmentation section
         button_seg = CTkButton(panel_canvas, text=" ▼ Building Segmentation", text_color="#F0F0F0", fg_color="#3E3E3E",
                                            anchor="w", corner_radius=0, command=toggle_parameters)
         button_seg.pack(fill="x", padx=(0, 0), pady=(50, 0))
 
+        # Frame that contains GUI elements for building segmentation
         seg_frame = CTkFrame(panel_canvas, fg_color="#2E2E2E", corner_radius=0)
-
         label_seg = CTkLabel(seg_frame, text="Selecciona X que formaran el edificio. Cada edificio clica OK.", text_color="white", font=("Arial", 12))
         label_seg.pack(fill="x", padx=(5, 5), pady=(0, 0))
 
+        # Container to display the buildings
         panel_building_frame = CTkFrame(seg_frame, fg_color="#2E2E2E", height=150, corner_radius=0)
-
         panel_building = CTkFrame(panel_building_frame, height=150, width=250, fg_color="white", corner_radius=10)
         panel_building.grid(row=0, column=0, rowspan=2, padx=(10, 10), pady=(10, 0), sticky="nsew")
 
+        # Canvas for displaying building shapes
         canvas_2d = CTkCanvas(panel_building, bg="white", width=250, height=150, highlightthickness=0)
         canvas_2d.pack(fill="both", expand=True)
 
+        # Compute scale and center for geometry normalization
         start_x = start_y = None
         selection_rect = None
         drag_threshold = 5
@@ -961,6 +1113,7 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels
 
         buildings_canvas = []
 
+        # Draw each building shape on the canvas
         for i, rect in enumerate(rects_top):
             rotated_reflected_points = []
             for x, y in rect[:, :2]:
@@ -975,6 +1128,7 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels
             fill_color = "#3A86FF"
             rect_id = canvas_2d.create_polygon(flat_coords, fill=fill_color, outline="black")
 
+            # Bounding box used for hit detection
             bbox = (
                 min(p[0] for p in rotated_reflected_points),
                 min(p[1] for p in rotated_reflected_points),
@@ -992,6 +1146,7 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels
                 "index": i,
             })
 
+        # Mouse interaction functions for selecting buildings
         def on_mouse_down(event):
             nonlocal start_x, start_y, selection_rect
             start_x, start_y = event.x, event.y
@@ -1006,6 +1161,7 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels
             dx, dy = abs(end_x - start_x), abs(end_y - start_y)
 
             if dx < drag_threshold and dy < drag_threshold:
+                # Click selection
                 for b in buildings_canvas:
                     x0, y0, x1, y1 = b["bbox"]
                     if x0 <= end_x <= x1 and y0 <= end_y <= y1:
@@ -1015,6 +1171,7 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels
                             canvas_2d.itemconfig(b["id"], fill=new_color)
                         break
             else:
+                # Box selection
                 x0_sel, y0_sel = min(start_x, end_x), min(start_y, end_y)
                 x1_sel, y1_sel = max(start_x, end_x), max(start_y, end_y)
 
@@ -1033,12 +1190,14 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels
         canvas_2d.bind("<B1-Motion>", on_mouse_drag)
         canvas_2d.bind("<ButtonRelease-1>", on_mouse_up)
 
+        # Button to confirm selected buildings
         ok_button = CTkButton(panel_building_frame, text="OK", text_color="white", width=70, fg_color="#1E3A5F")
         ok_button.grid(row=0, column=1, padx=(0, 10), pady=(10, 5), sticky="s")
 
         selected_rects_real_coords = []
         selected_rect_indices = []
 
+        # Generate a random color not in exclude list
         def get_random_color(exclude=["pink"]):
             while True:
                 r = lambda: random.randint(0, 255)
@@ -1046,6 +1205,7 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels
                 if color.lower() not in [c.lower() for c in exclude]:
                     return color
 
+        # Confirm building selection and assign a new color
         def confirm_selection():
             new_color = get_random_color(exclude=["pink"])
             current_indices = []
@@ -1062,6 +1222,7 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels
 
         ok_button.configure(command=confirm_selection)
 
+        # Button to undo last confirmed building selection
         reset_button = CTkButton(panel_building_frame, text="Undo", text_color="white", width=70, fg_color="#1E3A5F")
         reset_button.grid(row=1, column=1, padx=(0, 10), pady=(5, 10), sticky="n")
 
@@ -1080,14 +1241,16 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels
 
         reset_button.configure(command=reset_selection)
 
+        # Configure layout weights for proper resizing
         panel_building_frame.grid_rowconfigure(0, weight=1)
         panel_building_frame.grid_rowconfigure(1, weight=1)
         panel_building_frame.grid_columnconfigure(0, weight=1)
         panel_building_frame.grid_columnconfigure(1, weight=0)
 
-        from_set = False
+        from_set = False  # Flag to track whether FROM section is expanded
 
-        def toggle_dose_layer_b():
+        # Function to toggle the FROM section
+        def toggle_from():
             global from_set, build_seg, to_set, button_from, from_frame
             from_set = not from_set
             if from_set:
@@ -1120,10 +1283,12 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels
                 to_frame.pack_forget()
                 to_frame.pack(pady=(10, 0), fill="x")
 
+        # FROM Button
         button_from = CTkButton(panel_canvas, text=" ▼ FROM", text_color="#F0F0F0", fg_color="#666666",
-                                           anchor="w", corner_radius=0, command=toggle_dose_layer_b)
+                                           anchor="w", corner_radius=0, command=toggle_from)
         button_from.pack(fill="x", padx=(0, 0), pady=(10, 0))
 
+        # Frame for FROM input fields
         from_frame = CTkFrame(panel_canvas, fg_color="#2E2E2E", corner_radius=0)
 
         dronPos_label = CTkLabel(from_frame, text="Dron position:", text_color="white", font=("Arial", 12))
@@ -1132,9 +1297,10 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels
         panel_dronPos = CTkFrame(master=from_frame, width=300, height=200, fg_color="white", corner_radius=10)
         panel_dronPos.pack(padx=(10, 10), pady=(10, 0))
 
-        to_set = False
+        to_set = False  # Flag for TO section
 
-        def toggle_extra_computations():
+        # Function to toggle the TO section
+        def toggle_to():
             global to_set, build_seg
             to_set = not to_set
             if to_set:
@@ -1154,22 +1320,28 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels
                 button_to.configure(text=" ▼ TO")
                 to_frame.pack_forget()
 
-        button_to = CTkButton(panel_canvas, text=" ▼ TO", text_color="#F0F0F0", fg_color="#666666", anchor="w", corner_radius=0, command=toggle_extra_computations)
+        # TO Button
+        button_to = CTkButton(panel_canvas, text=" ▼ TO", text_color="#F0F0F0", fg_color="#666666", anchor="w", corner_radius=0, command=toggle_to)
         button_to.pack(fill="x", padx=(0, 0), pady=(10, 0))
 
+        # Frame for TO input fields
         to_frame = CTkFrame(panel_canvas, fg_color="#2E2E2E", height=140, corner_radius=0)
         to_frame.grid_propagate(False)
 
         show_latlon = False
         show_utm = False
 
-        latlon_set = 0
-        utm_set = 0
+        # Flags to indicate current coordinate mode
+        latlon_set = 0  # 1 if Lat/Lon is selected
+        utm_set = 0     # 1 if UTM is selected
 
+        # Function to toggle display of geographic coordinates input
         def toggle_latlon():
             global latlon_set, utm_set, show_latlon, show_utm
             show_latlon = not show_latlon
+
             if show_latlon:
+                # Activate Lat/Lon mode
                 latlon_set = 1
                 button_coordLatLng.configure(text="▲ Geographic coordinates")
                 label_hint_left.pack_forget()
@@ -1177,13 +1349,17 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels
                 zone_frame.pack(pady=(5, 0), anchor='center')
                 lat_frame.pack(pady=(5, 0), anchor='center')
                 lon_frame.pack(pady=(5, 0), anchor='center')
+
+                # If UTM is active, deactivate it
                 if show_utm:
                     utm_set = 0
                     show_utm = False
                     button_coordUTM.configure(text="▼ UTM coordinates")
                     easting_frame.pack_forget()
                     northing_frame.pack_forget()
+
             else:
+                # Collapse Lat/Lon mode
                 latlon_set = 0
                 button_coordLatLng.configure(text="▼ Geographic coordinates")
                 zone_frame.pack_forget()
@@ -1192,16 +1368,21 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels
                 label_hint_left.pack(pady=(10, 10))
                 label_hint_right.pack(pady=(10, 10))
 
+        # Function to toggle display of UTM coordinates input
         def toggle_utm():
             global latlon_set, utm_set, show_latlon, show_utm
             show_utm = not show_utm
+
             if show_utm:
+                # Activate UTM mode
                 utm_set = 1
                 button_coordUTM.configure(text="▲ UTM coordinates")
                 label_hint_right.pack_forget()
                 label_hint_left.pack_forget()
                 easting_frame.pack(pady=(5, 0), anchor='center')
                 northing_frame.pack(pady=(5, 0), anchor='center')
+
+                # If Lat/Lon is active, deactivate it
                 if show_latlon:
                     latlon_set = 0
                     show_latlon = False
@@ -1209,7 +1390,9 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels
                     zone_frame.pack_forget()
                     lat_frame.pack_forget()
                     lon_frame.pack_forget()
+
             else:
+                # Collapse UTM mode
                 utm_set = 0
                 button_coordUTM.configure(text="▼ UTM coordinates")
                 easting_frame.pack_forget()
@@ -1217,6 +1400,7 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels
                 label_hint_right.pack(pady=(10, 10))
                 label_hint_left.pack(pady=(10, 10))
 
+        # Layout for coordinate input section
         left_to_frame = CTkFrame(to_frame, fg_color="#999999", corner_radius=10)
         left_to_frame.grid(row=0, column=0, padx=(10, 5), pady=(10, 0))
         left_to_frame.grid_propagate(False)
@@ -1229,13 +1413,16 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels
         to_frame.grid_columnconfigure(0, weight=1)
         to_frame.grid_columnconfigure(1, weight=1)
 
+        # Container for geographic coordinate inputs
         left_to_frame_container = CTkFrame(left_to_frame, fg_color="#999999", corner_radius=10, height=140)
         left_to_frame_container.pack(padx=(0, 0), pady=(0, 0))
         left_to_frame_container.pack_propagate(False)
 
+        # Button to expand/collapse geographic coordinates input
         button_coordLatLng = CTkButton(left_to_frame_container, text="▼ Geographic coordinates", text_color="#F0F0F0", fg_color="#3E3E3E", corner_radius=0, height=10, command=toggle_latlon)
         button_coordLatLng.pack(fill='x', padx=0, pady=0)
 
+        # Hint label before selecting coordinate type
         label_hint_left = CTkLabel(
             left_to_frame_container,
             text="Select geographic or UTM coordinates",
@@ -1247,39 +1434,51 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels
         )
         label_hint_left.pack(padx=(5, 5), pady=(10, 10), fill="x")
 
+        # Create a frame container for zone input
         zone_frame = CTkFrame(left_to_frame_container, fg_color="#999999", corner_radius=0)
 
+        # Label for the UTM Zone input
         label_zone = CTkLabel(zone_frame, text="Zone: ", text_color="#F0F0F0", bg_color="#999999")
         label_zone.pack(side='left', padx=(0, 5))
 
+        # Entry field to input the UTM Zone
         entry_zone = CTkEntry(zone_frame, width=50, text_color="black", state="normal", font=("Arial", 12))
         entry_zone.pack(side='left')
 
+        # Frame container for Latitude input
         lat_frame = CTkFrame(left_to_frame_container, fg_color="#999999", corner_radius=0)
 
+        # Label for Latitude
         label_lat = CTkLabel(lat_frame, text="Lat: ", text_color="#F0F0F0", bg_color="#999999")
         label_lat.pack(side='left', padx=(0, 5))
 
+        # Entry field for Latitude input
         entry_lat = CTkEntry(lat_frame, width=50, text_color="black", state="normal", font=("Arial", 12))
         entry_lat.pack(side='left')
 
+        # Frame container for Longitude input
         lon_frame = CTkFrame(left_to_frame_container, fg_color="#999999", corner_radius=0)
 
+        # Label for Longitude
         label_lon = CTkLabel(lon_frame, text="Lon: ", text_color="#F0F0F0", bg_color="#999999")
         label_lon.pack(side='left', padx=(0, 5))
 
+        # Entry field for Longitude input
         entry_lon = CTkEntry(lon_frame, width=50, text_color="black", state="normal", font=("Arial", 12))
         entry_lon.pack(side='left')
 
+        # Create a frame container for UTM coordinate inputs
         right_to_frame_container = CTkFrame(right_to_frame, fg_color="#999999", corner_radius=10, height=140)
         right_to_frame_container.pack(padx=(0, 0), pady=(0, 0))
         right_to_frame_container.pack_propagate(False)
 
+        # Button to toggle the display of UTM coordinates input fields
         button_coordUTM = CTkButton(right_to_frame_container, text="▼ UTM coordinates", text_color="#F0F0F0",
                                     fg_color="#3E3E3E",
                                     corner_radius=0, height=10, command=toggle_utm)
         button_coordUTM.pack(fill='x', padx=0, pady=0)
 
+        # Hint label before selecting coordinate type
         label_hint_right = CTkLabel(
             right_to_frame_container,
             text="Select geographic or UTM coordinates",
@@ -1291,25 +1490,33 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels
         )
         label_hint_right.pack(padx=(5, 5), pady=(10, 10), fill="x")
 
+        # Frame container for Easting coordinate input
         easting_frame = CTkFrame(right_to_frame_container, fg_color="#999999", corner_radius=0)
 
+        # Label for Easting
         label_easting = CTkLabel(easting_frame, text="Easting: ", text_color="#F0F0F0", bg_color="#999999")
         label_easting.pack(side='left', padx=(0, 5))
 
+        # Entry field for Easting input
         entry_easting = CTkEntry(easting_frame, width=50, text_color="black", state="normal", font=("Arial", 12))
         entry_easting.pack(side='left')
 
+        # Frame container for Northing coordinate input
         northing_frame = CTkFrame(right_to_frame_container, fg_color="#999999", corner_radius=0)
 
+        # Label for Northing
         label_northing = CTkLabel(northing_frame, text="Northing: ", text_color="#F0F0F0", bg_color="#999999")
         label_northing.pack(side='left', padx=(0, 5))
 
+        # Entry field for Northing input
         entry_northing = CTkEntry(northing_frame, width=50, text_color="black", state="normal", font=("Arial", 12))
         entry_northing.pack(side='left')
 
+        # Button to return
         button_return = CTkButton(left_frame, text="Return", text_color="#F0F0F0", fg_color="#B71C1C", hover_color="#C62828", corner_radius=0, border_color="#D3D3D3", border_width=2, command=btn_return)
         button_return.pack(side="bottom", padx=(0, 0), pady=(5, 0))
 
+        # Button to trigger visualization
         button_visualize = CTkButton(left_frame, text="Visualize", text_color="#F0F0F0", fg_color="#1E3A5F",
                                      hover_color="#2E4A7F", corner_radius=0, border_color="#D3D3D3", border_width=2,
                                      command=lambda: tree_obstacles(las_object, entry_lat, entry_lon, entry_zone, entry_easting,
@@ -1318,9 +1525,10 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels
                                                                     delta_y, cell_stats, selected_rect_indices, building_prism_cells))
         button_visualize.pack(side="bottom", padx=(0, 0), pady=(5, 0))
 
+        # Force update of layout
         left_frame.update_idletasks()
-        entry_lat.focus_set()
 
+        # Prepare coordinate arrays and calculate min/max and geometric centers for scaling points
         x_array = np.array(xcenter)
         y_array = np.array(ycenter)
         x_min, x_max = x_array.min(), x_array.max()
@@ -1328,16 +1536,25 @@ def panel_left_frame (xcenter, ycenter, FAltcenter, las_object, pixels_x, pixels
         x_center_geom = (x_min + x_max) / 2
         y_center_geom = (y_min + y_max) / 2
 
+        # Function to scale a value from one range to another (linear scaling)
         def escalar(val, min_val, max_val, new_min, new_max):
             return new_min + (val - min_val) / (max_val - min_val) * (new_max - new_min)
 
+        # Loop through each drone position to create buttons representing each drone location on the panel
         for i in range(len(xcenter)):
+            # Perform some rotation/reflection transformations on coordinates
             x_rotado = 2 * x_center_geom - xcenter[i]
             y_rotado = 2 * y_center_geom - ycenter[i]
             x_rotado = 2 * x_center_geom - x_rotado
+
+            # Scale rotated coordinates to fit within the panel's coordinate system
             x = escalar(x_rotado, x_min, x_max, 10, 290)
             y = escalar(y_rotado, y_min, y_max, 10, 190)
+
+            # Save the original positions with altitude
             posiciones.append((xcenter[i], ycenter[i], FAltcenter[i]))
+
+            # Button to visually represent the drone position on the panel
             btn = CTkButton(panel_dronPos, text="", width=6, height=6, fg_color="blue", hover_color="darkblue", corner_radius=3, command=lambda b=i: toggle_color(botones[b], b))
             btn.place(x=x, y=y, anchor="center")
             botones.append(btn)
@@ -1381,21 +1598,31 @@ def btn_return():
 def toggle_color(boton, index):
     global selected_positions, posiciones, botones
 
-    x, y, alt = posiciones[index]
+    x, y, alt = posiciones[index]  # Retrieve the coordinates and altitude of the button's corresponding drone position
 
+    # Check if the button is currently unselected (blue)
     if boton.cget("fg_color") == "blue":
+        # If no positions are currently selected, select this one
         if not selected_positions:
+            # Change button color to indicate selection
             boton.configure(fg_color="pink", hover_color="#ff69b4")
+            # Add this position to the list of selected positions
             selected_positions.append((x, y, alt))
+
     else:
+        # If button is already selected (pink), deselect it
         boton.configure(fg_color="blue", hover_color="darkblue")
+        # Remove this position from the list of selected positions
         selected_positions = [pos for pos in selected_positions if pos != (x, y, alt)]
 
 
 # Function to convert latitude and longitude to UTM coordinates
 def latlon_to_utm(lat, lon, zone):
+    # Define the source coordinate reference system as WGS84 (EPSG:4326), which uses lat/lon
     wgs84_crs = CRS.from_epsg(4326)
+    # Define the target coordinate reference system as UTM for the specified zone
     utm_crs = CRS.from_proj4(f"+proj=utm +zone={zone} +datum=WGS84 +units=m +no_defs")
+    # Convert coordinates from WGS84 to UTM
     transformer = Transformer.from_crs(wgs84_crs, utm_crs, always_xy=True)
     x, y = transformer.transform(lon, lat)
     return x, y
@@ -1403,25 +1630,34 @@ def latlon_to_utm(lat, lon, zone):
 
 # Function to display a summary of the lines detected
 def summary_lines(colores_puntos, total_arboles_cruzados, total_edificios_cruzados):
+
+    # Inner function to create and display the GUI window
     def ventana():
+        # Create a new top-level window for the summary
         resumen = CTkToplevel()
         resumen.title("Obstacle Detection")
         resumen.geometry("300x400")
-        resumen.configure(fg_color="#1E1E1E")
+        resumen.configure(fg_color="#1E1E1E")  # Set dark background
 
+        # Scrollable frame to contain the summary items
         scroll = CTkScrollableFrame(resumen, fg_color="#1E1E1E")
         scroll.pack(expand=True, fill="both", padx=10, pady=10)
 
+        # Iterate through each line's color and obstacle counts
         for idx, (color, num_arboles, num_edificios) in enumerate(zip(colores_puntos, total_arboles_cruzados, total_edificios_cruzados)):
+            # Frame for each summary item
             item_frame = CTkFrame(scroll, fg_color="#1E1E1E")
             item_frame.pack(anchor="w", padx=10, pady=5)
 
+            # Convert RGB tuple (0–1 range) to hex color string
             hex_color = "#{:02x}{:02x}{:02x}".format(int(color[0]*255), int(color[1]*255), int(color[2]*255))
 
+            # Create a small colored circle representing the line color
             circle = CTkCanvas(item_frame, width=20, height=20, bg="#1E1E1E", highlightthickness=0)
             circle.create_oval(2, 2, 18, 18, fill=hex_color, outline=hex_color)
             circle.pack(side="left")
 
+            # Label showing the number of trees and buildings for the line
             label = CTkLabel(
                 item_frame,
                 text=f"{num_arboles} trees, {num_edificios} buildings",
@@ -1430,6 +1666,7 @@ def summary_lines(colores_puntos, total_arboles_cruzados, total_edificios_cruzad
             )
             label.pack(side="left", padx=8)
 
+    # Run in a separate thread
     threading.Thread(target=ventana, daemon=True).start()
 
 
@@ -1739,9 +1976,13 @@ def process_n42_files():
 
 # Function to assign colors based on dose values
 def get_dose_color(dosis_nube, high_dose_rgb, medium_dose_rgb, low_dose_rgb, dose_min_csv, low_max, medium_min, medium_max, high_min):
+    # Initialize an array of zeros with shape (number of doses, 3) for RGB colors
     colores_dosis = np.zeros((len(dosis_nube), 3))
+    # Assign low dose color: values between dose_min_csv and low_max
     colores_dosis[(dosis_nube >= dose_min_csv) & (dosis_nube < low_max)] = low_dose_rgb
+    # Assign medium dose color: values between medium_min and medium_max
     colores_dosis[(dosis_nube >= medium_min) & (dosis_nube < medium_max)] = medium_dose_rgb
+    # Assign high dose color: values greater than or equal to high_min
     colores_dosis[dosis_nube >= high_min] = high_dose_rgb
     return colores_dosis
 
@@ -1749,13 +1990,18 @@ def get_dose_color(dosis_nube, high_dose_rgb, medium_dose_rgb, low_dose_rgb, dos
 # Function to extract the origin from an XML file
 def get_origin_from_xml(xml_filepath):
     try:
+        # Parse the XML file
         tree = ET.parse(xml_filepath)
         roots = tree.getroot()
+
+        # Look for the <SRSOrigin> tag in the XML structure
         srs_origin = roots.find("SRSOrigin")
 
+        # If the tag doesn't exist or has no content, return None
         if srs_origin is None or not srs_origin.text:
             return None
 
+        # Convert the comma-separated string to a NumPy array of floats
         return np.array([float(coord) for coord in srs_origin.text.split(",")])
 
     except Exception as e:
@@ -1766,28 +2012,44 @@ def get_origin_from_xml(xml_filepath):
 # Function to toggle the voxel size input
 def toggle_voxel_size():
     global previous_point_value, previous_voxel_value, previous_downsample_value
+
+    # Check whether the voxelizer checkbox (BooleanVar) is enabled
     if root.voxelizer_var.get():
+        # Save the current point size and downsample values before disabling them
         previous_point_value = root.point_size_entry.get()
         previous_downsample_value = root.downsample_entry.get()
+
+        # Clear and disable point size and downsample fields
         root.vox_size_entry.delete(0, "end")
         root.point_size_entry.delete(0, "end")
         root.downsample_entry.delete(0, "end")
         root.point_size_entry.configure(state="disabled")
+
+        # Enable and prepare voxel size entry
         root.downsample_entry.configure(state="disabled")
         root.vox_size_entry.configure(state="normal")
+
+        # Restore previous voxel value if it exists, else insert default value of 2
         if previous_voxel_value == "":
             root.vox_size_entry.insert(0, 2)
         else:
             root.vox_size_entry.insert(0, previous_voxel_value)
+
     else:
+        # Save current voxel value before disabling the field
         previous_voxel_value = root.vox_size_entry.get()
+
+
+        # Clear and disable voxel size field
         root.vox_size_entry.delete(0, "end")
         root.point_size_entry.delete(0, "end")
         root.vox_size_entry.configure(state="disabled")
+
+        # Enable and restore point size and downsample inputs
         root.point_size_entry.configure(state="normal")
         root.downsample_entry.configure(state="normal")
         if previous_point_value == "":
-            root.point_size_entry.insert(0, 2)
+            root.point_size_entry.insert(0, 2)  # Default value
         else:
             root.point_size_entry.insert(0, previous_point_value)
         if previous_downsample_value != "":
@@ -1797,6 +2059,8 @@ def toggle_voxel_size():
 # Function to toggle the dose layer visibility
 def toggle_dose_layer(source_location):
     global show_dose_layer
+
+    # Check if the "dose layer" switch is turned on
     if root.dose_layer_switch.get() == 1:
         show_dose_layer = True
         root.low_dose_max.configure(state="normal")
@@ -1807,13 +2071,19 @@ def toggle_dose_layer(source_location):
         root.medium_dose_cb.configure(state="normal")
         root.high_dose_cb.configure(state="normal")
         root.dosis_slider.configure(state="normal")
+
+        # If no colors are set yet, initialize default dose colors
         if not root.low_dose_cb.get():
             root.low_dose_cb.set("green")
             root.high_dose_cb.set("red")
             root.medium_dose_cb.set("yellow")
+
+        # If a source location is available, enable the toggle to show/hide it
         if source_location is not None:
             root.show_source_switch.configure(state="normal")
+
     else:
+        # If dose layer is turned off, disable all related controls
         show_dose_layer = False
         root.low_dose_max.configure(state="disabled")
         root.medium_dose_min.configure(state="disabled")
@@ -1828,26 +2098,44 @@ def toggle_dose_layer(source_location):
 def find_radioactive_source(csv_filepath):
     global source_location
 
+    # Check if a file path was provided
     if not csv_filepath:
         messagebox.showwarning("Warning", "Please select a N42 file.")
         return
 
+    # Load UTM coordinates from the CSV file, skipping the header
     utm_coords = np.genfromtxt(csv_filepath, delimiter=',', skip_header=1)
+
+    # Remove any rows where the third column (likely the measurement) is NaN
     utm_coords = utm_coords[~np.isnan(utm_coords[:, 2])]
+
+    # Create an instance of the GeneticAlgorithm class with the cleaned coordinates
     ga = GeneticAlgorithm(utm_coords)
+
+    # Run the genetic algorithm
     source_location = ga.run()
+
+    # Store the result in the global variable
     source_location = source_location
-    messagebox.showinfo("Source Location",f"Estimated source location: Easting = {source_location[0]}, Northing = {source_location[1]}")
+
+    # Show the estimated source location to the user
+    messagebox.showinfo(
+        "Source Location",
+        f"Estimated source location: Easting = {source_location[0]}, Northing = {source_location[1]}"
+    )
+
     root.show_source_switch.configure(state="normal")
 
 
 # Function to toggle the source visibility
 def toggle_source():
     global show_source
+
+    # Check if the toggle switch is ON (value is 1)
     if root.show_source_switch.get() == 1:
-        show_source = True
+        show_source = True  # Enable showing the radioactive source
     else:
-        show_source = False
+        show_source = False  # Disable showing the radioactive source
 
 
 # Function to validate dose ranges
@@ -1858,6 +2146,7 @@ def validate_dose_ranges(show_dose_layer, dose_min_csv, dose_max_csv):
         return
 
     try:
+        # Convert input values from GUI fields to floats
         low_max = float(root.low_dose_max.get())
         medium_min = float(root.medium_dose_min.get())
         medium_max = float(root.medium_dose_max.get())
@@ -1867,6 +2156,7 @@ def validate_dose_ranges(show_dose_layer, dose_min_csv, dose_max_csv):
         messagebox.showerror("Error", "Dose range values must be numeric.")
         raise ValueError("Dose range values must be numeric.")
 
+    # Ensures the dose thresholds are ordered correctly and fall within CSV min/max bounds
     if not (dose_min_csv <= low_max <= medium_min <= medium_max <= high_min <= dose_max_csv):
         messagebox.showerror("Error","Dose ranges are not logical. Ensure: min < low_max < medium_min < medium_max < high_min < max.")
         raise ValueError("Dose ranges are not logical.")
@@ -1881,26 +2171,40 @@ def plot_heatmap(heatmap, xcenter, ycenter, Hcenter, lonmin, lonmax, latmin, lat
 
     disable_left_frame()
 
+    # Create a matplotlib figure and axis to draw the heatmap
     fig, ax = plt.subplots()
+
+    # Display the heatmap using imshow with geographical extent and colormap
     cax = ax.imshow(
         heatmap,
-        extent=(lonmin, lonmax, latmin, latmax),
-        origin='lower',
-        cmap='viridis',
-        alpha=0.8
+        extent=(lonmin, lonmax, latmin, latmax),    # Geographic bounds for x (longitude) and y (latitude)
+        origin='lower',                             # Ensure the origin is at the bottom-left
+        cmap='viridis',                             # Color map for visualization
+        alpha=0.8                                   # Transparency for better overlay on map (if applicable)
     )
+
+    # Add a colorbar to the figure to indicate radiation intensity scale
     fig.colorbar(cax, label='H*(10) rate nSv/h', ax=ax)
+
+    # Set title and axis labels
     ax.set_title('Heatmap H*(10) rate')
     ax.set_xlabel('LONGITUDE')
     ax.set_ylabel('LATITUDE')
+
+    # Add a grid
     ax.grid(visible=True, color='black', linestyle='--', linewidth=0.5)
+
+    # Add a legend
     ax.legend()
 
+    # Define a callback to re-enable the left frame once the plot window is closed
     def on_close(event):
         enable_left_frame()
 
+    # Connect the close event of the figure window to the callback
     fig.canvas.mpl_connect('close_event', on_close)
 
+    # Show the plot
     plt.show()
 
 
@@ -1913,13 +2217,15 @@ def plot_three_color_heatmap(heatmap, xcenter, ycenter, Hcenter, lonmin, lonmax,
 
     disable_left_frame()
 
+    # Determine colors and dose thresholds based on user-selected GUI values if dose layer is enabled
     if root.dose_layer_switch.get() == 1:
+        # Get dose colors from the GUI or use default if empty
         low_dose_color = root.low_dose_cb.get() if root.low_dose_cb.get() else 'green'
         medium_dose_color = root.medium_dose_cb.get() if root.medium_dose_cb.get() else 'yellow'
         high_dose_color = root.high_dose_cb.get() if root.high_dose_cb.get() else 'red'
-
         colors = [low_dose_color, medium_dose_color, high_dose_color]
 
+        # Set dose thresholds with error handling, defaults to 80 and 120
         R0 = 0
         try:
             R1 = float(root.low_dose_max.get()) if root.low_dose_max.get() else 80
@@ -1931,16 +2237,22 @@ def plot_three_color_heatmap(heatmap, xcenter, ycenter, Hcenter, lonmin, lonmax,
             R2 = 120
 
     else:
+        # Default colors and thresholds when dose layer is off
         colors = ['green', 'yellow', 'red']
         R0, R1, R2 = 0, 80, 120
 
+    # Calculate maximum boundary (R3) based on squared max dose for color normalization
     R3 = max(Hcenter) * max(Hcenter)
     bounds = [R0, R1, R2, R3]
+
+    # Create a colormap and normalization based on the bounds for discrete color ranges
     cmap = ListedColormap(colors)
     norm = BoundaryNorm(bounds, cmap.N)
 
+    # Create matplotlib figure and axis for plotting
     fig, ax = plt.subplots()
 
+    # Plot heatmap using imshow with the custom colormap and normalization
     im = ax.imshow(
         heatmap,
         extent=(lonmin, lonmax, latmin, latmax),
@@ -1950,6 +2262,7 @@ def plot_three_color_heatmap(heatmap, xcenter, ycenter, Hcenter, lonmin, lonmax,
         alpha=0.8
     )
 
+    # Add a colorbar with ticks at meaningful dose values
     fig.colorbar(
         im,
         label='H*(10) rate (nSv/h)',
@@ -1961,24 +2274,32 @@ def plot_three_color_heatmap(heatmap, xcenter, ycenter, Hcenter, lonmin, lonmax,
         ]
     )
 
+    # Set plot title and axis labels
     ax.set_title('Heatmap with Three Color Range')
     ax.set_xlabel('LONGITUDE')
     ax.set_ylabel('LATITUDE')
 
+    # Overlay scatter points of measurement locations colored by their dose values
     ax.scatter(
         xcenter, ycenter,
         c=Hcenter, cmap=cmap, norm=norm,
         edgecolor='black', s=50, label='Measurement'
     )
 
+    # Add a grid
     ax.grid(visible=True, color='black', linestyle='--', linewidth=0.5)
+
+    # Add a legend
     ax.legend()
 
+    # Define a callback to re-enable the left frame once the plot window is closed
     def on_close(event):
         enable_left_frame()
 
+    # Connect the close event of the figure window to the callback
     fig.canvas.mpl_connect('close_event', on_close)
 
+    # Show the plot
     plt.show()
 
 
@@ -1997,6 +2318,7 @@ def set_flag(xcenter, ycenter, FAltcenter, pixels_x_str, pixels_y_str):
     root.num_pixeles_x_entry.configure(state="disabled")
     root.num_pixeles_y_entry.configure(state="disabled")
 
+    # Convert pixel counts to integers
     pixels_x = int(pixels_x_str)
     pixels_y = int(pixels_y_str)
 
@@ -2008,9 +2330,12 @@ def set_flag(xcenter, ycenter, FAltcenter, pixels_x_str, pixels_y_str):
         combined_mesh_pixels_y = pixels_y
 
     else:
+        # If the combined mesh does not exist or the pixel grid size has changed
         if (combined_mesh is None or combined_mesh_pixels_x != pixels_x or combined_mesh_pixels_y != pixels_y):
+            # Regenerate the grid mesh for the new pixel resolution
             grid(las_object, pixels_x, pixels_y)
 
+            # Update combined mesh pixel tracking variables
             combined_mesh_pixels_x = pixels_x
             combined_mesh_pixels_y = pixels_y
 
@@ -2049,10 +2374,12 @@ def visualize(pc_filepath, csv_filepath, xml_filepath, show_dose_layer, dose_min
 
     use_voxelization = root.voxelizer_switch.get() == 1
 
+    # Retrieve sizes from GUI
     point_size_str = root.point_size_entry.get().strip()
     vox_size_str = root.vox_size_entry.get().strip()
     altura_extra = root.dosis_slider.get()
 
+    # Insert default values if fields are empty
     if use_voxelization:
         if vox_size_str == "":
             root.vox_size_entry.insert(0, 2)
@@ -2075,6 +2402,7 @@ def visualize(pc_filepath, csv_filepath, xml_filepath, show_dose_layer, dose_min
             raise ValueError("Voxel size must be positive.")
 
     if show_dose_layer:
+        # Get RGB colors for dose layers
         high_dose_color = root.high_dose_cb.get()
         medium_dose_color = root.medium_dose_cb.get()
         low_dose_color = root.low_dose_cb.get()
@@ -2086,6 +2414,7 @@ def visualize(pc_filepath, csv_filepath, xml_filepath, show_dose_layer, dose_min
         medium_dose_rgb = None
         low_dose_rgb = None
 
+    # Get downsample value if provided
     if root.downsample_entry.get().strip():
         downsample = float(root.downsample_entry.get().strip())
     else:
@@ -2093,6 +2422,7 @@ def visualize(pc_filepath, csv_filepath, xml_filepath, show_dose_layer, dose_min
 
     update_progress_bar(progress_bar, 10)
 
+    # Call corresponding function depending on voxelization flag
     if use_voxelization:
         point_cloud_vox(show_dose_layer, pc_filepath, xml_filepath, csv_filepath, high_dose_rgb, medium_dose_rgb, low_dose_rgb, dose_min_csv, low_max,
             medium_min, medium_max, high_min, altura_extra, progress_bar)
@@ -2103,7 +2433,9 @@ def visualize(pc_filepath, csv_filepath, xml_filepath, show_dose_layer, dose_min
 
 # Segmentation function
 def segmentation():
+
     def run():
+        # Open a file dialog to select a LAS file
         fp = filedialog.askopenfilename(filetypes=[("LAS Files", "*.las")])
         if fp:
             disable_left_frame()
@@ -2113,23 +2445,28 @@ def segmentation():
 
             las = laspy.read(fp)
 
+            # Extract point coordinates and classifications into numpy arrays
             points = np.vstack((las.x, las.y, las.z)).transpose()
             classifications = np.array(las.classification)
 
             update_progress_bar(progress_bar, 10)
 
+            # Count the occurrences of each classification
             counts = dict(Counter(classifications))
 
             update_progress_bar(progress_bar, 20)
 
+            # Load classification colors from a JSON file
             script_dir = os.path.dirname(os.path.abspath(__file__))
             json_path = os.path.join(script_dir, "classification_colors_s.json")
 
             with open(json_path, "r") as f:
                 color_map = json.load(f)["classifications"]
 
+            # Convert color values from JSON to numpy arrays
             color_map = {int(k): np.array(v) for k, v in color_map.items()}
 
+            # For any classifications missing from color_map, assign a random color
             unique_classes = np.unique(classifications)
             for cls in unique_classes:
                 if cls not in color_map:
@@ -2137,6 +2474,7 @@ def segmentation():
 
             update_progress_bar(progress_bar, 40)
 
+            # Create an Open3D PointCloud object and set points
             pcd = o3d.geometry.PointCloud()
             pcd.points = o3d.utility.Vector3dVector(points)
 
@@ -2146,6 +2484,7 @@ def segmentation():
 
             update_progress_bar(progress_bar, 60)
 
+            # Assign colors to each point based on classification
             for classification, color in color_map.items():
                 colors[classifications == classification] = color
 
@@ -2156,10 +2495,13 @@ def segmentation():
             update_progress_bar(progress_bar, 100)
             progress_bar.grid_forget()
 
+            # Display a legend in the left frame showing counts and colors of classifications
             legend_left_frame(counts, color_map)
 
+            # Initialize Open3D visualizer
             vis = o3d.visualization.Visualizer()
 
+            # Get dimensions of GUI layout
             right_frame.update_idletasks()
             right_frame_width = right_frame.winfo_width()
             right_frame_height = right_frame.winfo_height()
@@ -2167,6 +2509,7 @@ def segmentation():
             left_frame_width = left_frame.winfo_width()
             title_bar_height = ctypes.windll.user32.GetSystemMetrics(4)
 
+            # Create Open3D window inside the GUI
             vis.create_window(window_name='Open3D', width=right_frame_width, height=right_frame_height,
                               left=left_frame_width, top=title_bar_height)
             vis.clear_geometries()
@@ -2176,7 +2519,7 @@ def segmentation():
                 vis.poll_events()
                 vis.update_renderer()
 
-                if not vis.poll_events():
+                if not vis.poll_events():  # If visualizer is closed
                     if 'legend_frame' in globals() and legend_frame.winfo_exists():
                         legend_frame.place_forget()
 
@@ -2189,6 +2532,7 @@ def segmentation():
             if not pcd.has_points():
                 return
 
+    # Run in a separate thread
     threading.Thread(target=run, daemon=True).start()
 
 
@@ -2213,6 +2557,7 @@ def tree_segmentation(mi_set, pixels_x, pixels_y):
         if fp is None:
             return
 
+        # If no LAS object loaded yet
         if las_object is None:
             disable_left_frame()
 
@@ -2221,19 +2566,20 @@ def tree_segmentation(mi_set, pixels_x, pixels_y):
 
             las_r = laspy.read(fp)
 
+            # Extract points and classifications
             points = np.vstack((las_r.x, las_r.y, las_r.z)).transpose()
             classifications = np.array(las_r.classification)
 
             update_progress_bar(progress_bar, 5)
 
+            # Load classification colors from JSON
             script_dir = os.path.dirname(os.path.abspath(__file__))
             json_path = os.path.join(script_dir, "classification_colors_sp.json")
-
             with open(json_path, "r") as f:
                 color_map = json.load(f)["classifications"]
-
             color_map = {int(k): np.array(v) for k, v in color_map.items()}
 
+            # Assign random gray color for missing classes
             unique_classes = np.unique(classifications)
             for cls in unique_classes:
                 if cls not in color_map:
@@ -2242,9 +2588,9 @@ def tree_segmentation(mi_set, pixels_x, pixels_y):
 
             update_progress_bar(progress_bar, 10)
 
+            # Create Open3D point cloud and assign colors based on classification
             pcd = o3d.geometry.PointCloud()
             pcd.points = o3d.utility.Vector3dVector(points)
-
             colors = np.zeros((points.shape[0], 3))
             for classification, color in color_map.items():
                 colors[classifications == classification] = color
@@ -2253,27 +2599,34 @@ def tree_segmentation(mi_set, pixels_x, pixels_y):
 
             pcd.colors = o3d.utility.Vector3dVector(colors)
 
+            # Filter points classified as medium vegetation (class 4)
             medium_veg_points = points[classifications == 4]
             if medium_veg_points.shape[0] == 0:
-                return
+                return  # Exit if no medium vegetation points
 
             update_progress_bar(progress_bar, 20)
 
+            # Filter medium vegetation points above a certain height threshold (2.3 m above min)
             min_medium_veg_height = np.min(medium_veg_points[:, 2])
             medium_veg_points = medium_veg_points[medium_veg_points[:, 2] >= min_medium_veg_height + 2.3]
 
             update_progress_bar(progress_bar, 25)
 
+            # Define grid resolution and bounding box for canopy height model (CHM)
             resolution = 0.55
             xmin, ymin = medium_veg_points[:, 0].min(), medium_veg_points[:, 1].min()
             xmax, ymax = medium_veg_points[:, 0].max(), medium_veg_points[:, 1].max()
 
             update_progress_bar(progress_bar, 30)
 
+            # Compute grid dimensions
             cols = int(np.ceil((xmax - xmin) / resolution))
             rows = int(np.ceil((ymax - ymin) / resolution))
+
+            # Initialize CHM
             chm = np.full((rows, cols), -999.0)
 
+            # Populate CHM by assigning max height per grid cell
             for x, y, z in medium_veg_points:
                 col = int((x - xmin) / resolution)
                 row = int((ymax - y) / resolution)
@@ -2283,34 +2636,44 @@ def tree_segmentation(mi_set, pixels_x, pixels_y):
 
             update_progress_bar(progress_bar, 40)
 
+            # Smooth CHM using Gaussian filter
             chm[chm == -999.0] = np.nan
             chm_smooth = np.nan_to_num(chm)
             chm_smooth = gaussian_filter(chm_smooth, sigma=2)
+
+            # Detect local maxima in CHM to use as tree top markers
             coordinates = peak_local_max(chm_smooth, min_distance=2, exclude_border=False)
 
             update_progress_bar(progress_bar, 50)
 
+            # Create marker image for watershed segmentation
             markers = np.zeros_like(chm_smooth, dtype=int)
             for i, (r, c) in enumerate(coordinates, 1):
                 markers[r, c] = i
 
             update_progress_bar(progress_bar, 60)
 
+            # Perform watershed segmentation on negative CHM to separate trees
             elevation = -chm_smooth
             labels = watershed(elevation, markers, mask=~np.isnan(chm))
+
+            # Calculate sizes of segmented labels
             label_sizes = ndi.sum(~np.isnan(chm), labels, index=np.arange(1, labels.max() + 1))
 
-            min_size = 20
+            min_size = 20  # Minimum segment size threshold
             mask = np.zeros_like(labels, dtype=bool)
 
             update_progress_bar(progress_bar, 70)
 
+            # Filter small segments (likely noise)
             for i, size in enumerate(label_sizes, 1):
               if size >= min_size:
                     mask |= labels == i
 
+            # Clean labels by masking out small segments
             labels_clean = labels * mask
 
+            # Initialize classificationtree array to assign tree segment IDs to points
             classificationtree = np.zeros(len(points), dtype=int)
             for i, (x, y, z) in enumerate(points):
                 col = int((x - xmin) / resolution)
@@ -2320,6 +2683,7 @@ def tree_segmentation(mi_set, pixels_x, pixels_y):
                     if tree_id > 0:
                         classificationtree[i] = tree_id
 
+            # Add new dimension "classificationtree" to LAS file
             las_r.add_extra_dim(
                 laspy.ExtraBytesParams(name="classificationtree", type=np.int32)
             )
@@ -2332,16 +2696,18 @@ def tree_segmentation(mi_set, pixels_x, pixels_y):
                 progress_bar.grid_forget()
                 grid(las_object, pixels_x, pixels_y)
 
+            # If mi_set is True, create colored point cloud visualization of segmented trees
             if mi_set == True:
                 classifications = np.array(las_r.classificationtree)
-                num_arboles = len(np.unique(labels_clean)) - 1
+                num_arboles = len(np.unique(labels_clean)) - 1  # Number of detected trees
                 filtered_chm = np.where((labels_clean > 0), chm, np.nan)
 
                 update_progress_bar(progress_bar, 80)
 
                 max_label = np.max(labels_clean)
-                colors = np.random.rand(max_label + 1, 3)
+                colors = np.random.rand(max_label + 1, 3)  # Random colors per tree label
 
+                # Create colored image for each tree
                 tree_colors = np.zeros((labels_clean.shape[0], labels_clean.shape[1], 3))
                 for label in range(max_label + 1):
                     tree_colors[labels_clean == label] = colors[label]
@@ -2351,6 +2717,7 @@ def tree_segmentation(mi_set, pixels_x, pixels_y):
                 pcd_points = []
                 pcd_colors = []
 
+                # Construct point cloud of tree tops colored by tree ID
                 for row in range(rows):
                     for col in range(cols):
                         if not np.isnan(chm[row, col]):
@@ -2359,7 +2726,7 @@ def tree_segmentation(mi_set, pixels_x, pixels_y):
                             pcd_colors.append(tree_colors[row, col])
 
                 pcd_points = np.array(pcd_points)
-                pcd_points[:, 2] = pcd_points[:, 2] + 3
+                pcd_points[:, 2] = pcd_points[:, 2] + 3  # Slightly elevate points for visualization clarity
 
                 pcd_tree = o3d.geometry.PointCloud()
                 pcd_tree.points = o3d.utility.Vector3dVector(np.array(pcd_points))
@@ -2397,6 +2764,7 @@ def tree_segmentation(mi_set, pixels_x, pixels_y):
                 if not pcd.has_points():
                     return
         else:
+            # If LAS object already exists
             progress_bar = create_progress_bar()
             update_progress_bar(progress_bar, 10)
 
@@ -2474,6 +2842,7 @@ def tree_segmentation(mi_set, pixels_x, pixels_y):
                         enable_left_frame()
                         break
 
+    # Run in a separate thread
     threading.Thread(target=run, daemon=True).start()
 
 
