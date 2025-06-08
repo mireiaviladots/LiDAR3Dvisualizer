@@ -2121,7 +2121,7 @@ def find_radioactive_source(csv_filepath):
     # Show the estimated source location to the user
     messagebox.showinfo(
         "Source Location",
-        f"Estimated source location: Easting = {source_location[0]}, Northing = {source_location[1]}"
+        f"Estimated source location: Easting = {source_location[0]:.2f} m, Northing = {source_location[1]:.2f} m"
     )
 
     root.show_source_switch.configure(state="normal")
@@ -2190,6 +2190,13 @@ def plot_heatmap(heatmap, xcenter, ycenter, Hcenter, lonmin, lonmax, latmin, lat
     ax.set_title('Heatmap H*(10) rate')
     ax.set_xlabel('LONGITUDE')
     ax.set_ylabel('LATITUDE')
+
+    # Overlay scatter points of measurement locations colored by their dose values
+    ax.scatter(
+        xcenter, ycenter,
+        c=Hcenter,
+        edgecolor='black', s=50, label='Measurement'
+    )
 
     # Add a grid
     ax.grid(visible=True, color='black', linestyle='--', linewidth=0.5)
@@ -3259,9 +3266,9 @@ class GeneticAlgorithm:
     def __init__(self, utm_coords, population_size=500, generations=100, mutation_rate=0.01):
         self.utm_coords = utm_coords
         self.population_size = population_size  # Define the size of the population
-        self.generations = generations  # Define the number of generations to evolve
-        self.mutation_rate = mutation_rate  # Define the mutation rate for genetic diversity
-        self.bounds = self.get_bounds()  # Get the bounds of the UTM coordinates
+        self.generations = generations          # Define the number of generations to evolve
+        self.mutation_rate = mutation_rate      # Define the mutation rate for genetic diversity
+        self.bounds = self.get_bounds()         # Get the bounds of the UTM coordinates
 
     # Obtain the bounds of the UTM coordinates
     def get_bounds(self):
@@ -3272,8 +3279,8 @@ class GeneticAlgorithm:
     # Calculate the fitness of a candidate point based on the dose at that point
     def fitness(self, candidate):
         tree = cKDTree(self.utm_coords[:, :2])
-        dist, idx = tree.query(candidate)  # Find the closest point in the point cloud to the candidate location, and return the distance and the index of the point
-        return -self.utm_coords[idx, 2]  # Negative dose because we want to maximize (not minimize); the algorithm maximizes the dose by minimizing the negative value (we keep the most negative, which corresponds to the highest dose value with its sign changed)
+        dist, idx = tree.query(candidate)       # Find the closest point in the point cloud to the candidate location, and return the distance and the index of the point
+        return -self.utm_coords[idx, 2]         # Negative dose because we want to maximize (not minimize); the algorithm maximizes the dose by minimizing the negative value (we keep the most negative, which corresponds to the highest dose value with its sign changed)
 
     # Initialize the population with random candidates within the bounds
     def initialize_population(self):
