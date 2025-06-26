@@ -114,15 +114,10 @@ def point_cloud_no_vox(show_dose_layer, pc_filepath, downsample, xml_filepath, c
             # Load the point cloud file
             pcd = o3d.io.read_point_cloud(pc_filepath)
 
-            # Apply downsampling if specified (between 1% and 100%)
+            # Apply downsampling if specified (between 1% and 99%)
             if downsample is not None:
-                if not (1 <= downsample <= 100):
-                    messagebox.showerror("Error", "The downsample value must be between 1 and 100.")
-                    return
                 downsample_value = float(downsample) / 100.0
                 if 0 < downsample_value <= 1:
-                    if downsample_value == 1:
-                        downsample_value = 0.99  # Avoid using full value
                     voxel_size = 1 * downsample_value
                     downsampled_pcd = pcd.voxel_down_sample(voxel_size=voxel_size)
                     pcd = downsampled_pcd
@@ -2373,6 +2368,15 @@ def visualize(pc_filepath, csv_filepath, xml_filepath, show_dose_layer, dose_min
         messagebox.showerror("Error", "Please select an XML.")
         return
 
+    # Get downsample value if provided
+    if root.downsample_entry.get().strip():
+        downsample = float(root.downsample_entry.get().strip())
+        if not (1 <= downsample <= 99):
+            messagebox.showerror("Error", "The downsample value must be between 1 and 99.")
+            return
+    else:
+        downsample = None
+
     validate_dose_ranges(show_dose_layer, dose_min_csv, dose_max_csv)
 
     disable_left_frame()
@@ -2420,12 +2424,6 @@ def visualize(pc_filepath, csv_filepath, xml_filepath, show_dose_layer, dose_min
         high_dose_rgb = None
         medium_dose_rgb = None
         low_dose_rgb = None
-
-    # Get downsample value if provided
-    if root.downsample_entry.get().strip():
-        downsample = float(root.downsample_entry.get().strip())
-    else:
-        downsample = None
 
     update_progress_bar(progress_bar, 10)
 
